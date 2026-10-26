@@ -57,7 +57,10 @@ up; sessions already running keep the hooks they started with.
 **The origin** is the session's name, and it changes only when you rename the session:
 
 - a name you set (`claude --name …`, or `/rename` at any time) becomes the origin;
-- a session with no name gets one from its first prompt, at most 5 words, written by the small model;
+- a session with no name gets one from its first prompt, at most 5 words, written by the small model.
+  A first prompt that says nothing about the work (`ok`, `continue`, `guard ok`, a bare slash command)
+  is skipped: the hook names the session from the first real request instead, so you never get a
+  session called "ok";
 - titles the hook set itself are recognized, so it never mistakes its own work for a rename.
 
 **The focus** is rewritten on every prompt after the first. The model sees the origin, the last few
@@ -130,6 +133,21 @@ Details are in [docs/privacy-and-cost.md](docs/privacy-and-cost.md).
 - It relies on the `session_title` hook input and the `sessionTitle` hook output, plus the transcript
   format. A Claude Code update could change them; [open an issue](https://github.com/jachai/session-titles/issues/new/choose)
   if titles stop updating.
+
+## Good to know
+
+- **Running sessions keep the hooks they started with.** After you install, update or remove the
+  plugin, sessions that were already running behave as before. Restart them (`claude respawn --all`
+  for background sessions) to pick up the change.
+- **Install it one way only.** The plugin and `./install.sh` both register the hooks. With both,
+  every prompt makes two title calls. `session-titles status` warns when it sees both; remove the
+  plain hook with `./install.sh --uninstall`.
+- **The first title can take a prompt or two.** A session whose opening prompts say nothing about
+  the work keeps Claude Code's own name until a real request arrives.
+- **Sessions you renamed keep your name.** Whatever you set with `--name` or `/rename` becomes the
+  origin, and only the focus after it changes.
+- **Titles you don't like:** `session-titles set-origin ID TEXT` replaces the origin, and
+  `session-titles off ID` freezes a session's title as it is.
 
 ## Uninstall
 

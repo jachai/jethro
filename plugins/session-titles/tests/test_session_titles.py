@@ -149,7 +149,7 @@ class OriginTests(Base):
 
     def test_stale_title_we_set_earlier_is_not_a_rename(self):
         self.replies("billing export")
-        first = self.prompt("Build it")
+        first = self.prompt("Build the billing CSV export")
         self.add_assistant("step one done")
         self.replies("step two")
         self.prompt("next", title=first)
@@ -170,7 +170,7 @@ class OriginTests(Base):
 
     def test_origin_model_failure_leaves_title_alone(self):
         self.replies("__FAIL__")
-        self.assertIsNone(self.prompt("Build it"))
+        self.assertIsNone(self.prompt("Build the billing CSV export"))
         self.assertIn("model call failed", (st.home_dir() / "hook.log").read_text())
 
 
@@ -316,7 +316,7 @@ class ModeAndSkipTests(Base):
     def test_nested_call_guard(self):
         os.environ[st.GUARD_ENV] = "1"
         self.replies("x")
-        self.assertIsNone(self.prompt("Build it"))
+        self.assertIsNone(self.prompt("Build the billing CSV export"))
         self.assertEqual(self.calls(), [])
 
     def test_off_session_is_left_alone(self):
@@ -405,7 +405,7 @@ class CliTests(Base):
 
     def test_status_log_and_doctor(self):
         self.replies("billing export", "PR waiting on CI")
-        self.prompt("Build it")
+        self.prompt("Build the billing CSV export")
         code, out = self.cli("status")
         self.assertEqual(code, 0)
         self.assertIn("1 titles set", out)
@@ -456,6 +456,44 @@ class InstallTests(Base):
         r = self.run_install()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("UserPromptSubmit", self.settings()["hooks"])
+
+
+class TrivialFirstPromptTests(Base):
+    def add_user(self, text):
+        with self.transcript.open("a") as f:
+            f.write(json.dumps({"type": "user", "message": {"role": "user", "content": text}}) + "\n")
+
+    def test_trivial_first_prompt_sets_no_title_and_makes_no_call(self):
+        for text in ("ok", "guard ok", "Continue.", "/compact", "yes please", "thanks!"):
+            with self.subTest(text=text):
+                self.assertIsNone(self.prompt(text))
+        self.assertEqual(self.calls(), [])
+        self.assertIn("says nothing about the work", (st.home_dir() / "hook.log").read_text())
+
+    def test_real_prompt_after_trivial_ones_names_the_session(self):
+        self.assertIsNone(self.prompt("ok"))
+        self.replies("billing export")
+        self.assertEqual(self.prompt("Build the billing CSV export"), "billing export")
+        self.assertIn("Build the billing CSV export", self.calls()[-1]["stdin"])
+
+    def test_trivial_prompt_falls_back_to_first_real_request_in_transcript(self):
+        self.add_user("ok")
+        self.add_user("Migrate the invoices table to the new schema")
+        self.add_assistant("Started on the migration.")
+        self.replies("invoices schema migration", "writing the backfill")
+        title = self.prompt("continue")
+        self.assertEqual(title, "invoices schema migration · writing the backfill")
+        self.assertIn("Migrate the invoices table", self.calls()[0]["stdin"])
+
+    def test_named_session_with_trivial_prompt_still_gets_a_focus(self):
+        self.add_assistant("PR 214 is open and CI is running.")
+        self.replies("PR 214 waiting on CI")
+        self.assertEqual(self.prompt("ok", title="billing export"), "billing export · PR 214 waiting on CI")
+
+    def test_short_but_real_prompts_are_not_trivial(self):
+        for text in ("review PR 214", "why is CI red?", "Build the billing CSV export"):
+            with self.subTest(text=text):
+                self.assertFalse(st.is_trivial(text))
 
 
 if __name__ == "__main__":

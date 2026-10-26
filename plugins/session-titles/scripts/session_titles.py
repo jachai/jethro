@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 from typing import Callable, Iterator, Optional
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 GUARD_ENV = "SESSION_TITLES_CHILD"  # set on our own `claude -p` calls so they never retitle themselves
 LOG_MAX_BYTES = 1_000_000
@@ -307,6 +307,54 @@ def prompt_text(prompt: str) -> str:
     return _RELAY.sub("", prompt).strip()
 
 
+_TRIVIAL = re.compile(
+    r"^(ok(ay)?|k|yes|yep|yeah|y|no|nope|n|sure|thanks?( you)?|thx|ty|hi|hello|hey|continue|cont|go( ahead| on)?|"
+    r"proceed|carry on|keep going|next|resume|retry|again|done|lgtm|looks good|sounds good|do it|"
+    r"(guard|cost guard) ok|approved?|confirm(ed)?|agreed?|fine|great|good|nice|cool|perfect|\?+|!+|\.+)$",
+    re.I,
+)
+
+
+def is_trivial(prompt: str) -> bool:
+    """True for prompts that say nothing about the work: acknowledgements, 'continue', a bare slash command.
+
+    A session named from one of these gets a useless origin like 'ok', so the hook waits for a real request.
+    """
+    s = re.sub(r"\s+", " ", prompt).strip().strip(".!,;: ")
+    if not s:
+        return True
+    if s.startswith("/") and " " not in s:
+        return True
+    if _TRIVIAL.match(s):
+        return True
+    return len(words(s)) < 3 and len(s) < 20
+
+
+def first_real_prompt(path: str) -> str:
+    """The first non-trivial thing the user typed in this session's transcript, or ''."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if '"user"' not in line or '"isSidechain":true' in line or '"isMeta":true' in line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if d.get("type") != "user" or d.get("isSidechain") or d.get("isMeta"):
+                    continue
+                content = (d.get("message") or {}).get("content")
+                if isinstance(content, list):
+                    content = " ".join(str(b.get("text", "")) for b in content
+                                       if isinstance(b, dict) and b.get("type") == "text")
+                text = prompt_text(content if isinstance(content, str) else "")
+                if text and not text.startswith("<") and not is_trivial(text):
+                    return text
+    except OSError:
+        pass
+    return ""
+
+
 def split_title(title: str, separator: str) -> str:
     """The origin part of a title we may have set earlier."""
     return title.split(separator, 1)[0].strip() if separator in title else title.strip()
@@ -453,9 +501,12 @@ def on_prompt(hook_in: dict, cfg: dict) -> Optional[str]:
         write_state(session_id, state)
 
     if not origin:
-        if not prompt:
-            return None
-        origin = generate_origin(prompt, cfg)
+        source = prompt if not is_trivial(prompt) else (first_real_prompt(transcript) if transcript else "")
+        if not source:
+            if prompt:
+                log(f"{sid8} first prompt {prompt[:40]!r} says nothing about the work; waiting for a real one")
+            return None  # leave Claude Code's own title in place until there is something to name
+        origin = generate_origin(source, cfg)
         if not origin:
             return None
         log(f"{sid8} origin generated {origin!r}")

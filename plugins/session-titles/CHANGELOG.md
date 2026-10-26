@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-26
+
+### Fixed
+
+- A session whose first prompt said nothing about the work (`ok`, `continue`, `guard ok`, a bare slash
+  command, anything under 3 words and 20 characters) was named after it, giving titles like `ok`. The
+  hook now names the session from the first real request in the transcript, or waits for one and
+  leaves Claude Code's own name in place until then.
+
+### Added
+
+- README "Good to know" section: running sessions keep their hooks until restarted, install one way
+  only, first titles can take a prompt or two.
+
 ## [0.1.0] - 2026-10-26
 
 ### Added
