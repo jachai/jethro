@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/session-titles/app/scripts/session_titles.py\" hook",
+            "timeout": 45
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/session-titles/app/scripts/session_titles.py\" hook",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
