@@ -22,6 +22,11 @@ The hook input carries the session's current title. The origin is decided in thi
    When that title has the form `<origin> · <focus>` (a resume that started a new session id inherits
    one), the part after the separator is kept as the starting focus.
 3. **There is no title yet.** A small model writes a name of at most 5 words from the first prompt.
+   A prompt that says nothing about the work is never used for this: an acknowledgement such as
+   `ok`, `yes please`, `continue` or `guard ok`, a bare slash command, or anything under 3 words and
+   20 characters. The hook then looks back through the transcript for the first real request and
+   names the session from that. If there is none yet, it sets no title, so Claude Code's own name
+   stays until you send a real request. Short real requests such as `review PR 214` still count.
 
 `session-titles set-origin ID TEXT` replaces the stored origin by hand. Claude Code shows it on the
 session's next prompt.
