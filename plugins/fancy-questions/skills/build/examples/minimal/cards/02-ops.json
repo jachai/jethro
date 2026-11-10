@@ -1,0 +1,21 @@
+[
+  {
+    "id": "q-route", "section": "ops", "short": "Who gets the job",
+    "question": "Which crew gets a job that needs two days?",
+    "recommend": "The crew with the nearest open two-day slot.",
+    "visual": {"kind": "tree", "root": {"ask": "Needs two days?", "branches": [
+      {"when": "yes", "then": {"ask": "Open two-day slot this week?", "branches": [{"when": "yes", "then": {"label": "Nearest crew with the slot", "tone": "yes"}}, {"when": "no", "then": {"label": "Next week, first slot", "tone": "muted"}}]}},
+      {"when": "no", "then": {"label": "Today's rule", "tone": "muted"}}]}},
+    "options": [
+      {"id": "nearest", "tone": "yes", "recommended": true, "name": "Nearest open slot", "sub": "Fastest start for the customer."},
+      {"id": "some", "tone": "no", "name": "Only some crews", "sub": "Tick the crews that may take two-day jobs.",
+       "picks": {"label": "Crews that may take two-day jobs", "items": ["North", "South", "East"], "min": 1}},
+      {"tone": "discuss"}
+    ],
+    "parts": [
+      {"id": "q-route-b", "question": "Should the customer be told the crew name?", "recommend": "Yes, in the confirmation email.",
+       "visual": {"kind": "beforeAfter", "before": {"label": "Today", "lines": ["Email says: a crew"]}, "after": {"label": "After", "lines": [{"text": "Email names the crew", "tone": "yes"}]}},
+       "options": [{"id": "yes", "tone": "yes", "recommended": true, "name": "Yes", "sub": "Name in the email."}, {"id": "no", "tone": "no", "name": "No", "sub": "Keep it generic."}]}
+    ]
+  }
+]

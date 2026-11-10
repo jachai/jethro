@@ -1,0 +1,565 @@
+[
+  {
+    "id": "syn-01",
+    "section": "office",
+    "short": "Visitor sign-in",
+    "question": "Should visitors sign in on a tablet instead of paper?",
+    "recommend": "Yes, use a tablet at the front desk.",
+    "urgent": true,
+    "badge": "Needed this week",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, use a tablet at the front desk."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "bars",
+      "rows": [
+        {
+          "label": "Today",
+          "value": 40,
+          "text": "$40",
+          "tone": "no"
+        },
+        {
+          "label": "Option A",
+          "value": 25,
+          "text": "$25",
+          "tone": "yes"
+        },
+        {
+          "label": "Option B",
+          "value": 32,
+          "text": "$32"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, use a tablet at the front desk.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-02",
+    "section": "office",
+    "short": "Desk booking",
+    "question": "Should shared desks be booked a day ahead?",
+    "recommend": "Yes, book through the shared calendar.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, book through the shared calendar."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "split",
+      "parts": [
+        {
+          "label": "office",
+          "value": 50,
+          "text": "50%",
+          "tone": "yes"
+        },
+        {
+          "label": "remote",
+          "value": 30,
+          "text": "30%"
+        },
+        {
+          "label": "travel",
+          "value": 20,
+          "text": "20%",
+          "tone": "muted"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, book through the shared calendar.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-03",
+    "section": "office",
+    "short": "Meeting rooms",
+    "question": "Should rooms release if nobody shows in 10 minutes?",
+    "recommend": "Yes, release after 10 minutes.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, release after 10 minutes."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "flow",
+      "steps": [
+        {
+          "label": "Request",
+          "note": "by form"
+        },
+        {
+          "label": "Review",
+          "note": "one owner",
+          "tone": "discuss"
+        },
+        {
+          "label": "Done",
+          "tone": "yes"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, release after 10 minutes.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "Only some rooms",
+        "sub": "Tick the rooms that should release.",
+        "picks": {
+          "label": "Which rooms release automatically",
+          "min": 1,
+          "groups": [
+            {
+              "name": "Ground floor",
+              "items": [
+                "Room A",
+                "Room B",
+                "Room C"
+              ]
+            },
+            {
+              "name": "First floor",
+              "items": [
+                "Room D",
+                "Room E"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-04",
+    "section": "office",
+    "short": "Mail handling",
+    "question": "Who sorts incoming mail each morning?",
+    "recommend": "The front desk sorts it before 10.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "The front desk sorts it before 10."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "tree",
+      "root": {
+        "ask": "Is it under the limit?",
+        "branches": [
+          {
+            "when": "yes",
+            "then": {
+              "label": "Approve at once",
+              "tone": "yes"
+            }
+          },
+          {
+            "when": "no",
+            "then": {
+              "ask": "Is it urgent?",
+              "branches": [
+                {
+                  "when": "yes",
+                  "then": {
+                    "label": "Ask a lead today",
+                    "tone": "discuss"
+                  }
+                },
+                {
+                  "when": "no",
+                  "then": {
+                    "label": "Weekly review",
+                    "tone": "muted"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "The front desk sorts it before 10.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-05",
+    "section": "office",
+    "short": "Cleaning schedule",
+    "question": "Should cleaning move to evenings?",
+    "recommend": "Yes, move cleaning to the evening.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, move cleaning to the evening."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "beforeAfter",
+      "before": {
+        "label": "Today",
+        "lines": [
+          {
+            "text": "Handled by hand",
+            "tone": "no"
+          },
+          "No written rule"
+        ]
+      },
+      "after": {
+        "label": "Recommended",
+        "lines": [
+          {
+            "text": "One written rule",
+            "tone": "yes"
+          },
+          "Owner named"
+        ]
+      }
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, move cleaning to the evening.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ],
+    "parts": [
+      {
+        "id": "syn-05b",
+        "question": "Who owns the evening cleaning contract?",
+        "recommend": "The office lead owns it.",
+        "today": "No rule today.",
+        "visual": {
+          "kind": "bars",
+          "rows": [
+            {
+              "label": "Today",
+              "value": 0,
+              "text": "none",
+              "tone": "no"
+            },
+            {
+              "label": "After",
+              "value": 1,
+              "text": "one",
+              "tone": "yes"
+            }
+          ]
+        },
+        "options": [
+          {
+            "id": "yes",
+            "tone": "yes",
+            "recommended": true,
+            "name": "Yes",
+            "sub": "The office lead owns it.",
+            "impact": "<b>Team</b> knows who decides."
+          },
+          {
+            "id": "no",
+            "tone": "no",
+            "name": "No",
+            "sub": "Leave it open."
+          },
+          {
+            "tone": "discuss"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "syn-06",
+    "section": "office",
+    "short": "Plant care",
+    "question": "Should one person own the office plants?",
+    "recommend": "Yes, name one owner.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, name one owner."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "steps",
+      "items": [
+        {
+          "when": "Day 1",
+          "label": "Request sent"
+        },
+        {
+          "when": "Day 3",
+          "label": "Reminder",
+          "tone": "discuss"
+        },
+        {
+          "when": "Day 5",
+          "label": "Closed",
+          "tone": "yes"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, name one owner.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-07",
+    "section": "office",
+    "short": "Kitchen supplies",
+    "question": "Should we reorder snacks every two weeks?",
+    "recommend": "Yes, reorder every two weeks.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, reorder every two weeks."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "table",
+      "cols": [
+        "Item",
+        "Today",
+        "Proposed"
+      ],
+      "rows": [
+        [
+          "Guest badge",
+          "Paper",
+          "Printed"
+        ],
+        [
+          "Parking",
+          "First come",
+          "Booked"
+        ],
+        [
+          "Visitors",
+          "Any time",
+          "Mornings"
+        ]
+      ],
+      "highlight": [
+        1
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, reorder every two weeks.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-08",
+    "section": "people",
+    "short": "Remote days",
+    "question": "How many remote days a week are allowed?",
+    "recommend": "Two remote days a week.",
+    "urgent": true,
+    "badge": "Needed this week",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Two remote days a week."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "image",
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAAB4CAIAAABQJv+tAAACTklEQVR42u3XsQmAQAxA0RvM2traIaytHcLacRzFwsoJHMBGEY6Ee/AnSMKDlOO8JOlTxQgkgUMSOCSBQxI4JIFDksAhCRySwCEJHJLAIUk/4OinXVIjgUMSOCSBQxI4JIEDHBI4wCEJHJLAIQkcksBhmhI4wCEJHJLAIQkcksAhCRzgkAQOSRHgkCRwSAKHJHAoRYkecoFD4AAHOAQOcIBD4AAHOCRwCBwCh8AhcFgEOAQOcIBD4AAHOCRwCBwCh8AhcAgcAgc4wCFwgAMcAgc4wFG/bpsi5ALAIXCAAxwCBzjAAQ5wgAMc4AAHOMABDnCAQ+AQOMABDoEDHOAABzjAAQ5wgAMc4AAHOMAhcAgc4ACHwAEOcIADHOAABzjAAQ5wgAMc4BA4BA5wgEPgAAc4BA5wgAMc4AAHOMABDnC8ax+HCIFD4AAHOMABDnCAAxzgAAc4wAEOcIADHAIHOMAhcIADHOAABzjAAQ5wgAMc4AAHOMABDoEDHOAQOMABDoEDHOAABzjAAQ5wgAMc4AAHOMABDnA8W9ctQuAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAY6qcMzzIil44JCUHw5J7QQOSeCQBA5J4JAEDkngkCRwSAKHJHBIStoNVcYilU2KFUIAAAAASUVORK5CYII=",
+      "alt": "Example image: a bar chart with four bars"
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Two remote days a week.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  }
+]

@@ -3,9 +3,19 @@
   "displayName": "Question Walkthrough",
   "version": "0.1.0",
   "description": "Turn open questions for Ops, a PM or a customer into a one-card-at-a-time claude.ai artifact: recommendation first, a visual per question, answers saved in the artifact's shared db.",
-  "author": {"name": "Jonathan Achai", "url": "https://github.com/jachai"},
+  "author": {
+    "name": "Jonathan Achai",
+    "url": "https://github.com/jachai"
+  },
   "homepage": "https://github.com/jachai/question-walkthrough",
   "repository": "https://github.com/jachai/question-walkthrough",
   "license": "UNLICENSED",
-  "keywords": ["artifacts", "questions", "decisions", "walkthrough", "interview"]
+  "keywords": [
+    "artifacts",
+    "questions",
+    "decisions",
+    "walkthrough",
+    "interview"
+  ],
+  "icon": ".claude-plugin/icon.png"
 }

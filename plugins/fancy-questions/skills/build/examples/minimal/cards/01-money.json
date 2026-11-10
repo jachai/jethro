@@ -1,0 +1,17 @@
+[
+  {
+    "id": "q-fee", "section": "money", "short": "Late fee", "urgent": true, "badge": "Needed before Friday",
+    "tickets": [{"id": "T-1", "url": "https://linear.app/example/issue/T-1"}],
+    "question": "Should a late payment add a $25 fee?",
+    "recommend": "Yes, after a 5-day grace period.",
+    "today": {"text": "No fee is charged; Ops emails a reminder."},
+    "example": "Invoice of $1,000 paid 8 days late: $25 fee under the recommendation, $0 today.",
+    "facts": [{"text": "The 8-day case is made up for the example.", "verified": false}],
+    "visual": {"kind": "bars", "rows": [{"label": "Today", "value": 0, "text": "$0", "tone": "no"}, {"label": "Recommended", "value": 25, "text": "$25", "tone": "yes"}]},
+    "options": [
+      {"id": "grace", "tone": "yes", "recommended": true, "name": "Yes, after 5 days", "sub": "The fee starts on day 6.", "impact": "<b>Customer</b> pays $25 when late."},
+      {"id": "no", "tone": "no", "name": "No fee", "sub": "Keep today's reminder email."},
+      {"tone": "discuss"}
+    ]
+  }
+]
