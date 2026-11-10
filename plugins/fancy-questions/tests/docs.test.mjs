@@ -20,3 +20,12 @@ test('every example in visuals.md passes lint', () => {
     assert.deepEqual(r.errors, [], `${visual.kind}: ${r.errors.join('; ')}`);
   });
 });
+import { build } from '../scripts/qw.mjs';
+test('golden ops-11-10 and synthetic-30 build clean under 150 KB', () => {
+  for (const [d, n] of [['ops-11-10', 8], ['synthetic-30', 30]]) {
+    const r = build(join(root, 'skills/build/examples', d));
+    assert.deepEqual(r.errors, [], d); assert.deepEqual(r.warnings, [], d);
+    assert.equal(r.data.cards.length, n, d);
+    assert.ok(Buffer.byteLength(r.html) < 150 * 1024, d);
+  }
+});
