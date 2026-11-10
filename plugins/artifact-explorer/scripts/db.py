@@ -1,0 +1,107 @@
+"""explorer.db: schema and the only write helpers. See docs/design.md#schema."""
+import json
+import os
+import re
+import sqlite3
+import time
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS artifacts(
+  id TEXT PRIMARY KEY, uuid TEXT, url TEXT, title TEXT, kind TEXT, owned INTEGER,
+  creator TEXT, sharing TEXT, size INTEGER,
+  created REAL, modified REAL, last_accessed REAL, last_access_by TEXT,
+  version TEXT, seq INTEGER, local_path TEXT,
+  description TEXT, desc_source TEXT, desc_status TEXT,
+  thumb TEXT, thumb_source TEXT, thumb_status TEXT,
+  first_seen REAL, updated REAL);
+CREATE TABLE IF NOT EXISTS events(
+  artifact_id TEXT, ts REAL, kind TEXT, source TEXT, session_id TEXT, cwd TEXT, repo TEXT, detail TEXT,
+  UNIQUE(artifact_id, ts, kind, source));
+CREATE INDEX IF NOT EXISTS events_by_artifact ON events(artifact_id);
+CREATE TABLE IF NOT EXISTS spend(day TEXT PRIMARY KEY, usd REAL, runs INTEGER);
+CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY, value TEXT);
+"""
+
+FIELDS = ("uuid url title kind owned creator sharing size created modified last_accessed last_access_by "
+          "version seq local_path description desc_source desc_status thumb thumb_source thumb_status").split()
+DESC_RANK = {None: 0, "title": 1, "publish": 2, "describer": 3, "import": 4}
+URL_ID = re.compile(r"claude\.ai/(?:code/)?artifact/([A-Za-z0-9-]{10,})")
+
+
+def connect(data):
+    con = sqlite3.connect(os.path.join(data, "explorer.db"), timeout=30)
+    con.row_factory = sqlite3.Row
+    con.executescript(SCHEMA)
+    return con
+
+
+def id_from_url(url):
+    m = URL_ID.search(url or "")
+    return m.group(1) if m else None
+
+
+def get(con, aid):
+    return con.execute("SELECT * FROM artifacts WHERE id=?", (aid,)).fetchone()
+
+
+def upsert_artifact(con, aid, **fields):
+    """Insert or update one artifact. A None value never overwrites; a description only replaces one of
+    equal or lower source rank. Returns True when the row changed."""
+    bad = set(fields) - set(FIELDS)
+    if bad:
+        raise ValueError("unknown fields: %s" % sorted(bad))
+    now = time.time()
+    row = get(con, aid)
+    vals = {k: v for k, v in fields.items() if v is not None}
+    if row is not None and "description" in vals:
+        if DESC_RANK.get(vals.get("desc_source"), 0) < DESC_RANK.get(row["desc_source"], 0):
+            for k in ("description", "desc_source", "desc_status"):
+                vals.pop(k, None)
+    if row is None:
+        vals.update(first_seen=now, updated=now)
+        cols = ["id"] + list(vals)
+        con.execute("INSERT INTO artifacts(%s) VALUES(%s)" % (",".join(cols), ",".join("?" * len(cols))),
+                    [aid] + list(vals.values()))
+        return True
+    changed = {k: v for k, v in vals.items() if row[k] != v}
+    if not changed:
+        return False
+    changed["updated"] = now
+    con.execute("UPDATE artifacts SET %s WHERE id=?" % ",".join(k + "=?" for k in changed),
+                list(changed.values()) + [aid])
+    return True
+
+
+def add_event(con, aid, ts, kind, source, session_id=None, cwd=None, repo=None, detail=None):
+    """Record one event (duplicates ignored); keeps last_accessed current. Returns True when new."""
+    cur = con.execute("INSERT OR IGNORE INTO events VALUES(?,?,?,?,?,?,?,?)",
+                      (aid, ts, kind, source, session_id, cwd, repo,
+                       json.dumps(detail) if detail is not None else None))
+    if cur.rowcount and kind in ("visit", "agent_read", "agent_open"):
+        con.execute("UPDATE artifacts SET last_accessed=?, last_access_by=? WHERE id=? AND "
+                    "(last_accessed IS NULL OR last_accessed<?)",
+                    (ts, "browser" if kind == "visit" else "agent", aid, ts))
+    return bool(cur.rowcount)
+
+
+def state_get(con, key, default=None):
+    r = con.execute("SELECT value FROM state WHERE key=?", (key,)).fetchone()
+    return json.loads(r[0]) if r else default
+
+
+def state_set(con, key, value):
+    con.execute("INSERT OR REPLACE INTO state VALUES(?,?)", (key, json.dumps(value)))
+
+
+def today():
+    return time.strftime("%Y-%m-%d")
+
+
+def spend_today(con):
+    r = con.execute("SELECT usd FROM spend WHERE day=?", (today(),)).fetchone()
+    return r[0] if r else 0.0
+
+
+def add_spend(con, usd):
+    con.execute("INSERT INTO spend VALUES(?,?,1) ON CONFLICT(day) DO UPDATE SET usd=usd+excluded.usd, runs=runs+1",
+                (today(), usd))
