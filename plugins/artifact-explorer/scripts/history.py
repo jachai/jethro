@@ -105,7 +105,7 @@ def scan(con, data):
             continue
         for url, title, raw in rows:
             ts = raw / 1e6 - (EPOCH_1601 if kind == "chromium" else 0)
-            aid = db.id_from_url(url)
+            aid = db.resolve(con, db.id_from_url(url))
             if not aid or any(s <= ts <= (e if e is not None else s + 7200) for s, e in windows):
                 continue
             if db.get(con, aid) is None:

@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY, value TEXT);
 FIELDS = ("uuid url title kind owned creator sharing size created modified last_accessed last_access_by "
           "version seq local_path description desc_source desc_status thumb thumb_source thumb_status").split()
 DESC_RANK = {None: 0, "title": 1, "publish": 2, "describer": 3, "import": 4}
-URL_ID = re.compile(r"claude\.ai/(?:code/)?artifact/([A-Za-z0-9-]{10,})")
+URL_ID = re.compile(r"^https://claude\.ai/(?:code/)?artifact/([A-Za-z0-9-]{10,})(?=$|[/?#])")
+UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 
 def connect(data, timeout=30):
@@ -37,8 +38,60 @@ def connect(data, timeout=30):
 
 
 def id_from_url(url):
-    m = URL_ID.search(url or "")
+    m = URL_ID.match(url or "")
     return m.group(1) if m else None
+
+
+def resolve(con, aid, uuid=None):
+    """The one row id for an artifact. A row is keyed by its short id once known, else by its uuid.
+    A uuid-form id maps to the row that carries that uuid; learning (short id, uuid) folds a uuid-keyed
+    row into the short-id row. Returns the id to use."""
+    if not aid:
+        return None
+    if UUID.match(aid):
+        r = con.execute("SELECT id FROM artifacts WHERE uuid=? AND id<>?", (aid, aid)).fetchone()
+        if r is None:
+            return aid
+        merge(con, aid, r[0])
+        return r[0]
+    if uuid and uuid != aid and UUID.match(uuid):
+        merge(con, uuid, aid)
+    return aid
+
+
+def merge(con, src, dst):
+    """Fold row `src` (and its events) into row `dst`, keeping the non-null and most precise fields; delete `src`."""
+    s = get(con, src)
+    if s is None:
+        return
+    con.execute("UPDATE OR IGNORE events SET artifact_id=? WHERE artifact_id=?", (dst, src))
+    con.execute("DELETE FROM events WHERE artifact_id=?", (src,))
+    d = get(con, dst)
+    if d is None:
+        con.execute("UPDATE artifacts SET id=?, uuid=COALESCE(uuid, ?) WHERE id=?",
+                    (dst, src if UUID.match(src) else None, src))
+        return
+    con.execute("DELETE FROM artifacts WHERE id=?", (src,))
+    f = {k: s[k] for k in FIELDS if d[k] is None and s[k] is not None}
+    groups = (("description", "desc_source", "desc_status"), ("thumb", "thumb_source", "thumb_status"),
+              ("modified", "version", "seq", "local_path"), ("last_accessed", "last_access_by"))
+    wins = (DESC_RANK.get(s["desc_source"], 0) > DESC_RANK.get(d["desc_source"], 0),
+            s["thumb"] is not None and d["thumb"] is None,
+            s["modified"] is not None and (d["modified"] is None or s["modified"] > d["modified"]),
+            s["last_accessed"] is not None and (d["last_accessed"] is None or s["last_accessed"] > d["last_accessed"]))
+    for keys, win in zip(groups, wins):
+        for k in keys:
+            if win:
+                f[k] = s[k]
+            elif d[k] is not None:
+                f.pop(k, None)
+    for k in ("created", "first_seen"):
+        if s[k] is not None and (d[k] is None or s[k] < d[k]):
+            f[k] = s[k]
+    if UUID.match(src) and d["uuid"] is None:
+        f["uuid"] = src
+    f["updated"] = time.time()
+    con.execute("UPDATE artifacts SET %s WHERE id=?" % ",".join(k + "=?" for k in f), list(f.values()) + [dst])
 
 
 def get(con, aid):

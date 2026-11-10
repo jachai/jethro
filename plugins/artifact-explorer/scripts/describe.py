@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 import db  # noqa: E402
 
-PENDING = "desc_status='pending' AND (description IS NULL OR description='')"
+PENDING = "desc_status='pending' AND (description IS NULL OR description='')"  # status counts only
 
 
 def first(row, *keys):
@@ -52,7 +52,7 @@ def ingest_list(data, file):
     con = db.connect(data)
     n = 0
     for r in rows:
-        aid = db.id_from_url(first(r, "url", "link")) or first(r, "id")
+        aid = db.resolve(con, db.id_from_url(first(r, "url", "link")) or first(r, "id"))
         if not aid:
             continue
         old = db.get(con, aid)
@@ -119,23 +119,49 @@ def set_desc(data, aid, text):
 
 def set_sharing(data, aid, text):
     con = db.connect(data)
-    db.upsert_artifact(con, aid, sharing=text.strip())
+    db.upsert_artifact(con, aid, sharing=" ".join(text.split())[:80])
     con.commit()
     return 0
 
 
+COLS = "id,url,title,owned,thumb_status,desc_status,modified,local_path"
+
+
+def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None, need_desc=False):
+    """The one row query: `ae rows`, `ae pending` and the describer launch all come through here."""
+    where, args = [], []
+    if owned:
+        where.append("owned=1")
+    if desc_status:
+        where.append("desc_status=?")
+        args.append(desc_status)
+    if thumb_status:
+        where.append("thumb_status=?")
+        args.append(thumb_status)
+    if need_desc:
+        where.append("(description IS NULL OR description='')")
+    sql = "SELECT %s FROM artifacts%s ORDER BY owned DESC, modified DESC, id" % (
+        COLS, " WHERE " + " AND ".join(where) if where else "")
+    if limit is not None:
+        sql += " LIMIT %d" % limit
+    return [dict(r) for r in con.execute(sql, args)]
+
+
+def rows(data, **kw):
+    print(json.dumps(list_rows(db.connect(data), **kw)))
+    return 0
+
+
 def pending_rows(con, owned_only):
-    sql = "SELECT id,url,title,kind,owned FROM artifacts WHERE %s%s ORDER BY owned DESC, modified DESC, id" % (
-        PENDING, " AND (owned IS NULL OR owned<>0)" if owned_only else "")
-    return [dict(r) for r in con.execute(sql)]
+    return list_rows(con, owned=owned_only, desc_status="pending", need_desc=True)
 
 
 def pending(data, owned_only=False, as_json=False):
-    rows = pending_rows(db.connect(data), owned_only)
+    rs = pending_rows(db.connect(data), owned_only)
     if as_json:
-        print(json.dumps(rows))
+        print(json.dumps(rs))
     else:
-        for r in rows:
+        for r in rs:
             print("%s\t%s\t%s" % (r["id"], r["title"] or "", r["url"] or ""))
     return 0
 
@@ -148,14 +174,15 @@ def launch(data):
     if not rows or db.spend_today(con) >= opts["describe_daily_cap"]:
         return 0
     now = time.time()
-    if now - db.state_get(con, "describer_last", 0) < opts["watch_interval"] * 60 or not shutil.which("claude"):
+    claude = shutil.which("claude")
+    if now - db.state_get(con, "describer_last", 0) < opts["watch_interval"] * 60 or not claude:
         return 0
-    argv = ["claude", "--bg", "--model", opts["describe_model"], "--name", "artifact-explorer describer"]
+    argv = [claude, "--bg", "--model", opts["describe_model"], "--name", "artifact-explorer describer"]
     if os.path.basename(os.path.normpath(data)).endswith("-inline"):
         # loaded with --plugin-dir (development): the new session must load it the same way
         argv += ["--plugin-dir", common.ROOT]
     argv.append("/artifact-explorer:refresh describe-only")
-    if common.detach(argv, cwd=os.getcwd()):
+    if common.detach(argv, cwd=data):
         db.state_set(con, "describer_last", now)
         db.add_spend(con, 0.05 + 0.01 * min(len(rows), 10))
         con.commit()

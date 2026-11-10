@@ -57,6 +57,23 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(con.execute("SELECT COUNT(*) FROM events").fetchone()[0], n)
         self.assertEqual(con.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0], 2)
 
+    def test_folds_uuid_rows_into_imported_rows(self):
+        u = "24033f82-1111-2222-3333-444455556666"
+        meta = json.load(open(os.path.join(self.src, "meta.json")))
+        meta[0]["uuid"] = u
+        json.dump(meta, open(os.path.join(self.src, "meta.json"), "w"))
+        json.dump([{"u": "https://claude.ai/code/artifact/" + u, "by": "Me", "m": 1900, "sh": {"a": "private"}}],
+                  open(os.path.join(self.src, "catalog.json"), "w"))
+        con = db.connect(self.d)
+        db.upsert_artifact(con, u, url="https://claude.ai/code/artifact/" + u)  # a browser visit seen before the import
+        db.add_event(con, u, 5000, "visit", "browser:chrome")
+        con.commit()
+        importer.run(self.d, self.src)
+        con = db.connect(self.d)
+        self.assertIsNone(db.get(con, u))
+        a = db.get(con, A)
+        self.assertEqual((a["uuid"], a["sharing"], a["modified"], a["last_accessed"]), (u, "private", 1900, 5000))
+
     def test_keeps_user_config(self):
         with open(os.path.join(self.d, "config.toml"), "w") as f:
             f.write('[page]\ntitle = "Mine"\n[[categories]]\nname = "Alpha"\n')

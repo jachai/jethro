@@ -57,6 +57,20 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(srcs, {"browser:chrome", "browser:firefox"})
         self.assertAlmostEqual(r["last_accessed"], TS + 5, places=3)
 
+    def test_uuid_visit_lands_on_the_short_id_row(self):
+        db.upsert_artifact(self.con, "ShortIdForUuid0000000", uuid="11111111-2222-3333-4444-555555555555", title="Known")
+        history.scan(self.con, self.data)
+        self.assertIsNone(db.get(self.con, "11111111-2222-3333-4444-555555555555"))
+        r = db.get(self.con, "ShortIdForUuid0000000")
+        self.assertEqual((r["title"], r["last_accessed"]), ("Known", TS + 10))
+        self.assertEqual(self.con.execute("select count(*) from artifacts").fetchone()[0], 2)
+
+    def test_lookalike_urls_are_ignored(self):
+        chromium(self.ch + "2", [("javascript:x//claude.ai/artifact/AAAAAAAAAAAA", "x", TS)])
+        with mock.patch.object(history, "sources", lambda: [("chrome", self.ch + "2", "chromium")]):
+            self.assertEqual(history.scan(self.con, self.data), 0)
+        self.assertEqual(self.con.execute("select count(*) from artifacts").fetchone()[0], 0)
+
     def test_incremental(self):
         history.scan(self.con, self.data)
         self.assertEqual(history.scan(self.con, self.data), 0)

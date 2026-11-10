@@ -1,6 +1,7 @@
 """artifact-explorer CLI. Every hook, the monitor and the skills enter here through bin/ae."""
 import argparse
 import os
+import pathlib
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -28,13 +29,19 @@ def main(argv=None):
     s.add_argument("file")
     s = sub.add_parser("set-desc", help="set a description written by the describer")
     s.add_argument("id")
-    s.add_argument("text")
+    s.add_argument("--file", required=True, help="UTF-8 file holding the sentence (never pass artifact-derived text as an argument)")
     s = sub.add_parser("set-sharing", help="record an artifact's sharing state")
     s.add_argument("id")
-    s.add_argument("text")
+    s.add_argument("--file", required=True, help="UTF-8 file holding the phrase (never pass page-derived text as an argument)")
     s = sub.add_parser("pending", help="rows waiting for a description")
     s.add_argument("--owned-only", action="store_true")
     s.add_argument("--json", action="store_true")
+    s = sub.add_parser("rows", help="list artifacts as JSON")
+    s.add_argument("--json", action="store_true", required=True)
+    s.add_argument("--owned", action="store_true")
+    s.add_argument("--desc-status")
+    s.add_argument("--thumb-status")
+    s.add_argument("--limit", type=int)
     s = sub.add_parser("status", help="counts, last pass, spend today")
     s.add_argument("--json", action="store_true")
     s = sub.add_parser("share-window", help="mark the start or end of a share-dialog harvest (its visits are ignored)")
@@ -45,8 +52,9 @@ def main(argv=None):
     s.add_argument("--source", default="chrome")
     sub.add_parser("open", help="open explorer.html in the default browser")
     sub.add_parser("ingest-hooks", help="record spooled hook payloads (run by the hook and by each watcher pass)")
-    s = sub.add_parser("excerpt", help="print the visible text of a saved artifact file, capped, for the describer")
+    s = sub.add_parser("excerpt", help="write the visible text of a saved artifact file, capped, to --out for the describer agent")
     s.add_argument("file")
+    s.add_argument("--out", required=True, help="where the excerpt goes; the caller never reads it, the describer agent does")
     s.add_argument("--chars", type=int, default=3000)
     a = p.parse_args(argv)
     data = common.data_dir(a.data)
@@ -59,7 +67,10 @@ def main(argv=None):
         return hook.ingest(data)
     if a.cmd == "excerpt":
         import describe
-        print(describe.excerpt(a.file, a.chars))
+        text = describe.excerpt(a.file, a.chars)
+        with open(a.out, "w", encoding="utf-8") as f:
+            f.write(text)
+        print("%d characters" % len(text))
         return 0
     if a.cmd == "watch":
         import watch
@@ -100,7 +111,7 @@ def main(argv=None):
         path = os.path.join(data, "explorer.html")
         if not os.path.exists(path):
             build.build(data)
-        webbrowser.open("file://" + path.replace(os.sep, "/") if os.name != "nt" else path)
+        webbrowser.open(pathlib.Path(path).resolve().as_uri())
         print(path)
         return 0
     import describe
@@ -109,9 +120,13 @@ def main(argv=None):
     if a.cmd == "ingest-list":
         return describe.ingest_list(data, a.file)
     if a.cmd == "set-desc":
-        return describe.set_desc(data, a.id, a.text)
+        with open(a.file, encoding="utf-8") as f:
+            return describe.set_desc(data, a.id, f.read())
+    if a.cmd == "rows":
+        return describe.rows(data, owned=a.owned, desc_status=a.desc_status, thumb_status=a.thumb_status, limit=a.limit)
     if a.cmd == "set-sharing":
-        return describe.set_sharing(data, a.id, a.text)
+        with open(a.file, encoding="utf-8") as f:
+            return describe.set_sharing(data, a.id, f.read())
     if a.cmd == "pending":
         return describe.pending(data, owned_only=a.owned_only, as_json=a.json)
     if a.cmd == "status":
