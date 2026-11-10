@@ -1,5 +1,7 @@
 import io
 import json
+import time
+import sqlite3
 import os
 import unittest
 from unittest import mock
@@ -18,6 +20,8 @@ def run(data, payload):
         out = io.StringIO()
         with mock.patch("sys.stdout", out):
             rc = hook.main(data)
+    with mock.patch("thumbs.run") as t, mock.patch("build.build") as b:
+        hook.ingest(data)
     return rc, out.getvalue(), d
 
 
@@ -32,7 +36,9 @@ class HookTest(unittest.TestCase):
     def test_publish(self):
         rc, _, d = self.post({"file_path": "/x/a.html", "description": "desc", "label": "L"}, RESP)
         self.assertEqual(rc, 0)
-        self.assertEqual(d.call_count, 2)
+        self.assertEqual(d.call_count, 1)
+        self.assertIn("ingest-hooks", d.call_args[0][0])
+        self.assertEqual(os.listdir(hook.spool_dir(self.data)), [])
         con = db.connect(self.data)
         r = db.get(con, "AbCdEfGhIjKlMn")
         self.assertEqual((r["owned"], r["title"], r["version"], r["thumb_status"], r["description"], r["desc_source"]),
@@ -48,6 +54,23 @@ class HookTest(unittest.TestCase):
         self.post({"action": "open", "url": URL}, None)
         con = db.connect(self.data)
         self.assertEqual([r[0] for r in con.execute("select kind from events")], ["agent_read", "agent_open"])  # list ignored, repeat read deduped
+
+    def test_hook_does_not_wait_for_a_busy_database(self):
+        db.connect(self.data).close()
+        holder = sqlite3.connect(os.path.join(self.data, "explorer.db"))
+        holder.execute("BEGIN IMMEDIATE")  # a watcher pass in the middle of a long write
+        p = {"hook_event_name": "PostToolUse", "tool_name": "Artifact", "session_id": "s1", "cwd": self.data,
+             "tool_input": {"file_path": "/x/a.html"}, "tool_response": RESP}
+        t0 = time.time()
+        with mock.patch("sys.stdin", io.StringIO(json.dumps(p))), mock.patch.object(common, "detach"):
+            self.assertEqual(hook.main(self.data), 0)
+        self.assertLess(time.time() - t0, 2)
+        holder.rollback()
+        holder.close()
+        with mock.patch("thumbs.run"), mock.patch("build.build") as b:
+            hook.ingest(self.data)
+        self.assertEqual(db.get(db.connect(self.data), "AbCdEfGhIjKlMn")["title"], "T")
+        b.assert_called_once()
 
     def test_garbage(self):
         with mock.patch("sys.stdin", io.StringIO("not json")):

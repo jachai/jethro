@@ -64,7 +64,7 @@ def record(con, tin, tresp, ts, source, session_id=None, cwd=None):
 
 
 def _start(data):
-    con = db.connect(data)
+    con = db.connect(data, timeout=3)
     n = con.execute("SELECT COUNT(*) FROM artifacts WHERE owned=0 AND desc_status='pending'").fetchone()[0]
     con.close()
     if n:
@@ -73,21 +73,66 @@ def _start(data):
               "Run /artifact-explorer:refresh to describe them." % n}}))
 
 
+def spool_dir(data):
+    return os.path.join(data, "inbox", "hooks")
+
+
 def _post(data, p):
+    """Never touch the database here: a watcher pass can hold it longer than the hook timeout.
+    Spool the payload and let a detached `ae ingest-hooks` record it."""
     if p.get("tool_name") != "Artifact":
         return
-    con = db.connect(data)
-    try:
-        n = record(con, p.get("tool_input"), p.get("tool_response"), time.time(), "hook",
-                   p.get("session_id"), p.get("cwd"))
-        con.commit()
-        tin, tresp = _dict(p.get("tool_input")), _dict(p.get("tool_response"))
-        aid = db.id_from_url(tresp.get("url") or tin.get("url")) or tresp.get("artifact_id")
-    finally:
-        con.close()
-    if n and (tin.get("action") or "publish") == "publish":
-        common.detach(common.ae_argv("--data", data, "thumbs", "--id", aid))
-        common.detach(common.ae_argv("--data", data, "build"))
+    d = spool_dir(data)
+    os.makedirs(d, exist_ok=True)
+    name = "%d-%d.json" % (time.time_ns(), os.getpid())
+    tmp = os.path.join(d, name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"ts": time.time(), "tool_input": p.get("tool_input"), "tool_response": p.get("tool_response"),
+                   "session_id": p.get("session_id"), "cwd": p.get("cwd")}, f)
+    os.replace(tmp, os.path.join(d, name))
+    common.detach(common.ae_argv("--data", data, "ingest-hooks"))
+
+
+def ingest(data):
+    """Record every spooled hook payload (oldest first), then thumbnail new publishes and rebuild.
+    Run by the detached hook child and at the start of every watcher pass."""
+    d = spool_dir(data)
+    if not os.path.isdir(d):
+        return 0
+    published = []
+    with common.Lock(os.path.join(data, "ingest.lock"), 120) as ok:
+        if not ok:
+            return 0
+        con = db.connect(data)
+        try:
+            while True:
+                names = sorted(n for n in os.listdir(d) if n.endswith(".json"))
+                if not names:
+                    break
+                for n in names:
+                    path = os.path.join(d, n)
+                    try:
+                        with open(path, encoding="utf-8") as f:
+                            p = json.load(f)
+                        tin, tresp = _dict(p.get("tool_input")), _dict(p.get("tool_response"))
+                        if record(con, tin, tresp, p.get("ts") or time.time(), "hook",
+                                  p.get("session_id"), p.get("cwd")) and (tin.get("action") or "publish") == "publish":
+                            aid = db.id_from_url(tresp.get("url") or tin.get("url")) or tresp.get("artifact_id")
+                            if aid:
+                                published.append(aid)
+                        con.commit()
+                    except (OSError, ValueError):
+                        common.log(data, "ingest-hooks: bad spool file " + n)
+                    os.remove(path)
+        finally:
+            con.close()
+    if published:
+        import thumbs
+        import build
+        for aid in dict.fromkeys(published):
+            thumbs.run(data, aid=aid)
+        build.build(data)
+    return 0
 
 
 def main(data):

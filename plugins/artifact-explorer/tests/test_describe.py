@@ -59,6 +59,35 @@ class DescribeTest(unittest.TestCase):
         s = json.loads(pr.call_args[0][0])
         self.assertEqual((s["total"], s["mine"], s["shared"], s["pending_descriptions"]), (2, 1, 1, 2))
 
+    def test_list_date_never_lowers_modified(self):
+        con = db.connect(self.d)
+        db.upsert_artifact(con, "AAAAAAAAAAAA", modified=1793566800.0)  # 2026-11-01 21:00 UTC, from a hook
+        con.commit()
+        con = self.ingest([{"url": U + "AAAAAAAAAAAA", "scope": "mine", "updated": "2026-11-01"}])
+        self.assertEqual(db.get(con, "AAAAAAAAAAAA")["modified"], 1793566800.0)
+        con = self.ingest([{"url": U + "AAAAAAAAAAAA", "scope": "mine", "updated": "2026-11-03"}])
+        self.assertEqual(db.get(con, "AAAAAAAAAAAA")["modified"], 1793664000.0)
+
+    def test_excerpt(self):
+        p = os.path.join(self.d, "a.html")
+        with open(p, "w") as f:
+            f.write("<html><head><style>.x{}</style><script>var a=1</script></head>"
+                    "<body><h1>Plan &amp; notes</h1>\n\n<p>Second   line</p><svg><text>no</text></svg></body></html>")
+        self.assertEqual(describe.excerpt(p), "Plan & notes Second line")
+        self.assertEqual(describe.excerpt(p, 4), "Plan")
+
+    def test_launch_inline_plugin_dir(self):
+        d = os.path.join(helpers.tmp(), "artifact-explorer-inline")
+        os.makedirs(d)
+        with open(self.f, "w") as f:
+            json.dump([{"url": U + "AAAAAAAAAAAA", "scope": "mine"}], f)
+        describe.ingest_list(d, self.f)
+        with mock.patch("shutil.which", return_value="/bin/claude"), mock.patch.object(common, "detach", return_value=True) as det:
+            describe.launch(d)
+        argv = det.call_args[0][0]
+        self.assertEqual(argv[argv.index("--plugin-dir") + 1], common.ROOT)
+        self.assertEqual(argv[-1], "/artifact-explorer:refresh describe-only")
+
     def test_launch(self):
         self.ingest([{"url": U + "AAAAAAAAAAAA", "title": "Mine", "scope": "mine"}])
         with mock.patch("shutil.which", return_value=None), mock.patch.object(common, "detach") as det:
@@ -70,6 +99,7 @@ class DescribeTest(unittest.TestCase):
             argv = det.call_args[0][0]
             self.assertEqual(argv[:3], ["claude", "--bg", "--model"])
             self.assertEqual(argv[-1], "/artifact-explorer:refresh describe-only")
+            self.assertNotIn("--plugin-dir", argv)
             describe.launch(self.d)  # inside watch_interval
             self.assertEqual(det.call_count, 1)
             con = db.connect(self.d)

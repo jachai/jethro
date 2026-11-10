@@ -53,7 +53,7 @@
     "describe_model": {
       "type": "string",
       "title": "Describer model",
-      "description": "Model alias or full name for the one-sentence descriptions. A small, fast model is plenty.",
+      "description": "Model alias or full name for the background describer session. A small, fast model is plenty. The describer agent itself always runs on haiku.",
       "default": "haiku"
     },
     "describe_daily_cap": {
