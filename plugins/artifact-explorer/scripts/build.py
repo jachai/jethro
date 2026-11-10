@@ -49,6 +49,14 @@ def categorise(rules, title, desc, kind):
     return FALLBACK
 
 
+SHARING = {"private": "Private", "withme": "Shared with me", "org": "Organization",
+           "link": "Anyone with the link", "public": "Public"}
+
+
+def sharing_label(v):
+    return SHARING.get((v or "").strip().lower(), v or "")
+
+
 def collect(data, cfg):
     flt, over = cfg.get("filter", {}), cfg.get("overrides", {})
     rules = compile_rules(data, cfg.get("categories", []))
@@ -67,7 +75,7 @@ def collect(data, cfg):
         rows.append({
             "id": r["id"], "title": r["title"] or r["id"], "kind": r["kind"] or "", "url": r["url"] or "",
             "category": o.get("category") or categorise(rules, r["title"], desc, r["kind"]),
-            "created_by": created_by(r), "sharing": r["sharing"] or "",
+            "created_by": created_by(r), "sharing": sharing_label(r["sharing"]),
             "created": r["first_pub"] or r["created"], "modified": r["last_pub"] or r["modified"],
             "accessed": r["last_accessed"], "accessed_by": r["last_access_by"] or "",
             "size": r["size"], "description": desc, "pending": not desc and r["desc_status"] == "pending",

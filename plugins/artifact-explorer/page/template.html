@@ -94,7 +94,9 @@ document.title = cfg.title || "Artifact Explorer";
 $("h").textContent = document.title;
 
 let st = {view:"table", sort:"modified", dir:-1, cat:""};
-try { Object.assign(st, JSON.parse(localStorage.getItem("ae-view")||"{}")); } catch(e) {}
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem("ae-view")||"null"); } catch(e) {}
+if (saved) Object.assign(st, saved); else if (window.matchMedia("(max-width:600px)").matches) st.view = "cards";
 if (!COLS[st.sort] || !COLS[st.sort].k) st.sort = "modified";
 if (cfg.categories.indexOf(st.cat) < 0) st.cat = "";
 const save = () => { try { localStorage.setItem("ae-view", JSON.stringify(st)); } catch(e) {} };

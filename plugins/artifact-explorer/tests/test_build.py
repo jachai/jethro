@@ -1,10 +1,10 @@
 import json
 import os
 import sys
-import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+import helpers  # noqa: E402
 import build  # noqa: E402
 import db  # noqa: E402
 
@@ -17,7 +17,7 @@ def payload(path):
 
 class BuildTest(unittest.TestCase):
     def setUp(self):
-        self.d = tempfile.mkdtemp()
+        self.d = helpers.tmp()
         self.con = db.connect(self.d)
         db.upsert_artifact(self.con, "aaaaaaaaaa", title="Q3 audit report", kind="Page", owned=1, created=100, modified=200,
                            url="https://claude.ai/artifact/aaaaaaaaaa", description="Checks things", desc_source="publish")
@@ -44,6 +44,14 @@ class BuildTest(unittest.TestCase):
         self.assertEqual((r["bbbbbbbbbb"]["created_by"], r["bbbbbbbbbb"]["category"]), ("Sam", "Decks"))
         self.assertEqual((r["cccccccccc"]["category"], r["cccccccccc"]["pending"], r["cccccccccc"]["created_by"]),
                          ("Uncategorised", True, ""))
+
+    def test_sharing_labels(self):
+        db.upsert_artifact(self.con, "aaaaaaaaaa", sharing="withme")
+        db.upsert_artifact(self.con, "bbbbbbbbbb", sharing="shared with 3 people")
+        self.con.commit()
+        r = self.rows()
+        self.assertEqual((r["aaaaaaaaaa"]["sharing"], r["bbbbbbbbbb"]["sharing"], r["cccccccccc"]["sharing"]),
+                         ("Shared with me", "shared with 3 people", ""))
 
     def test_filter_and_overrides(self):
         self.cfg('[filter]\ninclude_repos=["proj"]\n[overrides."aaaaaaaaaa"]\ncategory="Plans"\ndescription="Mine"\n')

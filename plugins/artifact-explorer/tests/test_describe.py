@@ -2,12 +2,12 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 import time
 import unittest
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+import helpers  # noqa: E402
 import common  # noqa: E402
 import db  # noqa: E402
 import describe  # noqa: E402
@@ -17,9 +17,9 @@ U = "https://claude.ai/artifact/"
 
 class DescribeTest(unittest.TestCase):
     def setUp(self):
-        self.d = tempfile.mkdtemp()
+        self.d = helpers.tmp()
         self.f = os.path.join(self.d, "list.json")
-        cfgdir = tempfile.mkdtemp()  # no settings.json: default options
+        cfgdir = helpers.tmp()  # no settings.json: default options
         p = mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": cfgdir})
         p.start()
         self.addCleanup(p.stop)
