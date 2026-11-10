@@ -1,0 +1,68 @@
+{
+  "name": "artifact-explorer",
+  "displayName": "Artifact Explorer",
+  "version": "0.1.0",
+  "description": "A catalog of your claude.ai artifacts on your own machine: one local page to search, sort and reopen everything you made or were sent.",
+  "author": {
+    "name": "Jonathan Achai",
+    "url": "https://github.com/jachai"
+  },
+  "homepage": "https://github.com/jachai/artifact-explorer",
+  "repository": "https://github.com/jachai/artifact-explorer",
+  "license": "MIT",
+  "keywords": ["artifacts", "claude-ai", "catalog", "explorer", "history", "hooks", "monitors"],
+  "userConfig": {
+    "watch_interval": {
+      "type": "number",
+      "title": "Watcher interval (minutes)",
+      "description": "How often the background watcher scans browser history and transcripts and rebuilds the page. One pass per interval across all sessions.",
+      "default": 10,
+      "min": 2,
+      "max": 240
+    },
+    "browser_history": {
+      "type": "boolean",
+      "title": "Read browser history",
+      "description": "Find artifacts you opened in a browser by reading a copy of the history of Chrome, Chromium, Edge, Brave, Arc, Vivaldi and Firefox. Only claude.ai artifact URLs are kept.",
+      "default": true
+    },
+    "transcript_reads": {
+      "type": "boolean",
+      "title": "Read session transcripts",
+      "description": "Find artifacts Claude published or read in earlier sessions by scanning ~/.claude/projects. Only Artifact tool lines are read.",
+      "default": true
+    },
+    "version_log": {
+      "type": "boolean",
+      "title": "Keep a publish log",
+      "description": "Record every publish, read and open as an event, so the page can show who made an artifact and when it was last used.",
+      "default": true
+    },
+    "chrome_screenshots": {
+      "type": "boolean",
+      "title": "Screenshots with Claude in Chrome",
+      "description": "Let the screenshots skill capture thumbnails for artifacts that have no local file. Off by default. Needs the Claude in Chrome extension.",
+      "default": false
+    },
+    "share_harvest": {
+      "type": "boolean",
+      "title": "Read sharing state in Chrome",
+      "description": "Let the sharing skill open each of your artifacts in Chrome and read its Share dialog. Off by default. Needs the Claude in Chrome extension.",
+      "default": false
+    },
+    "describe_model": {
+      "type": "string",
+      "title": "Describer model",
+      "description": "Model alias or full name for the one-sentence descriptions. A small, fast model is plenty.",
+      "default": "haiku"
+    },
+    "describe_daily_cap": {
+      "type": "number",
+      "title": "Daily describer cap (USD)",
+      "description": "The watcher starts no new background describer run once the estimated spend for today reaches this amount.",
+      "default": 1.0,
+      "min": 0,
+      "max": 50
+    }
+  }
+}

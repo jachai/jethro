@@ -1,0 +1,104 @@
+"""Build DATA/explorer.html from the db and config. See docs/design.md (Build)."""
+import hashlib
+import json
+import os
+import re
+import time
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import common  # noqa: E402
+import db  # noqa: E402
+
+FALLBACK = "Uncategorised"
+SQL = """
+SELECT a.*,
+ (SELECT group_concat(repo, char(10)) FROM (SELECT DISTINCT repo FROM events
+    WHERE artifact_id=a.id AND repo IS NOT NULL AND repo<>'' ORDER BY repo)) AS repos,
+ (SELECT MIN(ts) FROM events WHERE artifact_id=a.id AND kind='publish') AS first_pub,
+ (SELECT MAX(ts) FROM events WHERE artifact_id=a.id AND kind='publish') AS last_pub
+FROM artifacts a ORDER BY a.id"""
+
+
+def created_by(r):
+    if r["owned"] == 1:
+        return "me"
+    if r["owned"] == 0:
+        return r["creator"] or "someone else"
+    return ""
+
+
+def compile_rules(data, cats):
+    rules = []
+    for c in cats:
+        pats = []
+        for k in c.get("keywords", []):
+            try:
+                pats.append(re.compile(k, re.I))
+            except re.error:
+                common.log(data, "build: bad category regex %r in %s" % (k, c.get("name")))
+        rules.append((c["name"], pats, [k.lower() for k in c.get("kinds", [])]))
+    return rules
+
+
+def categorise(rules, title, desc, kind):
+    text = "%s %s" % (title or "", desc or "")
+    for name, pats, kinds in rules:
+        if (kind or "").lower() in kinds or any(p.search(text) for p in pats):
+            return name
+    return FALLBACK
+
+
+def collect(data, cfg):
+    flt, over = cfg.get("filter", {}), cfg.get("overrides", {})
+    rules = compile_rules(data, cfg.get("categories", []))
+    inc, exc = set(flt.get("include_repos", [])), set(flt.get("exclude_repos", []))
+    exc_ids = set(flt.get("exclude_ids", []))
+    con = db.connect(data)
+    rows = []
+    for r in con.execute(SQL):
+        o = over.get(r["id"], {})
+        repos = r["repos"].split("\n") if r["repos"] else []
+        if (o.get("hidden") or r["id"] in exc_ids or (inc and not inc & set(repos)) or exc & set(repos)
+                or (r["owned"] == 0 and not flt.get("include_shared", True))):
+            continue
+        desc = o.get("description") or r["description"] or ""
+        thumb = r["thumb"] if r["thumb"] and os.path.exists(os.path.join(data, r["thumb"])) else ""
+        rows.append({
+            "id": r["id"], "title": r["title"] or r["id"], "kind": r["kind"] or "", "url": r["url"] or "",
+            "category": o.get("category") or categorise(rules, r["title"], desc, r["kind"]),
+            "created_by": created_by(r), "sharing": r["sharing"] or "",
+            "created": r["first_pub"] or r["created"], "modified": r["last_pub"] or r["modified"],
+            "accessed": r["last_accessed"], "accessed_by": r["last_access_by"] or "",
+            "size": r["size"], "description": desc, "pending": not desc and r["desc_status"] == "pending",
+            "repos": repos, "thumb": thumb.replace(os.sep, "/")})
+    state = db.state_get(con, "build_hash")
+    con.close()
+    return rows, state
+
+
+def build(data):
+    cfg = common.load_config(data)
+    rows, old_hash = collect(data, cfg)
+    names = [c["name"] for c in cfg.get("categories", [])] + [FALLBACK]
+    names += sorted({r["category"] for r in rows} - set(names))
+    page = {k: cfg.get("page", {}).get(k) for k in ("title", "accent", "columns")}
+    payload = {"config": dict(page, categories=names), "rows": rows}
+    with open(os.path.join(common.ROOT, "page", "template.html"), encoding="utf-8") as f:
+        tpl = f.read()
+    digest = hashlib.sha256((json.dumps(payload, sort_keys=True) + tpl).encode()).hexdigest()
+    out = os.path.join(data, "explorer.html")
+    if digest == old_hash and os.path.exists(out):
+        return out
+    payload["generated"] = time.time()
+    blob = json.dumps(payload, sort_keys=True).replace("</", "<\\/")
+    tmp = out + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        # the template keeps `null` after the marker so it parses on its own
+        f.write(tpl.replace("/*__DATA__*/null", blob, 1))
+    os.replace(tmp, out)
+    con = db.connect(data)
+    db.state_set(con, "build_hash", digest)
+    con.commit()
+    con.close()
+    return out

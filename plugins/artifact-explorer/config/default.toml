@@ -1,0 +1,53 @@
+# Artifact Explorer defaults. Your own DATA/config.toml is merged over this file:
+# tables are merged key by key, arrays (categories, columns, filter lists) are replaced whole.
+
+[page]
+title = "Artifact Explorer"     # heading and browser tab title
+accent = "#0f6b5c"              # accent colour (links, active chips, focus rings)
+# Columns shown in table view, in order. Choose from:
+# title category created_by sharing modified last_accessed created size description repos open
+columns = ["title","category","created_by","sharing","modified","last_accessed","created","size","description","repos","open"]
+
+# Categories. The first one that matches wins.
+#   keywords = case-insensitive regexes tried on title + description
+#   kinds    = artifact kinds (Page, Docs, Slides, ...) matched case-insensitively
+# Rows that match nothing fall into "Uncategorised".
+[[categories]]
+name = "Reports"
+keywords = ["report","audit","review","post-?mortem","summary","analysis","findings"]
+
+[[categories]]
+name = "Plans"
+keywords = ["plan","roadmap","proposal","spec\\b","design","strategy","milestone"]
+
+[[categories]]
+name = "Dashboards"
+keywords = ["dashboard","metrics","burn-?down","tracker","status board"]
+kinds = ["Dashboard"]
+
+[[categories]]
+name = "Decks"
+keywords = ["\\bdeck\\b","slides?\\b","presentation","pitch"]
+kinds = ["Deck","Slides"]
+
+[[categories]]
+name = "Docs"
+keywords = ["guide","manual","docs?\\b","how-?to","reference","readme","notes"]
+kinds = ["Docs"]
+
+[[categories]]
+name = "Personal"
+keywords = ["personal","travel","trip","recipe","home","family","budget"]
+
+# Which rows to show. Empty lists mean "show everything".
+[filter]
+include_repos = []      # show only rows touched from one of these repos (rows with no repo are then hidden)
+exclude_repos = []      # hide rows touched from any of these repos
+exclude_ids = []        # hide these artifact ids
+include_shared = true   # false hides artifacts shared with you by others
+
+# Per-artifact overrides go in your own config.toml, for example:
+# [overrides."AbC123"]
+# category = "Plans"
+# description = "One sentence that replaces the stored description."
+# hidden = false

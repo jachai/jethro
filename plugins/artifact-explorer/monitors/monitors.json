@@ -1,0 +1,7 @@
+[
+  {
+    "name": "watcher",
+    "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/ae\" --data \"${CLAUDE_PLUGIN_DATA}\" watch",
+    "description": "Artifact Explorer watcher (silent)"
+  }
+]
