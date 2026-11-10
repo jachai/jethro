@@ -1,0 +1,373 @@
+[
+  {
+    "id": "syn-25",
+    "section": "tools",
+    "short": "File names",
+    "question": "Should files follow one naming rule?",
+    "recommend": "Yes, use date then topic.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, use date then topic."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "flow",
+      "steps": [
+        {
+          "label": "Request",
+          "note": "by form"
+        },
+        {
+          "label": "Review",
+          "note": "one owner",
+          "tone": "discuss"
+        },
+        {
+          "label": "Done",
+          "tone": "yes"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, use date then topic.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-26",
+    "section": "tools",
+    "short": "Printer",
+    "question": "Should we keep the second printer?",
+    "recommend": "No, remove it.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "No, remove it."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "tree",
+      "root": {
+        "ask": "Is it under the limit?",
+        "branches": [
+          {
+            "when": "yes",
+            "then": {
+              "label": "Approve at once",
+              "tone": "yes"
+            }
+          },
+          {
+            "when": "no",
+            "then": {
+              "ask": "Is it urgent?",
+              "branches": [
+                {
+                  "when": "yes",
+                  "then": {
+                    "label": "Ask a lead today",
+                    "tone": "discuss"
+                  }
+                },
+                {
+                  "when": "no",
+                  "then": {
+                    "label": "Weekly review",
+                    "tone": "muted"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "No, remove it.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-27",
+    "section": "tools",
+    "short": "Wi-Fi guests",
+    "question": "Should guests use a separate network?",
+    "recommend": "Yes, a separate guest network.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, a separate guest network."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "beforeAfter",
+      "before": {
+        "label": "Today",
+        "lines": [
+          {
+            "text": "Handled by hand",
+            "tone": "no"
+          },
+          "No written rule"
+        ]
+      },
+      "after": {
+        "label": "Recommended",
+        "lines": [
+          {
+            "text": "One written rule",
+            "tone": "yes"
+          },
+          "Owner named"
+        ]
+      }
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, a separate guest network.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-28",
+    "section": "tools",
+    "short": "Calendar sharing",
+    "question": "Should calendars be visible to the whole team?",
+    "recommend": "Yes, show free and busy.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, show free and busy."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "steps",
+      "items": [
+        {
+          "when": "Day 1",
+          "label": "Request sent"
+        },
+        {
+          "when": "Day 3",
+          "label": "Reminder",
+          "tone": "discuss"
+        },
+        {
+          "when": "Day 5",
+          "label": "Closed",
+          "tone": "yes"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, show free and busy.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-29",
+    "section": "tools",
+    "short": "Screen lock",
+    "question": "Should screens lock after five minutes?",
+    "recommend": "Yes, lock after five minutes.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, lock after five minutes."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "table",
+      "cols": [
+        "Item",
+        "Today",
+        "Proposed"
+      ],
+      "rows": [
+        [
+          "Guest badge",
+          "Paper",
+          "Printed"
+        ],
+        [
+          "Parking",
+          "First come",
+          "Booked"
+        ],
+        [
+          "Visitors",
+          "Any time",
+          "Mornings"
+        ]
+      ],
+      "highlight": [
+        1
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, lock after five minutes.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-30",
+    "section": "tools",
+    "short": "Old laptops",
+    "question": "Should old laptops be recycled each year?",
+    "recommend": "Yes, recycle once a year.",
+    "urgent": true,
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, recycle once a year."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "image",
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAAB4CAIAAABQJv+tAAACTklEQVR42u3XsQmAQAxA0RvM2traIaytHcLacRzFwsoJHMBGEY6Ee/AnSMKDlOO8JOlTxQgkgUMSOCSBQxI4JIFDksAhCRySwCEJHJLAIUk/4OinXVIjgUMSOCSBQxI4JIEDHBI4wCEJHJLAIQkcksBhmhI4wCEJHJLAIQkcksAhCRzgkAQOSRHgkCRwSAKHJHAoRYkecoFD4AAHOAQOcIBD4AAHOCRwCBwCh8AhcFgEOAQOcIBD4AAHOCRwCBwCh8AhcAgcAgc4wCFwgAMcAgc4wFG/bpsi5ALAIXCAAxwCBzjAAQ5wgAMc4AAHOMABDnCAQ+AQOMABDoEDHOAABzjAAQ5wgAMc4AAHOMAhcAgc4ACHwAEOcIADHOAABzjAAQ5wgAMc4BA4BA5wgEPgAAc4BA5wgAMc4AAHOMABDnC8ax+HCIFD4AAHOMABDnCAAxzgAAc4wAEOcIADHAIHOMAhcIADHOAABzjAAQ5wgAMc4AAHOMABDoEDHOAQOMABDoEDHOAABzjAAQ5wgAMc4AAHOMABDnA8W9ctQuAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAY6qcMzzIil44JCUHw5J7QQOSeCQBA5J4JAEDkngkCRwSAKHJHBIStoNVcYilU2KFUIAAAAASUVORK5CYII=",
+      "alt": "Example image: a bar chart with four bars"
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, recycle once a year.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  }
+]
