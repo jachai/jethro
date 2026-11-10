@@ -37,6 +37,12 @@ def main(argv=None):
     s.add_argument("--json", action="store_true")
     s = sub.add_parser("status", help="counts, last pass, spend today")
     s.add_argument("--json", action="store_true")
+    s = sub.add_parser("share-window", help="mark the start or end of a share-dialog harvest (its visits are ignored)")
+    s.add_argument("edge", choices=["start", "end"])
+    s = sub.add_parser("set-thumb", help="record a thumbnail file saved under DATA/thumbs, or mark a row failed")
+    s.add_argument("id")
+    s.add_argument("file", nargs="?", help="path relative to the data folder, e.g. thumbs/<id>.png; omit to mark failed")
+    s.add_argument("--source", default="chrome")
     sub.add_parser("open", help="open explorer.html in the default browser")
     a = p.parse_args(argv)
     data = common.data_dir(a.data)
@@ -60,6 +66,23 @@ def main(argv=None):
     if a.cmd == "import":
         import importer
         return importer.run(data, a.src)
+    if a.cmd in ("share-window", "set-thumb"):
+        import time
+        import db
+        con = db.connect(data)
+        with con:
+            if a.cmd == "share-window":
+                wins = db.state_get(con, "share_windows", [])
+                if a.edge == "start":
+                    wins.append([time.time(), None])
+                elif wins and wins[-1][1] is None:
+                    wins[-1][1] = time.time()
+                db.state_set(con, "share_windows", wins[-50:])
+            elif a.file and os.path.exists(os.path.join(data, a.file)):
+                db.upsert_artifact(con, a.id, thumb=a.file.replace(os.sep, "/"), thumb_source=a.source, thumb_status="ok")
+            else:
+                db.upsert_artifact(con, a.id, thumb_status="failed")
+        return 0
     if a.cmd == "open":
         import build
         import webbrowser
