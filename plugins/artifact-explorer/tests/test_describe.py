@@ -19,7 +19,9 @@ class DescribeTest(unittest.TestCase):
     def setUp(self):
         self.d = helpers.tmp()
         self.f = os.path.join(self.d, "list.json")
-        cfgdir = helpers.tmp()  # no settings.json: default options
+        self.cfgdir = cfgdir = helpers.tmp()  # settings.json holds only the setup allow rule: default options
+        with open(os.path.join(cfgdir, "settings.json"), "w") as f:
+            json.dump({"permissions": {"allow": [common.ALLOW_RULE]}}, f)
         p = mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": cfgdir})
         p.start()
         self.addCleanup(p.stop)
@@ -110,6 +112,17 @@ class DescribeTest(unittest.TestCase):
             con.commit()
             describe.launch(self.d)
             self.assertEqual(det.call_count, 1)
+
+    def test_launch_needs_allow_rule(self):
+        self.ingest([{"url": U + "AAAAAAAAAAAA", "title": "Mine", "scope": "mine"}])
+        with open(os.path.join(self.cfgdir, "settings.json"), "w") as f:
+            json.dump({"permissions": {"allow": ["Bash(ls *)"]}}, f)
+        with mock.patch("shutil.which", return_value="/bin/claude"), mock.patch.object(common, "detach", return_value=True) as det:
+            describe.launch(self.d)
+            self.assertFalse(det.called)
+            os.remove(os.path.join(self.cfgdir, "settings.json"))
+            describe.launch(self.d)
+            self.assertFalse(det.called)
 
     def test_launch_skips_unknown_owner(self):
         self.ingest([{"url": U + "CCCCCCCCCCCC", "title": "History"}])

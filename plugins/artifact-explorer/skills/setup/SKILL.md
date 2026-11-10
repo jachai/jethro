@@ -12,7 +12,7 @@ Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DAT
 2. Config file. Run `test -f "${CLAUDE_PLUGIN_DATA}/config.toml" && echo yes || echo no`. If no, run `mkdir -p "${CLAUDE_PLUGIN_DATA}"`, then read `${CLAUDE_PLUGIN_ROOT}/config/default.toml` and write its content to `${CLAUDE_PLUGIN_DATA}/config.toml`. Tell the user they can edit that file for categories, filters and overrides, and that `${CLAUDE_PLUGIN_ROOT}/examples/` has samples. If it exists, leave it alone.
 3. Import. Run `test -f ~/.claude/artifact-explorer/meta.json && echo yes || echo no`. If yes, tell the user an older catalog exists there, that `ae import` only reads that folder and never changes it, and ask whether to import it. Run `AE import` only if they say yes.
 4. First refresh. Do the full mode of the `refresh` skill (follow `${CLAUDE_PLUGIN_ROOT}/skills/refresh/SKILL.md`, full mode).
-5. Permission rule. Without it, each `ae` call asks for approval. Show this rule and where it goes:
+5. Permission rule. Without it, each `ae` call asks for approval, and the background describer never starts (no one is there to approve it), so new artifacts get descriptions only when you run `/artifact-explorer:refresh` in a session. Show this rule and where it goes:
 
    ```
    Bash(sh */artifact-explorer/*/bin/ae *)
