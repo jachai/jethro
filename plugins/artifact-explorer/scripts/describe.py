@@ -177,6 +177,10 @@ def launch(data):
     claude = shutil.which("claude")
     if now - db.state_get(con, "describer_last", 0) < opts["watch_interval"] * 60 or not claude:
         return 0
+    if not common.allow_rule_present():
+        # without the setup allow rule every `ae` call in the unattended run would wait for approval;
+        # the in-session refresh (SessionStart reminder) describes these rows instead
+        return 0
     argv = [claude, "--bg", "--model", opts["describe_model"], "--name", "artifact-explorer describer"]
     if os.path.basename(os.path.normpath(data)).endswith("-inline"):
         # loaded with --plugin-dir (development): the new session must load it the same way

@@ -33,14 +33,32 @@ def data_dir(arg=None):
     return d
 
 
-def options():
-    """Plugin options from settings.json pluginConfigs, over the defaults. The one place options are read."""
-    opts = dict(DEFAULT_OPTIONS)
+# The allow rule `/artifact-explorer:setup` offers. The background describer needs it (no one is there to approve).
+ALLOW_RULE = "Bash(sh */artifact-explorer/*/bin/ae *)"
+
+
+def user_settings():
+    """~/.claude/settings.json as a dict ({} when missing or unreadable). The one place it is read."""
     try:
         with open(os.path.join(claude_dir(), "settings.json"), encoding="utf-8") as f:
             s = json.load(f)
-        opts.update(((s.get("pluginConfigs") or {}).get(PLUGIN_KEY) or {}).get("options") or {})
+        return s if isinstance(s, dict) else {}
     except (OSError, ValueError):
+        return {}
+
+
+def allow_rule_present():
+    allow = (user_settings().get("permissions") or {}).get("allow") or []
+    return isinstance(allow, list) and ALLOW_RULE in allow
+
+
+def options():
+    """Plugin options from settings.json pluginConfigs, over the defaults. The one place options are read."""
+    opts = dict(DEFAULT_OPTIONS)
+    s = user_settings()
+    try:
+        opts.update(((s.get("pluginConfigs") or {}).get(PLUGIN_KEY) or {}).get("options") or {})
+    except (AttributeError, TypeError, ValueError):
         pass
     for k, v in DEFAULT_OPTIONS.items():  # coerce types (the settings UI may store strings)
         try:

@@ -91,7 +91,9 @@ Created = earliest publish event, else `created`. Modified = latest publish, els
    or a failure, sets thumb_status `failed` and the page draws a title card. Rows without a local file get `none` (Chrome option later).
 6. **Describer** (`ae launch-describer`, called by the watcher). The probe (2026-11-10) showed that reading an artifact made by someone else always asks
    for consent, even with allow rules. So **the background run describes only own artifacts**. It launches only when all of these hold: some row has
-   `desc_status=pending` and `owned` = 1 (unknown owner, mostly history finds, is left for the interactive refresh), today's spend is below `describe_daily_cap`, no describer started in the last `watch_interval`, and
+   `desc_status=pending` and `owned` = 1 (unknown owner, mostly history finds, is left for the interactive refresh), today's spend is below `describe_daily_cap`, no describer started in the last `watch_interval`, the setup allow rule
+   `Bash(sh */artifact-explorer/*/bin/ae *)` is in `permissions.allow` of `~/.claude/settings.json` (`common.ALLOW_RULE`; without it every `ae` call in the
+   unattended run would wait for approval, so rows wait for the in-session refresh and its SessionStart reminder instead), and
    `claude` is on PATH (argv[0] is the full path `shutil.which` returns, so Windows `claude.cmd` works). Command: `claude --bg --model <describe_model> --name "artifact-explorer describer" "/artifact-explorer:refresh describe-only"`
    with cwd = DATA, so the hook can skip the describer's own reads (events whose cwd is under DATA are not recorded). When the data dir ends in `-inline` (the plugin was loaded with `--plugin-dir`), the command also gets
    `--plugin-dir <plugin root>`, or the new session would not know the skill. Its spend is recorded up front as an estimate: $0.05 a run + $0.01 per row it may describe (at most 10 rows a run).

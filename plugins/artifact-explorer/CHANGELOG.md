@@ -17,3 +17,4 @@ All notable changes to this project are documented here. The format is based on
 - The hook never opens the database: it spools each payload to `DATA/inbox/hooks` and a detached `ae ingest-hooks` records it, so a long watcher pass can't make the hook time out.
 - The background describer reads each page to a file and sends only `ae excerpt` (at most 3000 visible characters) to the `describer` agent.
 - Sharing labels "Private" and "Shared with me"; the page shows cards by default on screens under 600px.
+- The background describer starts only when the setup allow rule `Bash(sh */artifact-explorer/*/bin/ae *)` is in `~/.claude/settings.json`; otherwise rows wait for the in-session refresh.
