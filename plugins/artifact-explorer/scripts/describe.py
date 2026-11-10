@@ -1,5 +1,6 @@
 """Description queue: ingest Artifact-list rows, set descriptions, launch the background describer, status."""
 import json
+from html.parser import HTMLParser
 import os
 import shutil
 import sys
@@ -55,6 +56,9 @@ def ingest_list(data, file):
         if not aid:
             continue
         old = db.get(con, aid)
+        modified = to_ts(first(r, "updated", "modified", "updatedAt"))
+        if modified is not None and old is not None and (old["modified"] or 0) >= modified:
+            modified = None  # the list gives a date only; never replace a more precise time with midnight
         desc = first(r, "description", "desc", "summary")
         sharing = first(r, "sharing")
         if desc:
@@ -64,7 +68,7 @@ def ingest_list(data, file):
         db.upsert_artifact(
             con, aid, url=first(r, "url", "link"), title=first(r, "title", "name"), kind=first(r, "kind", "type"),
             owned=owned_of(r), size=first(r, "size"), created=to_ts(first(r, "created", "createdAt")),
-            modified=to_ts(first(r, "updated", "modified", "updatedAt")),
+            modified=modified,
             sharing=sharing if sharing is None or isinstance(sharing, str) else json.dumps(sharing),
             creator=first(r, "creator", "owner", "author") if owned_of(r) == 0 else None,
             description=desc, desc_source="publish" if desc else None,
@@ -73,6 +77,37 @@ def ingest_list(data, file):
     con.commit()
     print("ingested %d rows" % n)
     return 0
+
+
+class _Text(HTMLParser):
+    SKIP = {"script", "style", "noscript", "svg", "template"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out, self.skip = [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP:
+            self.skip += 1
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP and self.skip:
+            self.skip -= 1
+
+    def handle_data(self, s):
+        if not self.skip and s.strip():
+            self.out.append(s.strip())
+
+
+def excerpt(path, chars=3000):
+    """Visible text of a saved artifact file (HTML or plain text), whitespace-collapsed and capped."""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        raw = f.read(2_000_000)
+    if "<" in raw and ">" in raw:
+        p = _Text()
+        p.feed(raw)
+        raw = " ".join(p.out)
+    return " ".join(raw.split())[:chars]
 
 
 def set_desc(data, aid, text):
@@ -115,8 +150,11 @@ def launch(data):
     now = time.time()
     if now - db.state_get(con, "describer_last", 0) < opts["watch_interval"] * 60 or not shutil.which("claude"):
         return 0
-    argv = ["claude", "--bg", "--model", opts["describe_model"], "--name", "artifact-explorer describer",
-            "/artifact-explorer:refresh describe-only"]
+    argv = ["claude", "--bg", "--model", opts["describe_model"], "--name", "artifact-explorer describer"]
+    if os.path.basename(os.path.normpath(data)).endswith("-inline"):
+        # loaded with --plugin-dir (development): the new session must load it the same way
+        argv += ["--plugin-dir", common.ROOT]
+    argv.append("/artifact-explorer:refresh describe-only")
     if common.detach(argv, cwd=os.getcwd()):
         db.state_set(con, "describer_last", now)
         db.add_spend(con, 0.05 + 0.01 * min(len(rows), 10))

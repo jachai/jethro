@@ -10,7 +10,7 @@ SQLite db + `config.toml` + a static `explorer.html`. Python 3.9+ standard libra
 - `DATA` = `${CLAUDE_PLUGIN_DATA}` = `~/.claude/plugins/data/artifact-explorer-artifact-explorer/`.
   Every script takes `--data DIR`. When it is not given, use env `AE_DATA`, then that default path.
 - Files in DATA: `explorer.db`, `config.toml`, `explorer.html`, `thumbs/<id>.png|.webp|.jpg`,
-  `watch.lock`, `watch.log` (kept under 1 MB, one rotation), `inbox/`.
+  `watch.lock`, `ingest.lock`, `watch.log` (kept under 1 MB, one rotation), `inbox/`.
 - Entry point: `bin/ae` (POSIX sh) runs the first of `python3`, `python`, `py -3` that is ≥3.9 with
   `scripts/ae.py "$@"`. Hooks, the monitor and skills all call `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" <cmd>`.
   On Windows, Claude Code runs commands through Git Bash, so `sh` exists.
@@ -65,12 +65,15 @@ Created = earliest publish event, else `created`. Modified = latest publish, els
    `tool_input` {action, url?, file_path, description?, label?}; `tool_response` {url, path, artifact_id (uuid), title, seq, version, owned, updated}.
    On publish: upsert (owned from response, title, url, uuid, local_path, version, seq, description from tool_input with
    source `publish`, thumb_status pending), add a `publish` event (session_id, cwd, repo). On read/open: an `agent_read`/`agent_open` event.
-   Then `detach(ae thumbs --id ID && ae build)`. It must finish in <1 s and print nothing. Never fails the tool (exit 0 always).
+   The hook itself never opens the database (a watcher pass can hold the write lock longer than the 10 s hook timeout; seen in
+   the 2026-11-10 end-to-end run): it writes the payload to `DATA/inbox/hooks/<ns>-<pid>.json` and detaches `ae ingest-hooks`,
+   which records every spooled payload under `ingest.lock`, then thumbnails new publishes and rebuilds. Every watcher pass also
+   runs `ingest-hooks` first, so a lost child only delays a row. It must finish in <1 s and print nothing. Exit 0 always.
    SessionStart: when shared rows have `desc_status=pending`, print one line of `additionalContext`:
    "Artifact Explorer: N shared artifacts are waiting for a description. Run /artifact-explorer:refresh to describe them."
 2. **Watcher** (`monitors/monitors.json` → `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" watch --data "${CLAUDE_PLUGIN_DATA}"`).
    It loops forever. Every 30 s it checks whether `now - state.last_pass ≥ watch_interval`. If so, it takes `watch.lock` (on failure it skips), runs
-   one pass, and records `last_pass`. One pass runs: history (if on) → transcripts (if on) → `thumbs --limit 5` → `build` if anything changed
+   one pass, and records `last_pass`. One pass runs: `ingest-hooks` → history (if on) → transcripts (if on) → `thumbs --limit 5` → `build` if anything changed
    → `launch-describer`. **It prints nothing to stdout, ever** (every stdout line would become a message to Claude). Errors go to watch.log.
    Many sessions each run a copy; the lock and `last_pass` make one pass per interval in total.
 3. **History** (`browser_history`): Chromium-family `History` (Chrome, Chromium, Edge, Brave, Arc, Vivaldi; all profiles) and Firefox
@@ -90,7 +93,8 @@ Created = earliest publish event, else `created`. Modified = latest publish, els
    for consent, even with allow rules. So **the background run describes only own artifacts**. It launches only when all of these hold: some row has
    `desc_status=pending` and `owned` is not 0, today's spend is below `describe_daily_cap`, no describer started in the last `watch_interval`, and
    `claude` is on PATH. Command: `claude --bg --model <describe_model> --name "artifact-explorer describer" "/artifact-explorer:refresh describe-only"`
-   with cwd = the watcher's cwd. Its spend is recorded up front as an estimate: $0.05 a run + $0.01 per row it may describe (at most 10 rows a run).
+   with cwd = the watcher's cwd. When the data dir ends in `-inline` (the plugin was loaded with `--plugin-dir`), the command also gets
+   `--plugin-dir <plugin root>`, or the new session would not know the skill. Its spend is recorded up front as an estimate: $0.05 a run + $0.01 per row it may describe (at most 10 rows a run).
    Shared rows wait for an interactive `/artifact-explorer:refresh` (SessionStart reminder).
 7. **Build**: `page/template.html` with a `/*__DATA__*/` placeholder replaced by JSON {config, rows, generated}. Write to a temp file, then rename.
    Rows: apply `[filter]`, then overrides, then category rules. Thumbs are relative paths `thumbs/<file>`.
@@ -128,14 +132,18 @@ hidden = false
 - `setup`: show the current options (from `/config`), write DATA/config.toml from defaults when it is missing (or offer `ae import` when
   `~/.claude/artifact-explorer/meta.json` exists), run the refresh skill in full mode, show allow rules for `Bash(sh */artifact-explorer/*/bin/ae *)`
   and write them to settings.json **only on yes**, then `ae open`.
-- `refresh [full|describe-only]`: (1) Artifact list scope `mine` (all pages), then `shared` → write the rows to `DATA/inbox/list.json` → `ae ingest-list`
-  (sets owned, title, kind, size, created/modified, sharing). (2) `ae pending --json`. Own rows: Artifact read → `describer` agent → `ae set-desc`.
+- `refresh [full|describe-only]`: (1) Artifact list scope `mine` then `shared` (`limit` 200, `page_token` while a `next_page_token` is given).
+  The list answers in text lines (`- (mine) TITLE — URL — updated YYYY-MM-DD`; shared lines carry no date), so it gives only url, title,
+  owned and a modified date; kind, size and sharing come from the hook, transcripts and the sharing skill. Rows → `DATA/inbox/list.json` →
+  `ae ingest-list` (a date never lowers a more precise modified time). Reads use `path: "index.html"` so the page lands in a file, and the
+  describer gets `ae excerpt FILE` (≤3000 visible characters), never the whole page. (2) `ae pending --json`. Own rows: Artifact read → `describer` agent → `ae set-desc`.
   Shared rows: only in full mode (each read asks for consent once). (3) `ae thumbs`, `ae build`. (4) Report counts.
   `allowed-tools`: Artifact, Agent, Read, Write, Bash(sh *bin/ae *).
 - `open`: `ae open`.
 - `screenshots` (when `chrome_screenshots` is on): Claude in Chrome captures rows with thumb_status none/failed.
 - `sharing` (when `share_harvest` is on): Claude in Chrome reads each owned artifact's Share dialog → `ae set-sharing`; records the window in `state.share_windows`.
-- `agents/describer.md`: model `haiku` by default (the skill passes `describe_model`). Input: the artifact read text. Output: one plain sentence, ≤ 200 chars.
+- `agents/describer.md`: model `haiku`, fixed. `${user_config.*}` is not substituted in agent frontmatter (probe 2026-11-10:
+  model_not_found), so `describe_model` sets only the background session's `--model`; an interactive refresh uses `haiku`. Input: the artifact read text. Output: one plain sentence, ≤ 200 chars.
 
 ## Privacy
 

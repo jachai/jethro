@@ -44,12 +44,23 @@ def main(argv=None):
     s.add_argument("file", nargs="?", help="path relative to the data folder, e.g. thumbs/<id>.png; omit to mark failed")
     s.add_argument("--source", default="chrome")
     sub.add_parser("open", help="open explorer.html in the default browser")
+    sub.add_parser("ingest-hooks", help="record spooled hook payloads (run by the hook and by each watcher pass)")
+    s = sub.add_parser("excerpt", help="print the visible text of a saved artifact file, capped, for the describer")
+    s.add_argument("file")
+    s.add_argument("--chars", type=int, default=3000)
     a = p.parse_args(argv)
     data = common.data_dir(a.data)
 
     if a.cmd == "hook":
         import hook
         return hook.main(data)
+    if a.cmd == "ingest-hooks":
+        import hook
+        return hook.ingest(data)
+    if a.cmd == "excerpt":
+        import describe
+        print(describe.excerpt(a.file, a.chars))
+        return 0
     if a.cmd == "watch":
         import watch
         return watch.loop(data)

@@ -1,7 +1,7 @@
 ---
 name: describer
 description: Writes a one-sentence plain description of a single artifact from its text. Used by the refresh skill.
-model: ${user_config.describe_model}
+model: haiku
 tools: []
 ---
 

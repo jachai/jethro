@@ -28,9 +28,10 @@ DESC_RANK = {None: 0, "title": 1, "publish": 2, "describer": 3, "import": 4}
 URL_ID = re.compile(r"claude\.ai/(?:code/)?artifact/([A-Za-z0-9-]{10,})")
 
 
-def connect(data):
-    con = sqlite3.connect(os.path.join(data, "explorer.db"), timeout=30)
+def connect(data, timeout=30):
+    con = sqlite3.connect(os.path.join(data, "explorer.db"), timeout=timeout)
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA journal_mode=WAL")  # readers (SessionStart) never wait on a long watcher pass
     con.executescript(SCHEMA)
     return con
 

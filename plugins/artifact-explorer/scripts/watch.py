@@ -22,6 +22,8 @@ def run_pass(data, force=False):
     with common.Lock(os.path.join(data, "watch.lock"), 3 * opts["watch_interval"] * 60) as ok:
         if not ok:
             return 0
+        import hook
+        hook.ingest(data)
         con = db.connect(data)
         try:
             if not force and not _due(con, opts):
