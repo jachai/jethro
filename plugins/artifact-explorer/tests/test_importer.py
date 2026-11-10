@@ -2,10 +2,10 @@ import base64
 import json
 import os
 import sys
-import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+import helpers  # noqa: E402
 import common  # noqa: E402
 import db  # noqa: E402
 import importer  # noqa: E402
@@ -15,7 +15,7 @@ A, B = "AAAAAAAAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBBBBBBBB"
 
 class ImportTest(unittest.TestCase):
     def setUp(self):
-        self.src, self.d = tempfile.mkdtemp(), tempfile.mkdtemp()
+        self.src, self.d = helpers.tmp(), helpers.tmp()
 
         def w(name, obj):
             with open(os.path.join(self.src, name), "w") as f:

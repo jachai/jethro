@@ -1,4 +1,6 @@
+import atexit
 import os
+import shutil
 import sys
 import tempfile
 
@@ -7,7 +9,9 @@ import db  # noqa: E402
 
 
 def tmp():
-    return tempfile.mkdtemp(prefix="ae-test-")
+    d = tempfile.mkdtemp(prefix="ae-test-")
+    atexit.register(shutil.rmtree, d, True)
+    return d
 
 
 def con_for(data):
