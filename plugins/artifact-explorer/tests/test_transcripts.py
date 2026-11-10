@@ -55,7 +55,7 @@ class TranscriptTest(unittest.TestCase):
                        result("t3", "plain text", "2026-11-10T12:00:01.000Z")])
         self.assertEqual(transcripts.scan(self.con, self.data), 1)
         r = db.get(self.con, "AbCdEfGhIjKlMn")
-        self.assertEqual((r["owned"], r["version"], r["local_path"], r["description"]), (1, "v1", "/x/a.html", "d"))
+        self.assertEqual((r["owned"], r["version"], r["local_path"], r["description"]), (1, "v1", os.path.normpath("/x/a.html"), "d"))
         self.assertIsNotNone(r["created"])
         kinds = sorted(x[0] for x in self.con.execute("select kind from events"))
         self.assertEqual(kinds, ["agent_open", "agent_read", "publish"])
