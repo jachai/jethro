@@ -1,0 +1,12 @@
+{
+  "slug": "example-questions",
+  "title": "Example Questions Walkthrough",
+  "eyebrow": "Example questions · Nov 10",
+  "audience": "Sam",
+  "lead": "Each screen starts with what we recommend, shows what happens today, and has a worked example. Every pick and note saves as you go.",
+  "discussWith": "Sam",
+  "sections": [{"id": "money", "label": "Money"}, {"id": "ops", "label": "Operations"}],
+  "lastRound": {"url": "https://claude.ai/artifact/example", "label": "last round (Nov 9)", "decided": 5, "decidedLabel": "built"},
+  "stats": [{"value": 5, "what": "answers built", "how": "from your Nov 9 picks"}],
+  "minutesPerCard": 0.75
+}
