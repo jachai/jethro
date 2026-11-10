@@ -1,0 +1,173 @@
+"""Shared helpers: paths, options, config, logging, locks, repo names, detached runs."""
+import json
+import os
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+sys.path.insert(0, os.path.join(HERE, "vendor"))
+import tomli  # noqa: E402  (vendored, works on Python 3.9+)
+
+PLUGIN_KEY = "artifact-explorer@artifact-explorer"
+DEFAULT_OPTIONS = {
+    "watch_interval": 10,
+    "browser_history": True,
+    "transcript_reads": True,
+    "version_log": True,
+    "chrome_screenshots": False,
+    "share_harvest": False,
+    "describe_model": "haiku",
+    "describe_daily_cap": 1.0,
+}
+
+
+def claude_dir():
+    return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+
+
+def data_dir(arg=None):
+    d = arg or os.environ.get("AE_DATA") or os.path.join(
+        claude_dir(), "plugins", "data", "artifact-explorer-artifact-explorer")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def options():
+    """Plugin options from settings.json pluginConfigs, over the defaults. The one place options are read."""
+    opts = dict(DEFAULT_OPTIONS)
+    try:
+        with open(os.path.join(claude_dir(), "settings.json"), encoding="utf-8") as f:
+            s = json.load(f)
+        opts.update(((s.get("pluginConfigs") or {}).get(PLUGIN_KEY) or {}).get("options") or {})
+    except (OSError, ValueError):
+        pass
+    for k, v in DEFAULT_OPTIONS.items():  # coerce types (the settings UI may store strings)
+        try:
+            if isinstance(v, bool):
+                opts[k] = opts[k] if isinstance(opts[k], bool) else str(opts[k]).lower() in ("1", "true", "yes", "on")
+            elif isinstance(v, (int, float)):
+                opts[k] = type(v)(float(opts[k]))
+        except (TypeError, ValueError):
+            opts[k] = v
+    return opts
+
+
+def _merge(a, b):
+    out = dict(a)
+    for k, v in b.items():
+        out[k] = _merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def load_toml(path):
+    with open(path, "rb") as f:
+        return tomli.load(f)
+
+
+def load_config(data):
+    """ROOT/config/default.toml deep-merged with DATA/config.toml (user's file wins; arrays replace)."""
+    cfg = load_toml(os.path.join(ROOT, "config", "default.toml"))
+    user = os.path.join(data, "config.toml")
+    if os.path.exists(user):
+        cfg = _merge(cfg, load_toml(user))
+    return cfg
+
+
+def log(data, msg):
+    p = os.path.join(data, "watch.log")
+    try:
+        if os.path.exists(p) and os.path.getsize(p) > 1_000_000:
+            os.replace(p, p + ".1")
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg.rstrip() + "\n")
+    except OSError:
+        pass
+
+
+def _pid_alive(pid):
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        out = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid], capture_output=True, text=True).stdout
+        return str(pid) in out
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+class Lock:
+    """Exclusive lock file. `with Lock(path, stale_after) as ok:`; ok is False when another live holder has it."""
+
+    def __init__(self, path, stale_after):
+        self.path, self.stale_after, self.held = path, stale_after, False
+
+    def __enter__(self):
+        for _ in range(2):
+            try:
+                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, json.dumps({"pid": os.getpid(), "t": time.time()}).encode())
+                os.close(fd)
+                self.held = True
+                return True
+            except FileExistsError:
+                try:
+                    with open(self.path, encoding="utf-8") as f:
+                        info = json.load(f)
+                except (OSError, ValueError):
+                    info = {"pid": 0, "t": 0}
+                if _pid_alive(int(info.get("pid", 0))) and time.time() - float(info.get("t", 0)) < self.stale_after:
+                    return False
+                try:
+                    os.remove(self.path)
+                except OSError:
+                    return False
+        return False
+
+    def __exit__(self, *exc):
+        if self.held:
+            try:
+                os.remove(self.path)
+            except OSError:
+                pass
+
+
+def repo_of(cwd):
+    """Folder name of the git repo that holds cwd; a .claude/worktrees/<x> checkout maps to its main repo."""
+    if not cwd:
+        return None
+    p = os.path.abspath(cwd)
+    marker = os.sep + os.path.join(".claude", "worktrees") + os.sep
+    if marker in p + os.sep:
+        p = p[: (p + os.sep).index(marker)]
+    while True:
+        if os.path.exists(os.path.join(p, ".git")):
+            return os.path.basename(p)
+        parent = os.path.dirname(p)
+        if parent == p:
+            return None
+        p = parent
+
+
+def ae_argv(*args):
+    """argv that runs this plugin's CLI with the current interpreter."""
+    return [sys.executable, os.path.join(HERE, "ae.py")] + [str(a) for a in args]
+
+
+def detach(argv, cwd=None):
+    """Start argv in the background, detached from this process; never raises."""
+    kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=cwd)
+    if os.name == "nt":
+        kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    else:
+        kw["start_new_session"] = True
+    try:
+        subprocess.Popen(argv, **kw)
+        return True
+    except OSError:
+        return False
