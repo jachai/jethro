@@ -99,7 +99,9 @@ def build(data):
     if digest == old_hash and os.path.exists(out):
         return out
     payload["generated"] = time.time()
-    blob = json.dumps(payload, sort_keys=True).replace("</", "<\\/")
+    blob = json.dumps(payload, sort_keys=True)
+    for ch, esc in (("<", "\\u003c"), (">", "\\u003e"), ("&", "\\u0026"), ("\u2028", "\\u2028"), ("\u2029", "\\u2029")):
+        blob = blob.replace(ch, esc)  # inside a <script>, no raw < can open a comment or tag
     tmp = out + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         # the template keeps `null` after the marker so it parses on its own

@@ -15,7 +15,6 @@ DEFAULT_OPTIONS = {
     "watch_interval": 10,
     "browser_history": True,
     "transcript_reads": True,
-    "version_log": True,
     "chrome_screenshots": False,
     "share_harvest": False,
     "describe_model": "haiku",
@@ -106,35 +105,55 @@ class Lock:
 
     def __init__(self, path, stale_after):
         self.path, self.stale_after, self.held = path, stale_after, False
+        self.mine = None
+
+    def _read(self):
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return None
 
     def __enter__(self):
-        for _ in range(2):
+        self.mine = {"pid": os.getpid(), "t": time.time()}
+        body = json.dumps(self.mine).encode()
+        try:
+            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, body)
+            os.close(fd)
+            self.held = True
+            return True
+        except FileExistsError:
+            pass
+        info = self._read() or {"pid": 0, "t": 0}
+        try:
+            if _pid_alive(int(info.get("pid", 0))) and time.time() - float(info.get("t", 0)) < self.stale_after:
+                return False
+        except (TypeError, ValueError):
+            pass
+        # stale: replace atomically through a unique tmp file, then re-read to confirm we won the race
+        tmp = "%s.%d.%d.tmp" % (self.path, os.getpid(), time.time_ns())
+        try:
+            with open(tmp, "wb") as f:
+                f.write(body)
+            os.replace(tmp, self.path)
+        except OSError:
             try:
-                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.write(fd, json.dumps({"pid": os.getpid(), "t": time.time()}).encode())
-                os.close(fd)
-                self.held = True
-                return True
-            except FileExistsError:
-                try:
-                    with open(self.path, encoding="utf-8") as f:
-                        info = json.load(f)
-                except (OSError, ValueError):
-                    info = {"pid": 0, "t": 0}
-                if _pid_alive(int(info.get("pid", 0))) and time.time() - float(info.get("t", 0)) < self.stale_after:
-                    return False
-                try:
-                    os.remove(self.path)
-                except OSError:
-                    return False
-        return False
+                os.remove(tmp)
+            except OSError:
+                pass
+            return False
+        self.held = self._read() == self.mine
+        return self.held
 
     def __exit__(self, *exc):
         if self.held:
-            try:
-                os.remove(self.path)
-            except OSError:
-                pass
+            if self._read() == self.mine:
+                try:
+                    os.remove(self.path)
+                except OSError:
+                    pass
+            self.held = False
 
 
 def repo_of(cwd):

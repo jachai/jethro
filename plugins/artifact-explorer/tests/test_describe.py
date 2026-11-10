@@ -97,9 +97,10 @@ class DescribeTest(unittest.TestCase):
             describe.launch(self.d)
             self.assertEqual(det.call_count, 1)
             argv = det.call_args[0][0]
-            self.assertEqual(argv[:3], ["claude", "--bg", "--model"])
+            self.assertEqual(argv[:3], ["/bin/claude", "--bg", "--model"])
             self.assertEqual(argv[-1], "/artifact-explorer:refresh describe-only")
             self.assertNotIn("--plugin-dir", argv)
+            self.assertEqual(det.call_args[1]["cwd"], self.d)
             describe.launch(self.d)  # inside watch_interval
             self.assertEqual(det.call_count, 1)
             con = db.connect(self.d)
@@ -109,6 +110,12 @@ class DescribeTest(unittest.TestCase):
             con.commit()
             describe.launch(self.d)
             self.assertEqual(det.call_count, 1)
+
+    def test_launch_skips_unknown_owner(self):
+        self.ingest([{"url": U + "CCCCCCCCCCCC", "title": "History"}])
+        with mock.patch("shutil.which", return_value="/bin/claude"), mock.patch.object(common, "detach") as det:
+            describe.launch(self.d)
+            self.assertFalse(det.called)
 
     def test_launch_skips_shared_only(self):
         self.ingest([{"url": U + "BBBBBBBBBBBB", "title": "Theirs", "scope": "shared"}])

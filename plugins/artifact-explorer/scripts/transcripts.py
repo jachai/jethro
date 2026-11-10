@@ -29,7 +29,7 @@ def _blocks(obj):
     return [b for b in c if isinstance(b, dict)] if isinstance(c, list) else []
 
 
-def _scan_file(con, path, off, pending):
+def _scan_file(con, data, path, off, pending):
     """Read complete lines from `off`; returns (new_events, new_offset)."""
     new = 0
     with open(path, "rb") as f:
@@ -57,8 +57,8 @@ def _scan_file(con, path, off, pending):
             for b in _blocks(obj):
                 key = (b.get("tool_use_id") or "").encode()
                 if b.get("type") == "tool_result" and key in pending and ts is not None:
-                    new += hook.record(con, pending.pop(key), obj.get("toolUseResult"), ts, "transcript",
-                                       obj.get("sessionId"), obj.get("cwd"))
+                    new += bool(hook.record(con, data, pending.pop(key), obj.get("toolUseResult"), ts, "transcript",
+                                            obj.get("sessionId"), obj.get("cwd")))
     return new, off
 
 
@@ -75,7 +75,7 @@ def scan(con, data):
                 if ino != st.st_ino or st.st_size < off:
                     off = 0
                 if st.st_size > off:
-                    n, off = _scan_file(con, path, off, pending)
+                    n, off = _scan_file(con, data, path, off, pending)
                     new += n
                 seen[path] = [st.st_ino, off]
             except OSError as e:

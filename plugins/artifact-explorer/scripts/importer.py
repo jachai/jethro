@@ -76,16 +76,21 @@ def run(data, src):
     src = os.path.expanduser(src)
     meta = [m for m in load(src, "meta.json", []) if not m.get("gone") and m.get("id")]
     cats, hand, previews = load(src, "cats.json", {}), load(src, "hand.json", {}), load(src, "previews.json", {})
-    local, catalog = load(src, "local.json", {}), {db.id_from_url(c.get("u")): c for c in load(src, "catalog.json", [])}
     uuid_to_id = {m["uuid"]: m["id"] for m in meta if m.get("uuid")}
+    local = load(src, "local.json", {})
+    catalog = {}
+    for c in load(src, "catalog.json", []):
+        k = db.id_from_url(c.get("u"))
+        catalog[uuid_to_id.get(k, k)] = c
     con = db.connect(data)
     n_rows = n_events = n_thumbs = 0
     for m in meta:
-        aid, c = m["id"], catalog.get(m["id"], {})
+        mid = m["id"]  # the old folder's key; aid is the row it lands in
+        aid, c = db.resolve(con, mid, m.get("uuid") or None), catalog.get(mid, {})
         by = c.get("by") or m.get("by")
         owned = 0 if by == "Someone else" else (1 if by else None)
         text = m.get("desc") or m.get("cand")
-        thumb = import_thumb(data, src, aid, previews)
+        thumb = import_thumb(data, src, mid, previews)
         db.upsert_artifact(
             con, aid, uuid=m.get("uuid") or None, url=url_for(aid), title=m.get("title"),
             kind=m.get("type") or c.get("k"), owned=owned, sharing=(c.get("sh") or m.get("share") or {}).get("a"),
@@ -98,14 +103,14 @@ def run(data, src):
         ts |= {int(t) for t in local.get("visits", {}).get(m.get("uuid"), [])}
         for t in sorted(ts):
             n_events += db.add_event(con, aid, t, "visit", "import")
-        for t in local.get("agent", {}).get(aid, []):
+        for t in local.get("agent", {}).get(mid, []):
             n_events += db.add_event(con, aid, t, "agent_read", "import")
-        pub = local.get("published", {}).get(aid)
+        pub = local.get("published", {}).get(mid)
         if pub:
             n_events += db.add_event(con, aid, pub["ts"], "publish", "import", detail={"n": pub.get("n"), "label": pub.get("label")})
         # repos only live on events: one agent_read per repo, placed at the earliest known access so
         # last_accessed and modified stay right (+1 ms steps keep the rows distinct)
-        base = min(list(ts) + local.get("agent", {}).get(aid, []) + [m.get("created") or 0])
+        base = min(list(ts) + local.get("agent", {}).get(mid, []) + [m.get("created") or 0])
         for i, (repo, count) in enumerate(sorted((m.get("repos") or {}).items())):
             n_events += db.add_event(con, aid, base + (i + 1) / 1000.0, "agent_read", "import", repo=repo, detail={"count": count})
     con.commit()

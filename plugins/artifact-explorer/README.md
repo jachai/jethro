@@ -21,7 +21,6 @@ Change them in `/config` (plugins).
 - `watch_interval`: minutes between watcher passes (default 10, 2 to 240).
 - `browser_history`: read a copy of your browser history for claude.ai artifact URLs (default on).
 - `transcript_reads`: scan `~/.claude/projects` for Artifact tool calls (default on).
-- `version_log`: record each publish, read and open as an event (default on).
 - `chrome_screenshots`: let `/artifact-explorer:screenshots` use Claude in Chrome for thumbnails (default off).
 - `share_harvest`: let `/artifact-explorer:sharing` read the Share dialog of your artifacts in Chrome (default off).
 - `describe_model`: model of the background describer session (default `haiku`). The `describer` agent itself always runs on `haiku`.

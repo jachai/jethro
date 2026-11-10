@@ -32,12 +32,6 @@
       "description": "Find artifacts Claude published or read in earlier sessions by scanning ~/.claude/projects. Only Artifact tool lines are read.",
       "default": true
     },
-    "version_log": {
-      "type": "boolean",
-      "title": "Keep a publish log",
-      "description": "Record every publish, read and open as an event, so the page can show who made an artifact and when it was last used.",
-      "default": true
-    },
     "chrome_screenshots": {
       "type": "boolean",
       "title": "Screenshots with Claude in Chrome",

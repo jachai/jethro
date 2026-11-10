@@ -35,6 +35,23 @@ class BuildTest(unittest.TestCase):
         with open(os.path.join(self.d, "config.toml"), "w") as f:
             f.write(text)
 
+    def test_data_blob_cannot_open_script_state(self):
+        db.upsert_artifact(self.con, "dddddddddd", title="x <!--<script> y & \u2028 </script>")
+        self.con.commit()
+        path = build.build(self.d)
+        s = open(path, encoding="utf-8").read()
+        data = s[s.index("const DATA = "):]
+        data = data[:data.index("\n")] if "\n" in data else data
+        self.assertNotIn("<!--", data)
+        self.assertNotIn("<script", data.lower())
+        self.assertNotIn("\u2028", data)
+        self.assertIn("x <!--<script> y & \u2028 </script>", [r["title"] for r in payload(path)["rows"]])
+
+    def test_open_link_only_for_claude_urls(self):
+        tpl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "page", "template.html"), encoding="utf-8").read()
+        self.assertIn('if (r.url.startsWith("https://claude.ai/")) a.href = r.url;', tpl)
+        self.assertNotIn("a.href = r.url; a.target", tpl)
+
     def test_derived_fields(self):
         r = self.rows()
         a = r["aaaaaaaaaa"]

@@ -134,7 +134,8 @@ function desc(r){
 function openLink(r){
  if (!r.url) return el("span", "dim", "");
  const a = el("a", "open", "Open");
- a.href = r.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+ if (r.url.startsWith("https://claude.ai/")) a.href = r.url;
+ a.target = "_blank"; a.rel = "noopener noreferrer";
  return a;
 }
 function cell(c, r){

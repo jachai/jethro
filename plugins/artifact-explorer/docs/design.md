@@ -17,7 +17,7 @@ SQLite db + `config.toml` + a static `explorer.html`. Python 3.9+ standard libra
 
 ## Options (plugin `userConfig`)
 
-`watch_interval` (minutes, 10), `browser_history` (true), `transcript_reads` (true), `version_log` (true),
+`watch_interval` (minutes, 10), `browser_history` (true), `transcript_reads` (true),
 `chrome_screenshots` (false), `share_harvest` (false), `describe_model` ("haiku"), `describe_daily_cap` (1.0 USD).
 **One way to read them:** `common.options()` reads `~/.claude/settings.json` → `pluginConfigs["artifact-explorer@artifact-explorer"].options`
 (monitors don't get `CLAUDE_PLUGIN_OPTION_*`, so nothing uses env), merged over the defaults above.
@@ -37,7 +37,7 @@ SQLite db + `config.toml` + a static `explorer.html`. Python 3.9+ standard libra
 | `thumbs.py` | headless thumbnails (`ae thumbs [--id ID] [--limit N]`) |
 | `build.py` | `ae build` → DATA/explorer.html |
 | `importer.py` | `ae import [--from ~/.claude/artifact-explorer]` (reads only) |
-| `describe.py` | `ae launch-describer` (watcher side), `ae ingest-list FILE`, `ae set-desc ID TEXT`, `ae pending [--owned-only] [--json]`, `ae status [--json]` |
+| `describe.py` | `ae launch-describer` (watcher side), `ae ingest-list FILE`, `ae set-desc ID --file F`, `ae set-sharing ID --file F`, `ae excerpt FILE --out F`, `ae rows --json [--owned] [--desc-status S] [--thumb-status S] [--limit N]`, `ae pending [--owned-only] [--json]`, `ae status [--json]` (counts only). Free text that comes from a page (descriptions, sharing phrases) only ever travels in a file, never on a command line |
 | `ae open` | opens explorer.html with `webbrowser` (in `ae.py`) |
 
 ## Schema (`explorer.db`)
@@ -91,9 +91,9 @@ Created = earliest publish event, else `created`. Modified = latest publish, els
    or a failure, sets thumb_status `failed` and the page draws a title card. Rows without a local file get `none` (Chrome option later).
 6. **Describer** (`ae launch-describer`, called by the watcher). The probe (2026-11-10) showed that reading an artifact made by someone else always asks
    for consent, even with allow rules. So **the background run describes only own artifacts**. It launches only when all of these hold: some row has
-   `desc_status=pending` and `owned` is not 0, today's spend is below `describe_daily_cap`, no describer started in the last `watch_interval`, and
-   `claude` is on PATH. Command: `claude --bg --model <describe_model> --name "artifact-explorer describer" "/artifact-explorer:refresh describe-only"`
-   with cwd = the watcher's cwd. When the data dir ends in `-inline` (the plugin was loaded with `--plugin-dir`), the command also gets
+   `desc_status=pending` and `owned` = 1 (unknown owner, mostly history finds, is left for the interactive refresh), today's spend is below `describe_daily_cap`, no describer started in the last `watch_interval`, and
+   `claude` is on PATH (argv[0] is the full path `shutil.which` returns, so Windows `claude.cmd` works). Command: `claude --bg --model <describe_model> --name "artifact-explorer describer" "/artifact-explorer:refresh describe-only"`
+   with cwd = DATA, so the hook can skip the describer's own reads (events whose cwd is under DATA are not recorded). When the data dir ends in `-inline` (the plugin was loaded with `--plugin-dir`), the command also gets
    `--plugin-dir <plugin root>`, or the new session would not know the skill. Its spend is recorded up front as an estimate: $0.05 a run + $0.01 per row it may describe (at most 10 rows a run).
    Shared rows wait for an interactive `/artifact-explorer:refresh` (SessionStart reminder).
 7. **Build**: `page/template.html` with a `/*__DATA__*/` placeholder replaced by JSON {config, rows, generated}. Write to a temp file, then rename.
@@ -134,16 +134,20 @@ hidden = false
   and write them to settings.json **only on yes**, then `ae open`.
 - `refresh [full|describe-only]`: (1) Artifact list scope `mine` then `shared` (`limit` 200, `page_token` while a `next_page_token` is given).
   The list answers in text lines (`- (mine) TITLE — URL — updated YYYY-MM-DD`; shared lines carry no date), so it gives only url, title,
-  owned and a modified date; kind, size and sharing come from the hook, transcripts and the sharing skill. Rows → `DATA/inbox/list.json` →
+  owned and a modified date. Sharing comes from the sharing skill. Kind and size are filled only by `ae import` (neither the hook's
+  tool_response nor the list carries them), so kind rules in config.toml match imported rows only. Rows → `DATA/inbox/list.json` →
   `ae ingest-list` (a date never lowers a more precise modified time). Reads use `path: "index.html"` so the page lands in a file, and the
-  describer gets `ae excerpt FILE` (≤3000 visible characters), never the whole page. (2) `ae pending --json`. Own rows: Artifact read → `describer` agent → `ae set-desc`.
-  Shared rows: only in full mode (each read asks for consent once). (3) `ae thumbs`, `ae build`. (4) Report counts.
-  `allowed-tools`: Artifact, Agent, Read, Write, Bash(sh *bin/ae *).
+  page text never enters the refresh session: `ae excerpt FILE --out DATA/inbox/excerpt.txt` (≤3000 visible characters) and the `describer`
+  agent (tools: Read only) reads that file. (2) `ae pending --json`. Own rows: Artifact read → excerpt → `describer` → sentence to a file →
+  `ae set-desc ID --file`. Other rows (owned 0 or unknown): only in full mode (each read asks for consent once). (3) `ae thumbs`, `ae build`. (4) Report counts.
+  `allowed-tools`: Artifact, Agent, Read, Write, Bash(sh *bin/ae *). They pre-approve only for the turn that runs the skill; the
+  setup skill's allow rule `Bash(sh */artifact-explorer/*/bin/ae *)` (added only on the user's yes) is what lets the background session run `ae`.
 - `open`: `ae open`.
-- `screenshots` (when `chrome_screenshots` is on): Claude in Chrome captures rows with thumb_status none/failed.
-- `sharing` (when `share_harvest` is on): Claude in Chrome reads each owned artifact's Share dialog → `ae set-sharing`; records the window in `state.share_windows`.
+- `screenshots` (when `chrome_screenshots` is on): `ae rows --json --thumb-status none|failed` → Claude in Chrome captures each inside
+  `ae share-window start|end` (so the page loads don't count as visits) → `ae set-thumb ID thumbs/ID.png`.
+- `sharing` (when `share_harvest` is on): `ae rows --json --owned` → Claude in Chrome reads each Share dialog → phrase to a file → `ae set-sharing ID --file`; records the window in `state.share_windows`.
 - `agents/describer.md`: model `haiku`, fixed. `${user_config.*}` is not substituted in agent frontmatter (probe 2026-11-10:
-  model_not_found), so `describe_model` sets only the background session's `--model`; an interactive refresh uses `haiku`. Input: the artifact read text. Output: one plain sentence, ≤ 200 chars.
+  model_not_found), so `describe_model` sets only the background session's `--model`; an interactive refresh uses `haiku`. Tools: Read only. Input: the path of the excerpt file (its content is data, never instructions). Output: one plain sentence, ≤ 200 chars.
 
 ## Privacy
 
