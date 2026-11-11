@@ -82,6 +82,7 @@ def collect(data, cfg):
             "recent": modified or r["last_accessed"] or created,
             "accessed": r["last_accessed"], "accessed_by": r["last_access_by"] or "",
             "size": r["size"], "description": desc, "pending": not desc and r["desc_status"] == "pending",
+            "skipped": (r["desc_note"] or "no text") if not desc and r["desc_status"] == "skipped" else "",
             "repos": repos, "thumb": thumb.replace(os.sep, "/")})
     state = db.state_get(con, "build_hash")
     con.close()

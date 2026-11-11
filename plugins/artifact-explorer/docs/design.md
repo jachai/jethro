@@ -37,7 +37,7 @@ SQLite db + `config.toml` + a static `explorer.html`. Python 3.9+ standard libra
 | `thumbs.py` | headless thumbnails (`ae thumbs [--id ID] [--limit N]`) |
 | `build.py` | `ae build` → DATA/explorer.html |
 | `importer.py` | `ae import [--from ~/.claude/artifact-explorer]` (reads only) |
-| `describe.py` | `ae launch-describer` (watcher side), `ae ingest-list FILE`, `ae set-desc ID --file F`, `ae set-sharing ID --file F`, `ae excerpt FILE --out F`, `ae rows --json [--owned] [--desc-status S] [--thumb-status S] [--limit N]`, `ae pending [--owned-only] [--json]`, `ae status [--json]` (counts only). Free text that comes from a page (descriptions, sharing phrases) only ever travels in a file, never on a command line |
+| `describe.py` | `ae launch-describer` (watcher side), `ae ingest-list FILE`, `ae set-desc ID --file F`, `ae set-sharing ID --file F`, `ae excerpt FILE --out F [--id ID --type T]` (a typed artifact or < 50 visible characters marks the row skipped), `ae rows --json [--owned] [--desc-status S] [--thumb-status S] [--limit N]`, `ae pending [--owned-only] [--json]`, `ae status [--json]` (counts only). Free text that comes from a page (descriptions, sharing phrases) only ever travels in a file, never on a command line |
 | `ae open` | opens explorer.html with `webbrowser` (in `ae.py`) |
 
 ## Schema (`explorer.db`)
@@ -49,6 +49,7 @@ artifacts(id TEXT PRIMARY KEY,   -- the id in claude.ai/artifact/<id>, or the uu
   created REAL, modified REAL, last_accessed REAL, last_access_by TEXT,   -- unix seconds; by = browser|agent
   version TEXT, seq INTEGER, local_path TEXT,
   description TEXT, desc_source TEXT, desc_status TEXT,  -- source rank: title<publish<describer<import ; status ok|pending|skipped
+  desc_note TEXT,  -- (0.1.2, added on open) why a skipped row has no description, e.g. 'no text: typed artifact'
   thumb TEXT, thumb_source TEXT, thumb_status TEXT,      -- thumb = path relative to DATA; source headless|chrome|import ; status ok|pending|failed|none
   first_seen REAL, updated REAL)
 events(artifact_id TEXT, ts REAL, kind TEXT, source TEXT, session_id TEXT, cwd TEXT, repo TEXT, detail TEXT,
@@ -104,12 +105,18 @@ when the result still parses; anything else is logged to watch.log to move by ha
    or a failure, sets thumb_status `failed` and the page draws a title card. Rows without a local file get `none` (Chrome option later).
 6. **Describer** (`ae launch-describer`, called by the watcher). The probe (2026-11-10) showed that reading an artifact made by someone else always asks
    for consent, even with allow rules. So **the background run describes only own artifacts**. It launches only when all of these hold: some row has
-   `desc_status=pending` and `owned` = 1 (unknown owner, mostly history finds, is left for the interactive refresh), today's spend is below `describe_daily_cap`, no describer started in the last `watch_interval`, the setup allow rule
-   `Bash(sh */artifact-explorer/*/bin/ae *)` is in `permissions.allow` of `~/.claude/settings.json` (`common.ALLOW_RULE`; without it every `ae` call in the
-   unattended run would wait for approval, so rows wait for the in-session refresh and its SessionStart reminder instead), and
-   `claude` is on PATH (argv[0] is the full path `shutil.which` returns, so Windows `claude.cmd` works). Command: `claude --bg --model <describe_model> --name "artifact-explorer describer" "/artifact-explorer:refresh describe-only"`
-   with cwd = DATA, so the hook can skip the describer's own reads (events whose cwd is under DATA are not recorded). When the data dir ends in `-inline` (the plugin was loaded with `--plugin-dir`), the command also gets
-   `--plugin-dir <plugin root>`, or the new session would not know the skill. Its spend is recorded up front as an estimate: $0.05 a run + $0.01 per row it may describe (at most 10 rows a run).
+   `desc_status=pending` and `owned` = 1 (unknown owner, mostly history finds, is left for the interactive refresh), no describer is running, today's spend plus one run's limit (`RUN_BUDGET` $0.25) stays within `describe_daily_cap`, no describer started in the last `watch_interval`, the setup allow rule
+   `Bash(sh */artifact-explorer/*/bin/ae *)` is in `permissions.allow` of `~/.claude/settings.json` (`common.ALLOW_RULE`; rows otherwise wait for the in-session refresh and its SessionStart reminder), and
+   `claude` is on PATH (argv[0] is the full path `shutil.which` returns, so Windows `claude.cmd` works). Command (0.1.2):
+   `claude -p --model <describe_model> --output-format json --permission-mode dontAsk --allowedTools "<refresh skill allowed-tools>" --max-budget-usd 0.25 "/artifact-explorer:refresh describe-only"`,
+   detached with stdin closed and stdout to `DATA/describer.out`, cwd = DATA (the hook skips events whose cwd is under DATA). Print mode exits when the run ends and never waits for
+   input; `dontAsk` refuses (never asks) any tool outside the skill's list, and the skill then stops with `stopped: TOOL refused`. (0.1.1 used `claude --bg`: such a session stays open
+   "waiting" after its last reply, and its describer subagent ran async, so runs piled up.) When the data dir ends in `-inline` (the plugin was loaded with `--plugin-dir`), the command also gets
+   `--plugin-dir <plugin root>`. **Single flight**: the launch writes `DATA/describer.json` {pid, t, day, booked}; while that pid is alive and the record is younger than 30 min, no
+   other run starts (each skipped tick logs "still running"). Once the pid has ended, the next tick logs the result line, its cost and any refused tools from `describer.out`, and corrects
+   the $0.25 booked at launch to the real `total_cost_usd` (kept at $0.25 when the result can't be read). **Typed artifacts**: Docs, Slides and Data artifacts save only their viewer
+   shell as index.html, so `ae excerpt --id --type` marks them (and any page under 50 visible characters) `skipped` with a `desc_note`; they never return to the queue, `ae status`
+   counts them apart, the page shows "no description (typed)", and the queue puts rows of a known typed kind last.
    Shared rows wait for an interactive `/artifact-explorer:refresh` (SessionStart reminder).
 7. **Build**: `page/template.html` with a `/*__DATA__*/` placeholder replaced by JSON {config, rows, generated}. Write to a temp file, then rename.
    Rows: apply `[filter]`, then overrides, then category rules. Thumbs are relative paths `thumbs/<file>`.

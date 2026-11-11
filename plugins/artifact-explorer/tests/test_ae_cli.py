@@ -65,11 +65,11 @@ class CliTest(unittest.TestCase):
     def test_excerpt_out(self):
         src, out = os.path.join(self.d, "a.html"), os.path.join(self.d, "x.txt")
         with open(src, "w", encoding="utf-8") as f:
-            f.write("<h1>Plan</h1><script>no</script><p>two</p>")
+            f.write("<h1>Plan</h1><script>no</script><p>two weeks of monitor fixes, owners and due dates</p>")
         rc, printed = run(self.d, "excerpt", src, "--out", out)[:2]
         self.assertEqual(rc, 0)
         with open(out, encoding="utf-8") as f:
-            self.assertEqual(f.read(), "Plan two")
+            self.assertEqual(f.read(), "Plan two weeks of monitor fixes, owners and due dates")
         self.assertNotIn("Plan", printed)
 
 

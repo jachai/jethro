@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-11-11
+
+### Fixed
+
+- Only one background describer runs at a time. The launch records its pid in `describer.json`; while it is alive (and under 30 minutes old) the watcher starts no other run and logs "still running".
+- The background describer never waits for input. It is now a `claude -p` run that exits when done, with stdin closed, `--permission-mode dontAsk` and only the refresh skill's tools, so a tool outside them is refused, never asked; the skill then stops with `stopped: TOOL refused`. It calls the describer agent in the foreground. 0.1.1 used `claude --bg`, whose sessions stayed open "waiting" after the last reply.
+- Docs, Slides and Data artifacts (their saved page is only the viewer shell) and pages with under 50 characters of text are marked `skipped` ("no text: typed artifact") by `ae excerpt --id --type`. They are no longer picked again or counted as pending; `ae status` counts them apart and the page shows "no description (typed)". Rows of a known typed kind go to the end of the queue.
+- The daily cap is never overshot: a run starts only when today's spend plus its $0.25 limit (`--max-budget-usd`) fits under `describe_daily_cap`. The $0.25 is booked at launch and corrected to the run's real cost once it ends. The watch log records each run's result, cost and any refused tools.
+
 ## [0.1.1] - 2026-11-11
 
 ### Fixed
