@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 import db  # noqa: E402
+import importer  # noqa: E402
 
 PENDING = "desc_status='pending' AND (description IS NULL OR description='')"  # status counts only
 
@@ -321,7 +322,12 @@ def status(data, as_json=False):
         "unknown": one("SELECT COUNT(*) FROM artifacts WHERE owned IS NULL"),
         "pending_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE " + PENDING),
         "skipped_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE desc_status='skipped'"),
+        "thumbs_ok": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status='ok'"),
+        # waiting for a headless capture (or failed it)
         "thumbs_missing": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status IS NULL OR thumb_status IN ('pending','failed')"),
+        # no local file to capture: only a Chrome screenshot (or an older catalog) can give these a thumbnail
+        "thumbs_none": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status='none'"),
+        "thumbs_importable": importer.thumbs_available(con),
         "last_pass": db.state_get(con, "last_pass"),
         "spend_today": round(db.spend_today(con), 2),
         "spend_cap": common.options()["describe_daily_cap"]}
@@ -330,8 +336,12 @@ def status(data, as_json=False):
         return 0
     lp = out["last_pass"]
     print("artifacts: %(total)d (mine %(mine)d, shared %(shared)d, unknown %(unknown)d)" % out)
-    print("descriptions pending: %(pending_descriptions)d (no text, skipped: %(skipped_descriptions)d), "
-          "thumbnails missing: %(thumbs_missing)d" % out)
+    print("descriptions pending: %(pending_descriptions)d (no text, skipped: %(skipped_descriptions)d)" % out)
+    print("thumbnails: %(thumbs_ok)d ok, %(thumbs_missing)d waiting or failed" % out)
+    if out["thumbs_none"]:
+        print("no thumbnail: %(thumbs_none)d (no local file: turn on chrome_screenshots to capture them)" % out)
+    if out["thumbs_importable"]:
+        print("older catalog: %(thumbs_importable)d thumbnails can be copied with `ae import --thumbs-only`" % out)
     print("last pass: %s" % (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(lp)) if lp else "never"))
     print("describer spend today: $%(spend_today).2f of $%(spend_cap).2f" % out)
     return 0

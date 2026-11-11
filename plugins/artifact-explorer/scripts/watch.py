@@ -1,4 +1,5 @@
 """The watcher: one pass per watch_interval across all sessions. Never prints to stdout."""
+import json
 import os
 import sys
 import time
@@ -9,6 +10,31 @@ import common  # noqa: E402
 import db  # noqa: E402
 
 TICK = 30
+HEARTBEAT_FILE = "watcher.json"
+FRESH = 4 * TICK  # a heartbeat younger than this (from a live pid) means a watcher is running
+
+
+def heartbeat(data):
+    """Record that a watcher loop is alive: DATA/watcher.json {pid, t}, written atomically."""
+    path = os.path.join(data, HEARTBEAT_FILE)
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"pid": os.getpid(), "t": time.time()}, f)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def watcher_state(data):
+    """{running, pid, seen} from the heartbeat file, judged now (the page shows it as of build)."""
+    try:
+        with open(os.path.join(data, HEARTBEAT_FILE), encoding="utf-8") as f:
+            info = json.load(f)
+        pid, seen = int(info.get("pid", 0)), float(info.get("t", 0))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {"running": False, "pid": None, "seen": None}
+    return {"running": time.time() - seen < FRESH and common._pid_alive(pid), "pid": pid, "seen": seen}
 
 
 def _due(con, opts):
@@ -38,14 +64,18 @@ def run_pass(data, force=False):
                 changed += transcripts.scan(con, data)
             con.close()
             thumbs.run(data, limit=5)
-            if changed:
-                import build
-                build.build(data)
             import describe
             describe.launch(data)
             con = db.connect(data)
             db.state_set(con, "last_pass", time.time())
             con.commit()
+            con.close()
+            heartbeat(data)
+            import build
+            # rebuilt when anything changed (changed rows, a new thumbnail), else once the page is an hour old,
+            # so the page's "built" time and "last checked" stay true while a watcher runs
+            build.build(data, max_age=common.PAGE_HEARTBEAT)
+            con = db.connect(data)
         finally:
             con.close()
     return 0
@@ -71,6 +101,7 @@ def loop(data, tick_seconds=TICK, max_ticks=None):
     while max_ticks is None or n < max_ticks:
         if os.name != "nt" and (os.getppid() == 1 or os.getppid() != ppid):
             return 0
+        heartbeat(data)
         tick(data)
         n += 1
         time.sleep(tick_seconds)

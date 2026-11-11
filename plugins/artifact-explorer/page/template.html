@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Artifact Explorer</title>
 <style>
-:root{--bg:#f6f6f3;--panel:#fff;--ink:#1d2321;--muted:#6b7370;--line:#e2e4df;--chip:#eceeea;--accent:#0f6b5c;--accent-ink:#fff;--link:var(--accent);--shadow:0 1px 2px rgba(0,0,0,.05)}
-@media (prefers-color-scheme:dark){:root{--bg:#141716;--panel:#1c201f;--ink:#e6e9e7;--muted:#8d9692;--line:#2c3331;--chip:#262c2a;--link:color-mix(in srgb,var(--accent) 45%,#fff);--shadow:none}}
+:root{--bg:#f6f6f3;--panel:#fff;--ink:#1d2321;--muted:#6b7370;--line:#e2e4df;--chip:#eceeea;--accent:#0f6b5c;--accent-ink:#fff;--link:var(--accent);--shadow:0 1px 2px rgba(0,0,0,.05);--warn:#c4741f;--ok:#2f9e5b;--ph-s:52%;--ph-l0:90%;--ph-l1:76%;--ph-l2:64%;--ph-l3:52%;--ph-lt:30%}
+@media (prefers-color-scheme:dark){:root{--bg:#141716;--panel:#1c201f;--ink:#e6e9e7;--muted:#8d9692;--line:#2c3331;--chip:#262c2a;--link:color-mix(in srgb,var(--accent) 45%,#fff);--shadow:none;--ok:#4cc27e;--ph-s:34%;--ph-l0:19%;--ph-l1:28%;--ph-l2:36%;--ph-l3:46%;--ph-lt:82%}}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}
@@ -55,6 +55,17 @@ a{color:var(--link)}
 .cb p{margin:0;font-size:13px}
 .who{font-size:12px;color:var(--muted)}
 .foot{margin-top:auto;display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);align-items:center}
+.status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;font-size:12.5px;color:var(--muted);margin:-6px 0 14px}
+.status b{font-weight:600;color:var(--ink)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--muted)}
+.dot.on{background:var(--ok)}
+.stale{flex-basis:100%;background:color-mix(in srgb,var(--warn) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--warn) 50%,var(--line));color:var(--ink);border-radius:8px;padding:7px 11px}
+.ph{position:relative;height:100%}
+.ph svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.ph .tc{position:relative;background:linear-gradient(to top,color-mix(in srgb,var(--panel) 92%,transparent) 0,color-mix(in srgb,var(--panel) 70%,transparent) 42%,transparent 75%)}
+.tt{display:flex;align-items:center;gap:10px}
+.av{flex:none;width:42px;height:28px;border-radius:5px;overflow:hidden;background:var(--chip);border:1px solid var(--line)}
+.av img,.av svg{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
 .empty{padding:40px;text-align:center;color:var(--muted)}
 @media (max-width:600px){.wrap{padding:14px 10px 40px}.grid{grid-template-columns:minmax(0,1fr)}}
 </style>
@@ -62,6 +73,7 @@ a{color:var(--link)}
 <body>
 <div class="wrap">
 <header><h1 id="h"></h1><span class="meta" id="meta"></span></header>
+<div class="status" id="status" role="status" aria-live="polite"></div>
 <div class="bar">
 <input id="q" type="search" placeholder="Search title, description, repo" aria-label="Search">
 <select id="sortsel" aria-label="Sort cards"></select>
@@ -103,12 +115,57 @@ if (cfg.categories.indexOf(st.cat) < 0) st.cat = "";
 const save = () => { try { localStorage.setItem("ae-view", JSON.stringify(st)); } catch(e) {} };
 
 const DAY = 86400;
-function rel(t){
- const d = Date.now()/1000 - t, a = Math.abs(d);
- if (a < 45) return "just now";
+function dur(a){
  const u = a<3600 ? [60,"minute"] : a<DAY ? [3600,"hour"] : a<30*DAY ? [DAY,"day"] : a<365*DAY ? [30*DAY,"month"] : [365*DAY,"year"];
- const n = Math.max(1, Math.round(a/u[0])), s = n+" "+u[1]+(n>1?"s":"");
- return d>=0 ? s+" ago" : "in "+s;
+ const n = Math.max(1, Math.round(a/u[0]));
+ return n+" "+u[1]+(n>1?"s":"");
+}
+function rel(t){
+ const d = Date.now()/1000 - t;
+ if (Math.abs(d) < 45) return "just now";
+ return d>=0 ? dur(d)+" ago" : "in "+dur(-d);
+}
+// Placeholder pictures for rows without a thumbnail: an abstract composition seeded by the artifact id (same id,
+// same picture on every build), hue family from the category, colours from theme variables (light and dark).
+/*PH-START*/
+function hash32(s){
+ let h = 2166136261;
+ for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+ return h >>> 0;
+}
+function rng(seed){
+ let a = seed >>> 0;
+ return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function catHue(cat){ return hash32("category:" + (cat || "")) % 360; }
+function escXml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]); }
+function placeholderSVG(id, title, cat){
+ const r = rng(hash32(String(id))), H = catHue(cat), n = (a, b) => a + r() * (b - a), f = x => x.toFixed(1);
+ const hue = [H, (H + n(24, 60)) % 360, (H + n(150, 210)) % 360];
+ const fill = (i, l) => 'style="fill:hsl(' + Math.round(hue[i]) + ' var(--ph-s) var(--ph-l' + l + '))"';
+ let g = '<rect width="160" height="90" ' + fill(0, 0) + '/>';
+ g += '<circle cx="' + f(n(10, 150)) + '" cy="' + f(n(0, 90)) + '" r="' + f(n(28, 58)) + '" ' + fill(1, 1) + '/>';
+ g += '<rect x="' + f(n(-10, 100)) + '" y="' + f(n(10, 70)) + '" width="' + f(n(50, 110)) + '" height="' + f(n(10, 26)) +
+      '" rx="2" transform="rotate(' + f(n(-50, 50)) + ' 80 45)" ' + fill(2, 2) + '/>';
+ if (r() < 0.55) {
+  const x = n(20, 140), y = n(15, 75), s = n(14, 30);
+  g += '<path d="M' + f(x) + ' ' + f(y - s) + 'L' + f(x + s) + ' ' + f(y + s * 0.8) + 'L' + f(x - s) + ' ' + f(y + s * 0.8) + 'Z" ' + fill(0, 2) + '/>';
+ } else {
+  g += '<circle cx="' + f(n(15, 145)) + '" cy="' + f(n(10, 80)) + '" r="' + f(n(10, 20)) + '" fill="none" stroke-width="5" ' +
+       fill(2, 3).replace("fill:", "stroke:") + '/>';
+ }
+ g += '<circle cx="' + f(n(10, 150)) + '" cy="' + f(n(8, 82)) + '" r="' + f(n(4, 9)) + '" ' + fill(1, 3) + '/>';
+ const ch = (String(title || "").match(/[\p{L}\p{N}]/u) || ["?"])[0].toUpperCase();
+ g += '<text x="146" y="40" text-anchor="end" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="38" font-weight="700" ' +
+      'style="fill:hsl(' + Math.round(hue[0]) + ' 45% var(--ph-lt));opacity:.7">' + escXml(ch) + '</text>';
+ return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">' + g + '</svg>';
+}
+/*PH-END*/
+function picture(r, cls){
+ const box = el("div", cls);
+ if (r.thumb) { const i = el("img"); i.src = r.thumb; i.alt = ""; i.loading = "lazy"; box.appendChild(i); }
+ else box.innerHTML = placeholderSVG(r.id, r.title, r.category);  // only escaped text and generated numbers
+ return box;
 }
 function bytes(n){
  if (!n) return "";
@@ -142,7 +199,7 @@ function openLink(r){
 }
 function cell(c, r){
  const td = el("td", COLS[c].cls || ""), d = COLS[c].date;
- if (c === "title") td.textContent = r.title;
+ if (c === "title") { const w = el("div", "tt"); w.appendChild(picture(r, "av")); w.appendChild(el("span", "", r.title)); td.appendChild(w); }
  else if (d) td.appendChild(when(r[d], d === "accessed" ? r.accessed_by : ""));
  else if (c === "size") td.textContent = bytes(r.size);
  else if (c === "description") td.appendChild(desc(r));
@@ -202,8 +259,11 @@ function cards(list){
  const g = el("div", "grid");
  list.forEach(r => {
   const c = el("div", "card"), s = el("div", "shot");
-  if (r.thumb) { const i = el("img"); i.src = r.thumb; i.alt = ""; i.loading = "lazy"; s.appendChild(i); }
-  else { const t = el("div", "tc"); t.appendChild(el("small", "", r.category)); t.appendChild(document.createTextNode(r.title)); s.appendChild(t); }
+  if (r.thumb) s.appendChild(picture(r, "ph"));
+  else {
+   const p = picture(r, "ph"), t = el("div", "tc");
+   t.appendChild(el("small", "", r.category)); t.appendChild(document.createTextNode(r.title)); p.appendChild(t); s.appendChild(p);
+  }
   const b = el("div", "cb"), f = el("div", "foot"), l = el("span", "", r.category);
   if (r.modified) { l.appendChild(document.createTextNode(" · ")); l.appendChild(when(r.modified)); }
   f.appendChild(l); f.appendChild(openLink(r));
@@ -217,7 +277,7 @@ function cards(list){
 
 function render(){
  const list = sorted(chips($("q").value.trim().toLowerCase()));
- $("meta").textContent = list.length + " of " + rows.length + " artifacts" + (DATA.generated ? " · built " + rel(DATA.generated) : "");
+ $("meta").textContent = list.length + " of " + rows.length + " artifacts";
  $("vt").setAttribute("aria-pressed", String(st.view === "table"));
  $("vc").setAttribute("aria-pressed", String(st.view === "cards"));
  $("sortsel").style.display = st.view === "cards" ? "" : "none";
@@ -228,6 +288,30 @@ function render(){
  else out.appendChild(st.view === "cards" ? cards(list) : table(list));
 }
 
+// Status: the page is a static file, so everything but "now" is as of the build; the times refresh while it is open.
+function statusLine(){
+ const S = DATA.status, box = $("status");
+ box.textContent = "";
+ if (!S) return;
+ const now = Date.now()/1000, item = (label, t, extra) => {
+  const s = el("span", "", label + " ");
+  const b = el("b", "", t ? rel(t) : "never"); if (t) b.title = new Date(t*1000).toLocaleString();
+  s.appendChild(b); if (extra) s.appendChild(document.createTextNode(extra));
+  box.appendChild(s);
+ };
+ item("Built", S.built);
+ item("Last checked", S.last_pass, " (as of build)");
+ const w = el("span"), W = S.watcher || {};
+ w.appendChild(el("span", "dot" + (W.running ? " on" : "")));
+ w.appendChild(document.createTextNode(W.running ? "Watcher running (pid " + W.pid + ", as of build)" : "No watcher running at build time"));
+ box.appendChild(w);
+ const age = now - S.built;
+ if (age > S.stale_after) {
+  box.appendChild(el("div", "stale", "Page may be stale: no watcher has rebuilt it for " + dur(age) +
+   ". The watcher runs while a Claude Code session is open; `ae build` rebuilds it now."));
+ }
+}
+
 const sel = $("sortsel");
 [["modified",-1,"Modified, newest"],["last_accessed",-1,"Last accessed, newest"],["created",-1,"Created, newest"],["title",1,"Title A-Z"],["size",-1,"Size, largest"]]
  .forEach(o => { const e = el("option", "", o[2]); e.value = o[0] + ":" + o[1]; sel.appendChild(e); });
@@ -236,6 +320,8 @@ $("vt").onclick = () => { st.view = "table"; save(); render(); };
 $("vc").onclick = () => { st.view = "cards"; save(); render(); };
 $("q").oninput = render;
 render();
+statusLine();
+setInterval(statusLine, 30000);
 })();
 </script>
 </body>
