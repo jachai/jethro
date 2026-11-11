@@ -28,12 +28,24 @@ run() {
 
 echo "Artifact Explorer restore from $BACKUP$([ "$DRY" = 1 ] && echo ' (dry run: nothing is changed)')"
 
-WATCHERS="$(ps -axo pid=,ppid=,command= | grep -F -- "$DATA" | grep -E '(^|[ /])ae(\.py)?"? .* watch' | grep -v grep || true)"
+. "$HERE/watchers.sh"
+WATCHERS="$(ae_watchers | sort -u -k1,1)"
 if [ -n "$WATCHERS" ]; then
   echo "Refusing: a watcher is running on $DATA (pids: $(echo "$WATCHERS" | awk '{print $1}' | tr '\n' ' '))."
   echo "Type /exit in the Claude Code windows (or \`claude stop <id>\` for background sessions), then run this again."
   [ "$DRY" = 1 ] || exit 1
   echo "  (dry run: continuing to show the remaining steps)"
+fi
+
+# Check settings.json can be changed before anything moves (a file we cannot parse stops here).
+NEW=""
+trap '[ -z "$NEW" ] || rm -f "$NEW"' EXIT
+if [ -f "$SETTINGS" ]; then
+  NEW="$(mktemp)"
+  if ! python3 "$HERE/settings_rule.py" add "$SETTINGS" "$NEW"; then
+    echo "Refusing: could not read $SETTINGS (fix it, then run this again). Nothing was changed." >&2
+    exit 1
+  fi
 fi
 
 echo
@@ -45,10 +57,9 @@ echo "Data: $BACKUP -> $DATA"
 run mv "$BACKUP" "$DATA"
 
 echo
-if [ -f "$SETTINGS" ]; then
+if [ -n "$NEW" ] && [ -f "$SETTINGS" ]; then
+  python3 "$HERE/settings_rule.py" add "$SETTINGS" "$NEW"  # again: a claude plugin step may have edited it
   echo "Settings: adding the Artifact Explorer allow rule back to $SETTINGS"
-  NEW="$(mktemp)"
-  python3 "$HERE/settings_rule.py" add "$SETTINGS" "$NEW"
   diff -u "$SETTINGS" "$NEW" | sed 's/^/  /' || true
   if [ "$DRY" = 1 ]; then
     echo "  would back up to $SETTINGS.ae-backup-$STAMP and write the change"
@@ -56,7 +67,6 @@ if [ -f "$SETTINGS" ]; then
     cp -p "$SETTINGS" "$SETTINGS.ae-backup-$STAMP"
     cat "$NEW" > "$SETTINGS"
   fi
-  rm -f "$NEW"
 fi
 
 echo

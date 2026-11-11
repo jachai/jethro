@@ -77,37 +77,52 @@ def default_src():
     return os.environ.get("AE_OLD_CATALOG") or os.path.join(os.path.expanduser("~"), ".claude", "artifact-explorer")
 
 
-def _old_thumbs(con, src):
-    """(row id, old id) for rows with no thumbnail whose old folder has a shot or preview for them."""
-    src = os.path.expanduser(src)
+def _previews(src):
+    """The old folder's previews.json as {id: data-URI}, keeping only usable entries."""
+    p = load(src, "previews.json", {})
+    return {k: v for k, v in p.items() if isinstance(v, str) and "," in v} if isinstance(p, dict) else {}
+
+
+def _old_thumbs(con, src, previews):
+    """(row id, old id) for rows with no thumbnail whose old folder has a shot or usable preview, once per row."""
     shots = os.path.join(src, "shots")
     have = {f[:-4] for f in os.listdir(shots) if f.endswith(".jpg")} if os.path.isdir(shots) else set()
-    have |= set(load(src, "previews.json", {}))
-    out = []
-    for m in load(src, "meta.json", []):
+    have |= set(previews)
+    meta = load(src, "meta.json", [])
+    out, seen = [], set()
+    for m in meta if isinstance(meta, list) else []:
         mid = m.get("id") if isinstance(m, dict) else None
-        if not mid or mid not in have:
+        if not isinstance(mid, str) or mid not in have:
             continue
+        uuid = m.get("uuid") if isinstance(m.get("uuid"), str) else ""
         r = con.execute("SELECT id FROM artifacts WHERE (id=? OR (uuid=? AND uuid<>'')) AND "
                         "(thumb IS NULL OR thumb='' OR thumb_status IS NOT 'ok') LIMIT 1",
-                        (mid, m.get("uuid") or "")).fetchone()
-        if r:
+                        (mid, uuid)).fetchone()
+        if r and r[0] not in seen:
+            seen.add(r[0])
             out.append((r[0], mid))
     return out
 
 
 def thumbs_available(con, src=None):
-    return len(_old_thumbs(con, src or default_src()))
+    """How many rows `ae import --thumbs-only` would fill; 0 when there is no readable old folder."""
+    src = os.path.expanduser(src or default_src())
+    if not os.path.isdir(src):
+        return 0
+    try:
+        return len(_old_thumbs(con, src, _previews(src)))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return 0
 
 
 def run_thumbs(data, src):
     """Copy the old folder's Chrome shots (or previews) into rows that have no thumbnail. Changes nothing else."""
     src = os.path.expanduser(src)
-    previews = load(src, "previews.json", {})
+    previews = _previews(src)
     con = db.connect(data)
     n = 0
     try:
-        for aid, mid in _old_thumbs(con, src):
+        for aid, mid in _old_thumbs(con, src, previews):
             rel = import_thumb(data, src, mid, previews)
             if rel:
                 db.upsert_artifact(con, aid, thumb=rel, thumb_source="import", thumb_status="ok")

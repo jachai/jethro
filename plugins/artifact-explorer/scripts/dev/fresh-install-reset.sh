@@ -26,7 +26,8 @@ echo "Artifact Explorer fresh-install reset$([ "$DRY" = 1 ] && echo ' (dry run: 
 echo "  config dir: $CONFIG"
 
 # 1. Refuse while a watcher uses this data folder: it would recreate files while we move them.
-WATCHERS="$(ps -axo pid=,ppid=,command= | grep -F -- "$DATA" | grep -E '(^|[ /])ae(\.py)?"? .* watch' | grep -v grep || true)"
+. "$HERE/watchers.sh"
+WATCHERS="$(ae_watchers | sort -u -k1,1)"
 if [ -n "$WATCHERS" ]; then
   echo
   echo "Refusing: an Artifact Explorer watcher is running on $DATA."
@@ -47,6 +48,17 @@ if [ -n "$WATCHERS" ]; then
   echo "  (dry run: continuing to show the remaining steps)"
 fi
 
+# Check settings.json can be changed before anything moves (a file we cannot parse stops here).
+NEW=""
+trap '[ -z "$NEW" ] || rm -f "$NEW"' EXIT
+if [ -f "$SETTINGS" ]; then
+  NEW="$(mktemp)"
+  if ! python3 "$HERE/settings_rule.py" remove "$SETTINGS" "$NEW"; then
+    echo "Refusing: could not read $SETTINGS (fix it, then run this again). Nothing was changed." >&2
+    exit 1
+  fi
+fi
+
 # 2. Back up the data folder (catalog, page, thumbnails, config.toml).
 echo
 if [ -d "$DATA" ]; then
@@ -65,10 +77,9 @@ run "$CLAUDE" plugin marketplace remove artifact-explorer || echo "  (marketplac
 
 # 4. Remove only the plugin's allow rule from settings.json (a backup copy is kept next to it).
 echo
-if [ -f "$SETTINGS" ]; then
+if [ -n "$NEW" ] && [ -f "$SETTINGS" ]; then
+  python3 "$HERE/settings_rule.py" remove "$SETTINGS" "$NEW"  # again: a claude plugin step may have edited it
   echo "Settings: removing the Artifact Explorer allow rule from $SETTINGS"
-  NEW="$(mktemp)"
-  python3 "$HERE/settings_rule.py" remove "$SETTINGS" "$NEW"
   diff -u "$SETTINGS" "$NEW" | sed 's/^/  /' || true
   if [ "$DRY" = 1 ]; then
     echo "  would back up to $SETTINGS.ae-backup-$STAMP and write the change"
@@ -77,7 +88,6 @@ if [ -f "$SETTINGS" ]; then
     cat "$NEW" > "$SETTINGS"
     echo "  backup: $SETTINGS.ae-backup-$STAMP"
   fi
-  rm -f "$NEW"
 fi
 
 cat <<EOF

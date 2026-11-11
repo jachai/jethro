@@ -108,6 +108,14 @@ class ImportThumbsTest(Base):
         self.assertEqual(db.get(db.connect(self.d), A)["thumb_source"], "headless")
 
 
+    def test_unusable_preview_duplicate_meta_and_bad_files_count_right(self):
+        json.dump([{"id": A}, {"id": A}, {"id": C}, {"id": None}, "junk"], open(os.path.join(self.src, "meta.json"), "w"))
+        json.dump({C: "no-comma-here"}, open(os.path.join(self.src, "previews.json"), "w"))
+        self.assertEqual(importer.thumbs_available(self.con, self.src), 1)  # A once; C's preview is unusable
+        json.dump([[1], [2]], open(os.path.join(self.src, "previews.json"), "w"))  # not a dict: ignored, no crash
+        self.assertEqual(importer.thumbs_available(self.con, self.src), 1)
+        self.assertEqual(importer.thumbs_available(self.con, os.path.join(self.src, "missing")), 0)
+
 class StatusTruthTest(Base):
     def test_status_counts_rows_with_no_thumbnail(self):
         for i, s in enumerate(["ok", "none", "none", "pending", "failed"]):
