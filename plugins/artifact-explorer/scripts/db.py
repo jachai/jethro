@@ -5,6 +5,8 @@ import re
 import sqlite3
 import time
 
+import common
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS artifacts(
   id TEXT PRIMARY KEY, uuid TEXT, url TEXT, title TEXT, kind TEXT, owned INTEGER,
@@ -34,7 +36,33 @@ def connect(data, timeout=30):
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")  # readers (SessionStart) never wait on a long watcher pass
     con.executescript(SCHEMA)
+    _migrate(con, data)
     return con
+
+
+SCHEMA_VERSION = 1  # PRAGMA user_version once the one-off fixes below have run
+
+
+def _migrate(con, data):
+    """One-off fixes for catalogs written by 0.1.0. A busy database skips them until the next open."""
+    if con.execute("PRAGMA user_version").fetchone()[0] >= SCHEMA_VERSION:
+        return
+    try:
+        con.execute("UPDATE artifacts SET thumb_status='pending' WHERE thumb_status IS NULL")
+        # rescan browser history once: 0.1.0 kept a row's first title only, often "Page not found"
+        state_set(con, "history_cursors", {})
+        fold_twins(con)
+        common.rekey_overrides(data, {r[0]: r[1] for r in con.execute(
+            "SELECT uuid, id FROM artifacts WHERE uuid IS NOT NULL AND uuid<>id")})
+        con.execute("PRAGMA user_version=%d" % SCHEMA_VERSION)
+        con.commit()
+    except sqlite3.OperationalError:
+        con.rollback()
+
+
+def _data_of(con):
+    path = con.execute("PRAGMA database_list").fetchone()[2]
+    return os.path.dirname(path) if path else None
 
 
 def id_from_url(url):
@@ -59,11 +87,30 @@ def resolve(con, aid, uuid=None):
     return aid
 
 
+def fold_twins(con):
+    """Fold a uuid-keyed row into the short-id row of the same title when that title names exactly one of
+    each and the short-id row has no other uuid. A claude.ai/code/artifact/<uuid> visit is the only place a
+    uuid row comes from, and the artifact list gives short ids without uuids, so the title is the one link.
+    Returns the number folded."""
+    by_title = {}
+    for r in con.execute("SELECT id, uuid, title FROM artifacts WHERE title IS NOT NULL AND title<>''"):
+        by_title.setdefault(r["title"], ([], []))[0 if UUID.match(r["id"]) else 1].append(r)
+    n = 0
+    for uu, short in by_title.values():
+        if len(uu) == 1 and len(short) == 1 and short[0]["uuid"] in (None, uu[0]["id"]):
+            merge(con, uu[0]["id"], short[0]["id"])
+            n += 1
+    return n
+
+
 def merge(con, src, dst):
     """Fold row `src` (and its events) into row `dst`, keeping the non-null and most precise fields; delete `src`."""
     s = get(con, src)
     if s is None:
         return
+    data = _data_of(con)
+    if data:  # config.toml overrides keyed by the old id follow the row
+        common.rekey_overrides(data, {src: dst})
     con.execute("UPDATE OR IGNORE events SET artifact_id=? WHERE artifact_id=?", (dst, src))
     con.execute("DELETE FROM events WHERE artifact_id=?", (src,))
     d = get(con, dst)
@@ -112,6 +159,7 @@ def upsert_artifact(con, aid, **fields):
             for k in ("description", "desc_source", "desc_status"):
                 vals.pop(k, None)
     if row is None:
+        vals.setdefault("thumb_status", "pending")  # every new row waits for a thumbnail (or "none")
         vals.update(first_seen=now, updated=now)
         cols = ["id"] + list(vals)
         con.execute("INSERT INTO artifacts(%s) VALUES(%s)" % (",".join(cols), ",".join("?" * len(cols))),

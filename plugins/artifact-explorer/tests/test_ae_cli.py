@@ -25,7 +25,7 @@ class CliTest(unittest.TestCase):
         db.upsert_artifact(con, "aaaaaaaaaa", url="https://claude.ai/artifact/aaaaaaaaaa", title="A", owned=1,
                            desc_status="pending", thumb_status="ok")
         db.upsert_artifact(con, "bbbbbbbbbb", title="B", owned=0, desc_status="pending", thumb_status="pending")
-        db.upsert_artifact(con, "cccccccccc", title="C", desc_status="pending")
+        db.upsert_artifact(con, "cccccccccc", title="C", desc_status="pending", thumb_status="none")
         con.commit()
 
     def rows(self, *a):

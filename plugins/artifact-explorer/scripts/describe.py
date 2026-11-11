@@ -74,6 +74,7 @@ def ingest_list(data, file):
             description=desc, desc_source="publish" if desc else None,
             desc_status=status)
         n += 1
+    db.fold_twins(con)
     con.commit()
     print("ingested %d rows" % n)
     return 0
@@ -205,7 +206,7 @@ def status(data, as_json=False):
         "shared": one("SELECT COUNT(*) FROM artifacts WHERE owned=0"),
         "unknown": one("SELECT COUNT(*) FROM artifacts WHERE owned IS NULL"),
         "pending_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE " + PENDING),
-        "thumbs_missing": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status IN ('pending','failed')"),
+        "thumbs_missing": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status IS NULL OR thumb_status IN ('pending','failed')"),
         "last_pass": db.state_get(con, "last_pass"),
         "spend_today": round(db.spend_today(con), 2),
         "spend_cap": common.options()["describe_daily_cap"]}

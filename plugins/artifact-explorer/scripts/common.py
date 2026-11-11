@@ -1,6 +1,7 @@
 """Shared helpers: paths, options, config, logging, locks, repo names, detached runs."""
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -90,6 +91,44 @@ def load_config(data):
     if os.path.exists(user):
         cfg = _merge(cfg, load_toml(user))
     return cfg
+
+
+def rekey_overrides(data, pairs):
+    """Rename `[overrides."<old>"]` tables in DATA/config.toml to the new id, for {old: new} in pairs, when the
+    new id has no table of its own. Comments and layout are kept; the file is rewritten only when the result
+    still parses. Returns the number renamed."""
+    p = os.path.join(data, "config.toml")
+    if not pairs or not os.path.exists(p):
+        return 0
+    try:
+        with open(p, encoding="utf-8") as f:
+            text = f.read()
+        have = tomli.loads(text).get("overrides") or {}
+    except (OSError, tomli.TOMLDecodeError):
+        return 0
+    new = text
+    for src, dst in pairs.items():
+        if src not in have or dst in have:
+            continue
+        q = re.escape(src)
+        pat = re.compile(r"""(?m)^(\s*\[\s*overrides\s*\.\s*)(?:"%s"|'%s'|%s)(?=\s*\])""" % (q, q, q))
+        new = pat.sub(lambda m: m.group(1) + '"%s"' % dst, new)
+    if new == text:
+        return 0
+    try:
+        got = tomli.loads(new).get("overrides") or {}
+    except tomli.TOMLDecodeError:
+        return 0
+    n = sum(1 for s, d in pairs.items() if s in have and s not in got and d in got)
+    tmp = p + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(new)
+        os.replace(tmp, p)
+    except OSError:
+        return 0
+    log(data, "config.toml: %d override(s) re-keyed after a merge" % n)
+    return n
 
 
 def log(data, msg):

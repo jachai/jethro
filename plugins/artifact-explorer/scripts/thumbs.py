@@ -70,7 +70,7 @@ def run(data, aid=None, limit=None):
         if aid:
             rows = con.execute("SELECT id, local_path FROM artifacts WHERE id=?", (aid,)).fetchall()
         else:
-            rows = con.execute("SELECT id, local_path FROM artifacts WHERE thumb_status='pending' "
+            rows = con.execute("SELECT id, local_path FROM artifacts WHERE thumb_status IS NULL OR thumb_status='pending' "
                                "ORDER BY updated DESC").fetchall()
         browser, made = None, 0
         os.makedirs(os.path.join(data, "thumbs"), exist_ok=True)
