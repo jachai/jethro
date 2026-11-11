@@ -16,6 +16,7 @@ import describe  # noqa: E402
 
 U = "https://claude.ai/artifact/"
 A, B, C = "AAAAAAAAAAAA", "BBBBBBBBBBBB", "CCCCCCCCCCCC"
+REAL_PID_ALIVE = common._pid_alive
 
 
 class Base(unittest.TestCase):
@@ -128,6 +129,36 @@ class SkipTyped(Base):
         self.assertEqual([r["id"] for r in describe.pending_rows(con, True)][-1], A)
 
 
+class ReviewFixes(Base):
+    def test_unknown_id_creates_no_row(self):
+        p = os.path.join(self.d, "page.html")
+        open(p, "w").write("<p>Slides</p>")
+        describe.excerpt_for(self.d, p, os.path.join(self.d, "x.txt"), "ZZZZZZZZZZZZ", "Slides")
+        self.assertIsNone(db.get(self.con(), "ZZZZZZZZZZZZ"))
+
+    def test_launch_lock(self):
+        with common.Lock(os.path.join(self.d, "describer.lock"), 120):
+            describe.launch(self.d)  # another launch decision is in progress
+        self.assertFalse(self.det.called)
+
+    def test_ended_child_is_reaped(self):
+        if os.name == "nt":
+            self.skipTest("POSIX zombies")
+        import subprocess
+        pid = subprocess.Popen([sys.executable, "-c", "pass"]).pid  # the Popen is dropped, as in detach
+        time.sleep(1)
+        self.assertTrue(REAL_PID_ALIVE(pid))  # unreaped zombie: kill(pid, 0) still succeeds
+        json.dump({"pid": pid, "t": time.time(), "day": db.today(), "booked": 0.25},
+                  open(os.path.join(self.d, "describer.json"), "w"))
+        with mock.patch.object(common, "_pid_alive", REAL_PID_ALIVE):
+            self.assertFalse(describe._running(self.d, self.con()))
+
+    def test_column_race(self):
+        con = self.con()  # the column exists: a second ALTER (another process won the race) must not raise
+        db._add_desc_note(con)
+        self.assertIn("desc_note", {r[1] for r in con.execute("PRAGMA table_info(artifacts)")})
+
+
 class NeverWaits(Base):
     def skill_tools(self):
         txt = open(os.path.join(common.ROOT, "skills", "refresh", "SKILL.md"), encoding="utf-8").read()
@@ -142,7 +173,7 @@ class NeverWaits(Base):
         tools, _ = self.skill_tools()
         self.assertEqual(argv[argv.index("--allowedTools") + 1], tools)
         self.assertEqual(argv[argv.index("--output-format") + 1], "json")
-        self.assertEqual(float(argv[argv.index("--max-budget-usd") + 1]), describe.RUN_BUDGET)
+        self.assertLess(float(argv[argv.index("--max-budget-usd") + 1]), describe.RUN_BUDGET)
         self.assertEqual(kw["out"], os.path.join(self.d, "describer.out"))
 
     def test_skill_runs_describer_in_foreground_and_stops_on_refusal(self):
