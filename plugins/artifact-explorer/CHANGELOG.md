@@ -12,7 +12,7 @@ All notable changes to this project are documented here. The format is based on
 - A `claude.ai/code/artifact/<uuid>` visit and the short-id row of the same artifact from the artifact list are now one row: a uuid-keyed row folds into the only short-id row with the same title (on history scans, on `ae ingest-list`, and once when a 0.1.0 catalog opens). Events are kept.
 - `config.toml` overrides keyed by a uuid follow the row when it merges into its short id.
 - A row first seen as "Page not found" gets its title from a later browser visit (also " – Claude" titles); a 0.1.0 catalog rescans browser history once to fill them.
-- Cards show who created the artifact and its sharing.
+- Cards show who created the artifact and its sharing; a shared row without a harvested sharing label shows "Shared with me".
 - Rows with an unknown owner show "unknown" under Created by.
 
 ## [0.1.0] - 2026-11-10

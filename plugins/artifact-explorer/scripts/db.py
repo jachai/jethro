@@ -5,8 +5,6 @@ import re
 import sqlite3
 import time
 
-import common
-
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS artifacts(
   id TEXT PRIMARY KEY, uuid TEXT, url TEXT, title TEXT, kind TEXT, owned INTEGER,
@@ -36,33 +34,34 @@ def connect(data, timeout=30):
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")  # readers (SessionStart) never wait on a long watcher pass
     con.executescript(SCHEMA)
-    _migrate(con, data)
+    _migrate(con, timeout)
     return con
 
 
 SCHEMA_VERSION = 1  # PRAGMA user_version once the one-off fixes below have run
 
 
-def _migrate(con, data):
-    """One-off fixes for catalogs written by 0.1.0. A busy database skips them until the next open."""
+def _migrate(con, timeout):
+    """One-off fixes for catalogs written by 0.1.0. A busy database skips them (no wait) until the next open."""
     if con.execute("PRAGMA user_version").fetchone()[0] >= SCHEMA_VERSION:
         return
+    con.execute("PRAGMA busy_timeout=0")
     try:
         con.execute("UPDATE artifacts SET thumb_status='pending' WHERE thumb_status IS NULL")
         # rescan browser history once: 0.1.0 kept a row's first title only, often "Page not found"
         state_set(con, "history_cursors", {})
         fold_twins(con)
-        common.rekey_overrides(data, {r[0]: r[1] for r in con.execute(
-            "SELECT uuid, id FROM artifacts WHERE uuid IS NOT NULL AND uuid<>id")})
         con.execute("PRAGMA user_version=%d" % SCHEMA_VERSION)
         con.commit()
     except sqlite3.OperationalError:
         con.rollback()
+    finally:
+        con.execute("PRAGMA busy_timeout=%d" % int(timeout * 1000))
 
 
-def _data_of(con):
-    path = con.execute("PRAGMA database_list").fetchone()[2]
-    return os.path.dirname(path) if path else None
+def merged_ids(con):
+    """{uuid: id} for rows keyed by a short id that carry their uuid (config overrides follow these)."""
+    return {r[0]: r[1] for r in con.execute("SELECT uuid, id FROM artifacts WHERE uuid IS NOT NULL AND uuid<>id")}
 
 
 def id_from_url(url):
@@ -108,9 +107,6 @@ def merge(con, src, dst):
     s = get(con, src)
     if s is None:
         return
-    data = _data_of(con)
-    if data:  # config.toml overrides keyed by the old id follow the row
-        common.rekey_overrides(data, {src: dst})
     con.execute("UPDATE OR IGNORE events SET artifact_id=? WHERE artifact_id=?", (dst, src))
     con.execute("DELETE FROM events WHERE artifact_id=?", (src,))
     d = get(con, dst)

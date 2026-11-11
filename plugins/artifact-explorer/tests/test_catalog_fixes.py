@@ -152,27 +152,49 @@ class OverrideTest(Base):  # D611
         db.upsert_artifact(self.con, UU, title="Pixel Arcade")
         db.upsert_artifact(self.con, SHORT, title="Pixel Arcade", owned=0)
         db.fold_twins(self.con)
+        self.assertEqual(self.rows()[SHORT]["category"], "Personal")  # build re-keys after the merge commits
         cfg = common.load_config(self.d)
         self.assertEqual(cfg["overrides"][SHORT]["category"], "Personal")
         self.assertNotIn(UU, cfg["overrides"])
         self.assertIn("# mine", open(os.path.join(self.d, "config.toml"), encoding="utf-8").read())
-        self.assertEqual(self.rows()[SHORT]["category"], "Personal")
 
     def test_existing_short_override_wins(self):
         self.cfg('[overrides."%s"]\ncategory = "Personal"\n[overrides."%s"]\ncategory = "Plans"\n' % (UU, SHORT))
         db.upsert_artifact(self.con, UU, title="Pixel Arcade")
         db.upsert_artifact(self.con, SHORT, title="Pixel Arcade")
         db.fold_twins(self.con)
+        self.assertEqual(self.rows()[SHORT]["category"], "Plans")
         self.assertEqual(common.load_config(self.d)["overrides"][SHORT]["category"], "Plans")  # still valid TOML
+        self.assertIn("move them by hand", open(os.path.join(self.d, "watch.log"), encoding="utf-8").read())
 
-    def test_open_rekeys_overrides_of_already_merged_rows(self):
+    def test_build_rekeys_overrides_of_already_merged_rows(self):
         self.cfg("[overrides.'%s']\nhidden = true\n" % UU)
         db.upsert_artifact(self.con, SHORT, uuid=UU, title="x")
+        self.con.commit()
+        self.assertNotIn(SHORT, self.rows())  # hidden: the override now applies to the short id
+        self.assertTrue(common.load_config(self.d)["overrides"][SHORT]["hidden"])
+
+    def test_bom_config_is_read(self):
+        with open(os.path.join(self.d, "config.toml"), "w", encoding="utf-8-sig") as f:
+            f.write('[overrides."%s"]\ncategory = "Personal"\n' % UU)
+        self.assertEqual(common.rekey_overrides(self.d, {UU: SHORT}), 1)
+
+
+class MigrationTest(Base):
+    def test_busy_database_skips_without_waiting(self):  # review: a read-only opener must not wait on a writer
         self.con.execute("PRAGMA user_version=0")
         self.con.commit()
-        self.con.close()
-        db.connect(self.d).close()
-        self.assertTrue(common.load_config(self.d)["overrides"][SHORT]["hidden"])
+        other = sqlite3.connect(os.path.join(self.d, "explorer.db"))
+        other.execute("BEGIN IMMEDIATE")
+        import time
+        t = time.time()
+        con = db.connect(self.d, timeout=5)
+        self.assertLess(time.time() - t, 2)
+        self.assertEqual(con.execute("PRAGMA user_version").fetchone()[0], 0)
+        other.rollback()
+        other.close()
+        con.close()
+        self.assertEqual(db.connect(self.d).execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
 
 
 class TitleTest(Base):  # B5
@@ -204,6 +226,12 @@ class CardsAndCreatorTest(Base):
     def test_unknown_owner_shows_unknown(self):  # B6
         db.upsert_artifact(self.con, "aaaaaaaaaa", title="x")
         self.assertEqual(self.rows()["aaaaaaaaaa"]["created_by"], "unknown")
+
+    def test_shared_rows_without_a_harvested_label_say_so(self):  # B4
+        db.upsert_artifact(self.con, "aaaaaaaaaa", title="x", owned=0)
+        db.upsert_artifact(self.con, "bbbbbbbbbb", title="y", owned=1)
+        r = self.rows()
+        self.assertEqual((r["aaaaaaaaaa"]["sharing"], r["bbbbbbbbbb"]["sharing"]), ("Shared with me", ""))
 
     def test_cards_show_creator_and_sharing(self):  # B4
         tpl = open(TPL, encoding="utf-8").read()

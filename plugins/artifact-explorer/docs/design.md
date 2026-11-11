@@ -61,13 +61,15 @@ Created = earliest publish event, else `created`. Modified = latest publish, els
 "Created by" is `me`, the creator (or "someone else") for shared rows, and "unknown" when `owned` is NULL. The page sorts
 "Modified" by `recent` = Modified, else last accessed, else Created (shared rows have no modified time).
 New rows start with `thumb_status` pending. `PRAGMA user_version` 1 marks the one-off 0.1.1 fixes run on open
-(NULL thumb_status → pending, one browser history rescan, title-twin fold, uuid override re-keying).
+(NULL thumb_status → pending, one browser history rescan, title-twin fold); a busy database skips them without waiting.
 
 **Title twins.** A `claude.ai/code/artifact/<uuid>` visit creates a uuid-keyed row, and the artifact list gives the same
 artifact as a short id without its uuid, so nothing links them but the title. `db.fold_twins` folds a uuid-keyed row into
 the short-id row when that title names exactly one of each and the short-id row has no other uuid; it runs after every
-history scan and `ae ingest-list`. Every merge renames a `[overrides."<old id>"]` table in DATA/config.toml to the new id
-(when the new id has none; only that header form, and only when the result still parses).
+history scan and `ae ingest-list`. Title is a weak key (two different artifacts can share one), so the fold needs
+exactly one row of each kind. Before each build, a `[overrides."<uuid>"]` table in DATA/config.toml is renamed to the
+short id of the row that now carries that uuid (only that header form, only when the short id has no table, and only
+when the result still parses; anything else is logged to watch.log to move by hand).
 
 ## Data flow
 
