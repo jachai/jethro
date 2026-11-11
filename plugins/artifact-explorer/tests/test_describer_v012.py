@@ -144,9 +144,10 @@ class ReviewFixes(Base):
     def test_ended_child_is_reaped(self):
         if os.name == "nt":
             self.skipTest("POSIX zombies")
-        import subprocess
-        pid = subprocess.Popen([sys.executable, "-c", "pass"]).pid  # the Popen is dropped, as in detach
-        time.sleep(1)
+        pid = os.fork()  # a child nobody reaps: a zombie for sure (a dropped Popen may get reaped by others)
+        if pid == 0:
+            os._exit(0)
+        time.sleep(0.3)
         self.assertTrue(REAL_PID_ALIVE(pid))  # unreaped zombie: kill(pid, 0) still succeeds
         json.dump({"pid": pid, "t": time.time(), "day": db.today(), "booked": 0.25},
                   open(os.path.join(self.d, "describer.json"), "w"))
