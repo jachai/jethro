@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 
 
 def main(argv=None):
@@ -23,7 +23,8 @@ def main(argv=None):
     s.add_argument("--limit", type=int)
     sub.add_parser("build", help="rebuild explorer.html")
     s = sub.add_parser("import", help="import an old ~/.claude/artifact-explorer folder (read only)")
-    s.add_argument("--from", dest="src", default=os.path.join(os.path.expanduser("~"), ".claude", "artifact-explorer"))
+    s.add_argument("--from", dest="src", help="old folder (default ~/.claude/artifact-explorer)")
+    s.add_argument("--thumbs-only", action="store_true", help="only copy its screenshots into rows without a thumbnail")
     sub.add_parser("launch-describer", help="start a background describer run when one is due")
     s = sub.add_parser("ingest-list", help="record Artifact list rows from a JSON file")
     s.add_argument("file")
@@ -83,11 +84,11 @@ def main(argv=None):
         return thumbs.run(data, aid=a.id, limit=a.limit)
     if a.cmd == "build":
         import build
-        print(build.build(data))
+        print(build.build(data, max_age=0))  # asked for: always written, so its status is current
         return 0
     if a.cmd == "import":
         import importer
-        return importer.run(data, a.src)
+        return (importer.run_thumbs if a.thumbs_only else importer.run)(data, a.src or importer.default_src())
     if a.cmd in ("share-window", "set-thumb"):
         import time
         import db

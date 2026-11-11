@@ -4,6 +4,7 @@ import unittest
 from unittest import mock
 
 import helpers
+import common
 import db
 import watch
 
@@ -27,13 +28,13 @@ class WatchTest(unittest.TestCase):
         with mock.patch.dict("sys.modules", m):
             self.assertEqual(watch.run_pass(self.data, force=True), 0)
         names = [c[0] for c in order.mock_calls]
-        self.assertEqual(names, ["history.scan", "transcripts.scan", "thumbs.run", "build.build", "describe.launch"])
+        self.assertEqual(names, ["history.scan", "transcripts.scan", "thumbs.run", "describe.launch", "build.build"])
         m["thumbs"].run.assert_called_once_with(self.data, limit=5)
         con = db.connect(self.data)
         self.assertGreater(db.state_get(con, "last_pass"), time.time() - 5)
         self.assertFalse(os.path.exists(os.path.join(self.data, "watch.lock")))
 
-    def test_not_due_skips_and_no_build_without_changes(self):
+    def test_not_due_skips_and_build_is_left_to_its_heartbeat(self):
         con = db.connect(self.data)
         db.state_set(con, "last_pass", time.time())
         con.commit()
@@ -45,7 +46,8 @@ class WatchTest(unittest.TestCase):
         m["transcripts"].scan.return_value = 0
         with mock.patch.dict("sys.modules", m):
             watch.run_pass(self.data, force=True)
-        m["build"].build.assert_not_called()
+        # 0.1.3: every pass asks for a build; build skips an unchanged page until it is PAGE_HEARTBEAT old
+        m["build"].build.assert_called_once_with(self.data, max_age=common.PAGE_HEARTBEAT)
 
     def test_options_off(self):
         m = stubs()

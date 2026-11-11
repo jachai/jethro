@@ -89,7 +89,20 @@ def collect(data, cfg):
     return rows, state
 
 
-def build(data):
+def status(data, now):
+    """What the page shows in its status section, as of this build."""
+    import watch
+    con = db.connect(data)
+    last_pass = db.state_get(con, "last_pass")
+    con.close()
+    interval = common.options()["watch_interval"]
+    return {"built": now, "last_pass": last_pass, "watcher": watch.watcher_state(data), "interval": interval,
+            "stale_after": common.PAGE_HEARTBEAT + 2 * interval * 60}
+
+
+def build(data, max_age=None):
+    """Write DATA/explorer.html. Skipped when the rows and template are unchanged, unless the page is
+    older than max_age seconds (the watcher passes PAGE_HEARTBEAT; 0 always writes)."""
     con = db.connect(data)
     pairs = db.merged_ids(con)
     con.close()
@@ -104,9 +117,10 @@ def build(data):
         tpl = f.read()
     digest = hashlib.sha256((json.dumps(payload, sort_keys=True) + tpl).encode()).hexdigest()
     out = os.path.join(data, "explorer.html")
-    if digest == old_hash and os.path.exists(out):
+    if digest == old_hash and os.path.exists(out) and (max_age is None or time.time() - os.path.getmtime(out) < max_age):
         return out
     payload["generated"] = time.time()
+    payload["status"] = status(data, payload["generated"])
     blob = json.dumps(payload, sort_keys=True)
     for ch, esc in (("<", "\\u003c"), (">", "\\u003e"), ("&", "\\u0026"), ("\u2028", "\\u2028"), ("\u2029", "\\u2029")):
         blob = blob.replace(ch, esc)  # inside a <script>, no raw < can open a comment or tag

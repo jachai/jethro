@@ -72,6 +72,56 @@ def import_thumb(data, src, aid, previews):
     return None
 
 
+def default_src():
+    """The 0.0.x explorer folder (AE_OLD_CATALOG overrides it, for tests)."""
+    return os.environ.get("AE_OLD_CATALOG") or os.path.join(os.path.expanduser("~"), ".claude", "artifact-explorer")
+
+
+def _old_thumbs(con, src):
+    """(row id, old id) for rows with no thumbnail whose old folder has a shot or preview for them."""
+    src = os.path.expanduser(src)
+    shots = os.path.join(src, "shots")
+    have = {f[:-4] for f in os.listdir(shots) if f.endswith(".jpg")} if os.path.isdir(shots) else set()
+    have |= set(load(src, "previews.json", {}))
+    out = []
+    for m in load(src, "meta.json", []):
+        mid = m.get("id") if isinstance(m, dict) else None
+        if not mid or mid not in have:
+            continue
+        r = con.execute("SELECT id FROM artifacts WHERE (id=? OR (uuid=? AND uuid<>'')) AND "
+                        "(thumb IS NULL OR thumb='' OR thumb_status IS NOT 'ok') LIMIT 1",
+                        (mid, m.get("uuid") or "")).fetchone()
+        if r:
+            out.append((r[0], mid))
+    return out
+
+
+def thumbs_available(con, src=None):
+    return len(_old_thumbs(con, src or default_src()))
+
+
+def run_thumbs(data, src):
+    """Copy the old folder's Chrome shots (or previews) into rows that have no thumbnail. Changes nothing else."""
+    src = os.path.expanduser(src)
+    previews = load(src, "previews.json", {})
+    con = db.connect(data)
+    n = 0
+    try:
+        for aid, mid in _old_thumbs(con, src):
+            rel = import_thumb(data, src, mid, previews)
+            if rel:
+                db.upsert_artifact(con, aid, thumb=rel, thumb_source="import", thumb_status="ok")
+                n += 1
+        con.commit()
+    finally:
+        con.close()
+    print("imported %d thumbnails" % n)
+    if n:
+        import build
+        build.build(data)
+    return 0
+
+
 def run(data, src):
     src = os.path.expanduser(src)
     meta = [m for m in load(src, "meta.json", []) if not m.get("gone") and m.get("id")]

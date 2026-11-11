@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(HERE, "vendor"))
 import tomli  # noqa: E402  (vendored, works on Python 3.9+)
 
 PLUGIN_KEY = "artifact-explorer@artifact-explorer"
+PAGE_HEARTBEAT = 3600  # the watcher rewrites an unchanged page once it is this old, so its build time shows liveness
 DEFAULT_OPTIONS = {
     "watch_interval": 10,
     "browser_history": True,

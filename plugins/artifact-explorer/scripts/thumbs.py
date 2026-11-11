@@ -68,10 +68,13 @@ def run(data, aid=None, limit=None):
     con = db.connect(data)
     try:
         if aid:
-            rows = con.execute("SELECT id, local_path FROM artifacts WHERE id=?", (aid,)).fetchall()
+            rows = con.execute("SELECT id, local_path, thumb_status FROM artifacts WHERE id=?", (aid,)).fetchall()
         else:
-            rows = con.execute("SELECT id, local_path FROM artifacts WHERE thumb_status IS NULL OR thumb_status='pending' "
+            # 'none' = nothing to capture headlessly (no local file); such a row is retried once its file exists
+            rows = con.execute("SELECT id, local_path, thumb_status FROM artifacts WHERE thumb_status IS NULL "
+                               "OR thumb_status='pending' OR (thumb_status='none' AND local_path<>'') "
                                "ORDER BY updated DESC").fetchall()
+            rows = [r for r in rows if r["thumb_status"] != "none" or os.path.isfile(r["local_path"])]
         browser, made = None, 0
         os.makedirs(os.path.join(data, "thumbs"), exist_ok=True)
         for r in rows:

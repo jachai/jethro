@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-11-11
+
+### Fixed
+
+- `ae status` tells the truth about thumbnails: "thumbnails: N ok, N waiting or failed", then "no thumbnail: N (no local file: turn on chrome_screenshots to capture them)". Status `none` means there is no local file to capture headlessly; 0.1.2 counted only pending and failed rows, so 168 rows with no thumbnail showed as "missing: 0".
+- A row marked `none` is captured once its local file exists (it was never retried).
+
+### Added
+
+- `ae import --thumbs-only` copies the older explorer's Chrome screenshots (`~/.claude/artifact-explorer/shots`) into rows that have no thumbnail and changes nothing else. `ae status` says how many can be copied.
+- A status line at the top of the page: when it was built (relative, refreshing while the page is open), when the watcher last checked, and whether a watcher was running, all "as of build". A page more than an hour plus two watcher intervals old says "Page may be stale". The watcher rewrites an unchanged page once an hour (and records a heartbeat in `watcher.json`), so the build time shows it is alive; `ae build` always writes.
+- Rows without a thumbnail get a generated picture: an abstract composition seeded by the artifact id (the same on every build), its hue family set by the category, colours from the page theme (light and dark), with the title's first letter. Inline SVG, no library, no network. The table shows a small picture beside each title.
+- `scripts/dev/fresh-install-reset.sh` and `fresh-install-restore.sh` (with `--dry-run`): back up the data folder, uninstall, remove only the plugin's allow rule, print fresh-install steps; and put it all back. Both refuse while a watcher uses the data folder.
+
 ## [0.1.2] - 2026-11-11
 
 ### Fixed
