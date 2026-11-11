@@ -111,6 +111,31 @@ def excerpt(path, chars=3000):
     return " ".join(raw.split())[:chars]
 
 
+MIN_TEXT = 50  # fewer visible characters than this is a viewer shell, not something to describe
+TYPED = {"docs", "slides", "data", "dashboard"}  # Artifact types whose saved index.html is only the viewer shell
+
+
+def excerpt_for(data, path, out, aid=None, kind=None, chars=3000):
+    """Write the excerpt of a saved artifact to `out` for the describer agent. A typed artifact or a page
+    with almost no text marks the row 'skipped' (with the reason) so no run picks it again.
+    Returns (text, skipped)."""
+    text = excerpt(path, chars)
+    typed = (kind or "").strip().lower() in TYPED
+    skipped = typed or len(text) < MIN_TEXT
+    with open(out, "w", encoding="utf-8") as f:
+        f.write("" if skipped else text)
+    if aid:
+        con = db.connect(data)
+        if skipped:
+            db.upsert_artifact(con, aid, kind=kind or None, desc_status="skipped",
+                               desc_note="no text: typed artifact" if typed else "no text: under %d characters" % MIN_TEXT)
+        elif kind:
+            db.upsert_artifact(con, aid, kind=kind)
+        con.commit()
+        con.close()
+    return text, skipped
+
+
 def set_desc(data, aid, text):
     con = db.connect(data)
     db.upsert_artifact(con, aid, description=text.strip()[:200], desc_source="describer", desc_status="ok")
@@ -141,8 +166,9 @@ def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None,
         args.append(thumb_status)
     if need_desc:
         where.append("(description IS NULL OR description='')")
-    sql = "SELECT %s FROM artifacts%s ORDER BY owned DESC, modified DESC, id" % (
-        COLS, " WHERE " + " AND ".join(where) if where else "")
+    typed_last = "CASE WHEN lower(coalesce(kind,'')) IN (%s) THEN 1 ELSE 0 END" % ",".join("'%s'" % t for t in sorted(TYPED))
+    sql = "SELECT %s FROM artifacts%s ORDER BY owned DESC, %s, modified DESC, id" % (
+        COLS, " WHERE " + " AND ".join(where) if where else "", typed_last)
     if limit is not None:
         sql += " LIMIT %d" % limit
     return [dict(r) for r in con.execute(sql, args)]
@@ -167,12 +193,64 @@ def pending(data, owned_only=False, as_json=False):
     return 0
 
 
+RUN_BUDGET = 0.25  # one background run's worst case: passed as --max-budget-usd and booked at launch
+MAX_AGE = 30 * 60  # a describer record older than this is not trusted, even if its pid is alive (pid reuse)
+RUN_FILE, OUT_FILE = "describer.json", "describer.out"
+
+
+def _skill_tools():
+    """The refresh skill's allowed-tools: the background run gets exactly these and nothing else."""
+    with open(os.path.join(common.ROOT, "skills", "refresh", "SKILL.md"), encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("allowed-tools:"):
+                return line.split(":", 1)[1].strip()
+    raise RuntimeError("refresh skill has no allowed-tools")
+
+
+def _running(data, con):
+    """True while the last launched describer still runs. When it has ended: log its result, correct the
+    worst-case booking to the real cost (kept when the result can't be read), drop the record."""
+    path = os.path.join(data, RUN_FILE)
+    try:
+        with open(path, encoding="utf-8") as f:
+            rec = json.load(f)
+        pid, t = int(rec["pid"]), float(rec["t"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    if common._pid_alive(pid):
+        if time.time() - t < MAX_AGE:
+            common.log(data, "describer still running (pid %d), not launching another" % pid)
+            return True
+        common.log(data, "describer pid %d is older than %d min; not waiting on it" % (pid, MAX_AGE // 60))
+    else:
+        try:
+            with open(os.path.join(data, OUT_FILE), encoding="utf-8") as f:
+                res = json.load(f)
+            cost = float(res["total_cost_usd"])
+            db.add_spend(con, cost - float(rec.get("booked", RUN_BUDGET)), day=rec.get("day"), runs=0)
+            denied = sorted({str(d.get("tool_name")) for d in res.get("permission_denials") or [] if isinstance(d, dict)})
+            common.log(data, "describer finished: %s ($%.2f)%s" % (
+                " ".join(str(res.get("result", "")).split())[:200], cost, "; refused: " + ", ".join(denied) if denied else ""))
+        except (OSError, ValueError, KeyError, TypeError):
+            common.log(data, "describer ended without a readable result; kept the $%.2f worst case" % RUN_BUDGET)
+    con.commit()
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    return False
+
+
 def launch(data):
-    """Start one background describer run when it is due. Prints nothing."""
+    """Start one background describer run when it is due and none is running. Prints nothing.
+    The run is `claude -p`: it exits when done, has stdin closed, may only use the refresh skill's tools
+    (dontAsk: anything else is refused, never asked) and is capped at RUN_BUDGET."""
     opts = common.options()
     con = db.connect(data)
+    if _running(data, con):
+        return 0
     rows = pending_rows(con, owned_only=True)
-    if not rows or db.spend_today(con) >= opts["describe_daily_cap"]:
+    if not rows:
         return 0
     now = time.time()
     claude = shutil.which("claude")
@@ -182,16 +260,28 @@ def launch(data):
         # without the setup allow rule every `ae` call in the unattended run would wait for approval;
         # the in-session refresh (SessionStart reminder) describes these rows instead
         return 0
-    argv = [claude, "--bg", "--model", opts["describe_model"], "--name", "artifact-explorer describer"]
+    if db.spend_today(con) + RUN_BUDGET > opts["describe_daily_cap"] + 1e-9:
+        if db.state_get(con, "cap_logged") != db.today():
+            common.log(data, "describer not launched: $%.2f spent today + $%.2f for one run is over the $%.2f cap"
+                       % (db.spend_today(con), RUN_BUDGET, opts["describe_daily_cap"]))
+            db.state_set(con, "cap_logged", db.today())
+            con.commit()
+        return 0
+    argv = [claude, "-p", "--model", opts["describe_model"], "--output-format", "json",
+            "--permission-mode", "dontAsk", "--allowedTools", _skill_tools(),
+            "--max-budget-usd", "%.2f" % RUN_BUDGET]
     if os.path.basename(os.path.normpath(data)).endswith("-inline"):
         # loaded with --plugin-dir (development): the new session must load it the same way
         argv += ["--plugin-dir", common.ROOT]
     argv.append("/artifact-explorer:refresh describe-only")
-    if common.detach(argv, cwd=data):
+    pid = common.detach(argv, cwd=data, out=os.path.join(data, OUT_FILE))
+    if pid:
+        with open(os.path.join(data, RUN_FILE), "w", encoding="utf-8") as f:
+            json.dump({"pid": pid, "t": now, "day": db.today(), "booked": RUN_BUDGET}, f)
         db.state_set(con, "describer_last", now)
-        db.add_spend(con, 0.05 + 0.01 * min(len(rows), 10))
+        db.add_spend(con, RUN_BUDGET)
         con.commit()
-        common.log(data, "describer launched for %d pending rows" % len(rows))
+        common.log(data, "describer launched (pid %d) for %d pending rows" % (pid, len(rows)))
     else:
         common.log(data, "describer launch failed")
     return 0
@@ -206,6 +296,7 @@ def status(data, as_json=False):
         "shared": one("SELECT COUNT(*) FROM artifacts WHERE owned=0"),
         "unknown": one("SELECT COUNT(*) FROM artifacts WHERE owned IS NULL"),
         "pending_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE " + PENDING),
+        "skipped_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE desc_status='skipped'"),
         "thumbs_missing": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status IS NULL OR thumb_status IN ('pending','failed')"),
         "last_pass": db.state_get(con, "last_pass"),
         "spend_today": round(db.spend_today(con), 2),
@@ -215,7 +306,8 @@ def status(data, as_json=False):
         return 0
     lp = out["last_pass"]
     print("artifacts: %(total)d (mine %(mine)d, shared %(shared)d, unknown %(unknown)d)" % out)
-    print("descriptions pending: %(pending_descriptions)d, thumbnails missing: %(thumbs_missing)d" % out)
+    print("descriptions pending: %(pending_descriptions)d (no text, skipped: %(skipped_descriptions)d), "
+          "thumbnails missing: %(thumbs_missing)d" % out)
     print("last pass: %s" % (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(lp)) if lp else "never"))
     print("describer spend today: $%(spend_today).2f of $%(spend_cap).2f" % out)
     return 0

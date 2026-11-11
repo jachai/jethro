@@ -241,15 +241,21 @@ def ae_argv(*args):
     return [sys.executable, os.path.join(HERE, "ae.py")] + [str(a) for a in args]
 
 
-def detach(argv, cwd=None):
-    """Start argv in the background, detached from this process; never raises."""
+def detach(argv, cwd=None, out=None):
+    """Start argv in the background, detached from this process, stdin closed; stdout to the file `out` when
+    given. Returns the child's pid, or None when it could not start. Never raises."""
     kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=cwd)
     if os.name == "nt":
         kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     else:
         kw["start_new_session"] = True
+    f = None
     try:
-        subprocess.Popen(argv, **kw)
-        return True
+        if out:
+            f = kw["stdout"] = open(out, "wb")
+        return subprocess.Popen(argv, **kw).pid
     except OSError:
-        return False
+        return None
+    finally:
+        if f:
+            f.close()

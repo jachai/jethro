@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 
 def main(argv=None):
@@ -56,6 +56,8 @@ def main(argv=None):
     s.add_argument("file")
     s.add_argument("--out", required=True, help="where the excerpt goes; the caller never reads it, the describer agent does")
     s.add_argument("--chars", type=int, default=3000)
+    s.add_argument("--id", help="the row: a typed artifact or a page with almost no text is marked skipped")
+    s.add_argument("--type", help='the Artifact type the read reported (e.g. "Docs", "Slides", "HTML")')
     a = p.parse_args(argv)
     data = common.data_dir(a.data)
 
@@ -67,10 +69,8 @@ def main(argv=None):
         return hook.ingest(data)
     if a.cmd == "excerpt":
         import describe
-        text = describe.excerpt(a.file, a.chars)
-        with open(a.out, "w", encoding="utf-8") as f:
-            f.write(text)
-        print("%d characters" % len(text))
+        text, skipped = describe.excerpt_for(data, a.file, a.out, a.id, a.type, a.chars)
+        print("skipped: no text to describe" if skipped else "%d characters" % len(text))
         return 0
     if a.cmd == "watch":
         import watch

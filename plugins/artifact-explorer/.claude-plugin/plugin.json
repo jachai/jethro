@@ -1,7 +1,7 @@
 {
   "name": "artifact-explorer",
   "displayName": "Artifact Explorer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A catalog of your claude.ai artifacts on your own machine: one local page to search, sort and reopen everything you made or were sent.",
   "author": {
     "name": "Jonathan Achai",
@@ -53,7 +53,7 @@
     "describe_daily_cap": {
       "type": "number",
       "title": "Daily describer cap (USD)",
-      "description": "The watcher starts no new background describer run once the estimated spend for today reaches this amount.",
+      "description": "The watcher starts a background describer run only when today's spend plus one run's limit ($0.25) stays within this amount.",
       "default": 1.0,
       "min": 0,
       "max": 50

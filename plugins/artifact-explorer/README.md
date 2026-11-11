@@ -24,7 +24,7 @@ Change them in `/config` (plugins).
 - `chrome_screenshots`: let `/artifact-explorer:screenshots` use Claude in Chrome for thumbnails (default off).
 - `share_harvest`: let `/artifact-explorer:sharing` read the Share dialog of your artifacts in Chrome (default off).
 - `describe_model`: model of the background describer session (default `haiku`). The `describer` agent itself always runs on `haiku`.
-- `describe_daily_cap`: USD per day after which no background describer run starts (default 1.0).
+- `describe_daily_cap`: USD per day for background describer runs (default 1.0). A run starts only when today's spend plus one run's $0.25 limit stays within it, and only one run goes at a time.
 
 ## What leaves the machine
 

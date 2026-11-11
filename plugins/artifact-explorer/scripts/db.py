@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS artifacts(
   version TEXT, seq INTEGER, local_path TEXT,
   description TEXT, desc_source TEXT, desc_status TEXT,
   thumb TEXT, thumb_source TEXT, thumb_status TEXT,
-  first_seen REAL, updated REAL);
+  first_seen REAL, updated REAL, desc_note TEXT);
 CREATE TABLE IF NOT EXISTS events(
   artifact_id TEXT, ts REAL, kind TEXT, source TEXT, session_id TEXT, cwd TEXT, repo TEXT, detail TEXT,
   UNIQUE(artifact_id, ts, kind, source));
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY, value TEXT);
 """
 
 FIELDS = ("uuid url title kind owned creator sharing size created modified last_accessed last_access_by "
-          "version seq local_path description desc_source desc_status thumb thumb_source thumb_status").split()
+          "version seq local_path description desc_source desc_status desc_note thumb thumb_source thumb_status").split()
 DESC_RANK = {None: 0, "title": 1, "publish": 2, "describer": 3, "import": 4}
 URL_ID = re.compile(r"^https://claude\.ai/(?:code/)?artifact/([A-Za-z0-9-]{10,})(?=$|[/?#])")
 UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -34,6 +34,9 @@ def connect(data, timeout=30):
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")  # readers (SessionStart) never wait on a long watcher pass
     con.executescript(SCHEMA)
+    if "desc_note" not in {r[1] for r in con.execute("PRAGMA table_info(artifacts)")}:
+        con.execute("ALTER TABLE artifacts ADD COLUMN desc_note TEXT")  # 0.1.2: why a row has no description
+        con.commit()
     _migrate(con, timeout)
     return con
 
@@ -200,6 +203,7 @@ def spend_today(con):
     return r[0] if r else 0.0
 
 
-def add_spend(con, usd):
-    con.execute("INSERT INTO spend VALUES(?,?,1) ON CONFLICT(day) DO UPDATE SET usd=usd+excluded.usd, runs=runs+1",
-                (today(), usd))
+def add_spend(con, usd, day=None, runs=1):
+    """Book usd on a day (today by default); a correction of an earlier booking passes runs=0."""
+    con.execute("INSERT INTO spend VALUES(?,?,?) ON CONFLICT(day) DO UPDATE SET usd=usd+excluded.usd, runs=runs+excluded.runs",
+                (day or today(), usd, runs))

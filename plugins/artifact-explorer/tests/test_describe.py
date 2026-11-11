@@ -84,7 +84,7 @@ class DescribeTest(unittest.TestCase):
         with open(self.f, "w") as f:
             json.dump([{"url": U + "AAAAAAAAAAAA", "scope": "mine"}], f)
         describe.ingest_list(d, self.f)
-        with mock.patch("shutil.which", return_value="/bin/claude"), mock.patch.object(common, "detach", return_value=True) as det:
+        with mock.patch("shutil.which", return_value="/bin/claude"), mock.patch.object(common, "detach", return_value=4242) as det:
             describe.launch(d)
         argv = det.call_args[0][0]
         self.assertEqual(argv[argv.index("--plugin-dir") + 1], common.ROOT)
@@ -95,18 +95,20 @@ class DescribeTest(unittest.TestCase):
         with mock.patch("shutil.which", return_value=None), mock.patch.object(common, "detach") as det:
             describe.launch(self.d)
             self.assertFalse(det.called)
-        with mock.patch("shutil.which", return_value="/bin/claude"), mock.patch.object(common, "detach", return_value=True) as det:
+        with mock.patch("shutil.which", return_value="/bin/claude"), \
+                mock.patch.object(common, "detach", return_value=4242) as det, \
+                mock.patch.object(common, "_pid_alive", return_value=False):
             describe.launch(self.d)
             self.assertEqual(det.call_count, 1)
             argv = det.call_args[0][0]
-            self.assertEqual(argv[:3], ["/bin/claude", "--bg", "--model"])
+            self.assertEqual(argv[:2], ["/bin/claude", "-p"])
             self.assertEqual(argv[-1], "/artifact-explorer:refresh describe-only")
             self.assertNotIn("--plugin-dir", argv)
             self.assertEqual(det.call_args[1]["cwd"], self.d)
             describe.launch(self.d)  # inside watch_interval
             self.assertEqual(det.call_count, 1)
             con = db.connect(self.d)
-            self.assertAlmostEqual(db.spend_today(con), 0.06)
+            self.assertAlmostEqual(db.spend_today(con), describe.RUN_BUDGET)
             db.state_set(con, "describer_last", time.time() - 3600)
             db.add_spend(con, 5)  # over the cap
             con.commit()
