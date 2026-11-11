@@ -11,7 +11,7 @@ import db  # noqa: E402
 
 TICK = 30
 HEARTBEAT_FILE = "watcher.json"
-FRESH = 4 * TICK  # a heartbeat younger than this (from a live pid) means a watcher is running
+FRESH = 600  # a heartbeat younger than this (from a live pid) means a watcher is running; covers a long pass
 
 
 def heartbeat(data):
@@ -22,8 +22,11 @@ def heartbeat(data):
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump({"pid": os.getpid(), "t": time.time()}, f)
         os.replace(tmp, path)
-    except OSError:
-        pass
+    except OSError:  # e.g. Windows: a reader has watcher.json open; try again next tick
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def watcher_state(data):
