@@ -108,11 +108,11 @@ when the result still parses; anything else is logged to watch.log to move by ha
    `desc_status=pending` and `owned` = 1 (unknown owner, mostly history finds, is left for the interactive refresh), no describer is running, today's spend plus one run's limit (`RUN_BUDGET` $0.25) stays within `describe_daily_cap`, no describer started in the last `watch_interval`, the setup allow rule
    `Bash(sh */artifact-explorer/*/bin/ae *)` is in `permissions.allow` of `~/.claude/settings.json` (`common.ALLOW_RULE`; rows otherwise wait for the in-session refresh and its SessionStart reminder), and
    `claude` is on PATH (argv[0] is the full path `shutil.which` returns, so Windows `claude.cmd` works). Command (0.1.2):
-   `claude -p --model <describe_model> --output-format json --permission-mode dontAsk --allowedTools "<refresh skill allowed-tools>" --max-budget-usd 0.25 "/artifact-explorer:refresh describe-only"`,
+   `claude -p --model <describe_model> --output-format json --permission-mode dontAsk --allowedTools "<refresh skill allowed-tools>" --max-budget-usd 0.20 "/artifact-explorer:refresh describe-only"` ($0.25 is booked; the margin covers the last turn, since the limit is checked between turns),
    detached with stdin closed and stdout to `DATA/describer.out`, cwd = DATA (the hook skips events whose cwd is under DATA). Print mode exits when the run ends and never waits for
    input; `dontAsk` refuses (never asks) any tool outside the skill's list, and the skill then stops with `stopped: TOOL refused`. (0.1.1 used `claude --bg`: such a session stays open
    "waiting" after its last reply, and its describer subagent ran async, so runs piled up.) When the data dir ends in `-inline` (the plugin was loaded with `--plugin-dir`), the command also gets
-   `--plugin-dir <plugin root>`. **Single flight**: the launch writes `DATA/describer.json` {pid, t, day, booked}; while that pid is alive and the record is younger than 30 min, no
+   `--plugin-dir <plugin root>`. **Single flight**: launch decisions run under `DATA/describer.lock`; the launch books $0.25, then atomically writes `DATA/describer.json` {pid, t, day, booked}; while that pid is alive and the record is younger than 30 min, no
    other run starts (each skipped tick logs "still running"). Once the pid has ended, the next tick logs the result line, its cost and any refused tools from `describer.out`, and corrects
    the $0.25 booked at launch to the real `total_cost_usd` (kept at $0.25 when the result can't be read). **Typed artifacts**: Docs, Slides and Data artifacts save only their viewer
    shell as index.html, so `ae excerpt --id --type` marks them (and any page under 50 visible characters) `skipped` with a `desc_note`; they never return to the queue, `ae status`

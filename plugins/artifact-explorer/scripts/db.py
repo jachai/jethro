@@ -35,10 +35,19 @@ def connect(data, timeout=30):
     con.execute("PRAGMA journal_mode=WAL")  # readers (SessionStart) never wait on a long watcher pass
     con.executescript(SCHEMA)
     if "desc_note" not in {r[1] for r in con.execute("PRAGMA table_info(artifacts)")}:
-        con.execute("ALTER TABLE artifacts ADD COLUMN desc_note TEXT")  # 0.1.2: why a row has no description
-        con.commit()
+        _add_desc_note(con)
     _migrate(con, timeout)
     return con
+
+
+def _add_desc_note(con):
+    """0.1.2 column: why a row has no description. Another process may add it between the check and here."""
+    try:
+        con.execute("ALTER TABLE artifacts ADD COLUMN desc_note TEXT")
+        con.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e):
+            raise
 
 
 SCHEMA_VERSION = 1  # PRAGMA user_version once the one-off fixes below have run

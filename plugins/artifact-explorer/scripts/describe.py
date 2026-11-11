@@ -126,6 +126,9 @@ def excerpt_for(data, path, out, aid=None, kind=None, chars=3000):
         f.write("" if skipped else text)
     if aid:
         con = db.connect(data)
+        if db.get(con, aid) is None:  # the id comes from the run; never invent a row
+            con.close()
+            return text, skipped
         if skipped:
             db.upsert_artifact(con, aid, kind=kind or None, desc_status="skipped",
                                desc_note="no text: typed artifact" if typed else "no text: under %d characters" % MIN_TEXT)
@@ -193,7 +196,8 @@ def pending(data, owned_only=False, as_json=False):
     return 0
 
 
-RUN_BUDGET = 0.25  # one background run's worst case: passed as --max-budget-usd and booked at launch
+RUN_BUDGET = 0.25  # one background run's worst case: booked at launch, checked against the daily cap
+RUN_LIMIT = 0.20  # passed as --max-budget-usd; claude checks it between turns, so the last turn may go a little over
 MAX_AGE = 30 * 60  # a describer record older than this is not trusted, even if its pid is alive (pid reuse)
 RUN_FILE, OUT_FILE = "describer.json", "describer.out"
 
@@ -217,11 +221,18 @@ def _running(data, con):
         pid, t = int(rec["pid"]), float(rec["t"])
     except (OSError, ValueError, KeyError, TypeError):
         return False
+    if os.name != "nt":
+        try:  # our own child that has ended is a zombie until reaped, and a zombie looks alive to kill(pid, 0)
+            os.waitpid(pid, os.WNOHANG)
+        except (ChildProcessError, OSError):
+            pass
     if common._pid_alive(pid):
         if time.time() - t < MAX_AGE:
             common.log(data, "describer still running (pid %d), not launching another" % pid)
             return True
-        common.log(data, "describer pid %d is older than %d min; not waiting on it" % (pid, MAX_AGE // 60))
+        # past the max age the pid may belong to another process now; the run's worst case stays booked
+        common.log(data, "describer pid %d is older than %d min; not waiting on it (kept the $%.2f booked)"
+                   % (pid, MAX_AGE // 60, float(rec.get("booked", RUN_BUDGET))))
     else:
         try:
             with open(os.path.join(data, OUT_FILE), encoding="utf-8") as f:
@@ -242,6 +253,12 @@ def _running(data, con):
 
 
 def launch(data):
+    """One launch decision at a time, also when `ae launch-describer` runs outside a watcher pass."""
+    with common.Lock(os.path.join(data, "describer.lock"), 120) as ok:
+        return _launch(data) if ok else 0
+
+
+def _launch(data):
     """Start one background describer run when it is due and none is running. Prints nothing.
     The run is `claude -p`: it exits when done, has stdin closed, may only use the refresh skill's tools
     (dontAsk: anything else is refused, never asked) and is capped at RUN_BUDGET."""
@@ -269,18 +286,25 @@ def launch(data):
         return 0
     argv = [claude, "-p", "--model", opts["describe_model"], "--output-format", "json",
             "--permission-mode", "dontAsk", "--allowedTools", _skill_tools(),
-            "--max-budget-usd", "%.2f" % RUN_BUDGET]
+            "--max-budget-usd", "%.2f" % RUN_LIMIT]
     if os.path.basename(os.path.normpath(data)).endswith("-inline"):
         # loaded with --plugin-dir (development): the new session must load it the same way
         argv += ["--plugin-dir", common.ROOT]
     argv.append("/artifact-explorer:refresh describe-only")
     pid = common.detach(argv, cwd=data, out=os.path.join(data, OUT_FILE))
     if pid:
-        with open(os.path.join(data, RUN_FILE), "w", encoding="utf-8") as f:
-            json.dump({"pid": pid, "t": now, "day": db.today(), "booked": RUN_BUDGET}, f)
+        day = db.today()
         db.state_set(con, "describer_last", now)
-        db.add_spend(con, RUN_BUDGET)
+        db.add_spend(con, RUN_BUDGET, day=day)  # booked first: a failed record write never hides the spend
         con.commit()
+        rec, tmp = os.path.join(data, RUN_FILE), os.path.join(data, RUN_FILE + ".tmp")
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"pid": pid, "t": now, "day": day, "booked": RUN_BUDGET}, f)
+            os.replace(tmp, rec)  # never half-written: a torn record would read as "no run"
+        except OSError:
+            common.log(data, "describer launched (pid %d) but its record could not be written" % pid)
+            return 0
         common.log(data, "describer launched (pid %d) for %d pending rows" % (pid, len(rows)))
     else:
         common.log(data, "describer launch failed")
