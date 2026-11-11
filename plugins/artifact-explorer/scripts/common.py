@@ -101,25 +101,30 @@ def rekey_overrides(data, pairs):
     if not pairs or not os.path.exists(p):
         return 0
     try:
-        with open(p, encoding="utf-8") as f:
+        with open(p, encoding="utf-8-sig") as f:
             text = f.read()
         have = tomli.loads(text).get("overrides") or {}
     except (OSError, tomli.TOMLDecodeError):
         return 0
+    todo = {s: d for s, d in pairs.items() if s in have}
+    if not todo:
+        return 0
     new = text
-    for src, dst in pairs.items():
-        if src not in have or dst in have:
-            continue
-        q = re.escape(src)
-        pat = re.compile(r"""(?m)^(\s*\[\s*overrides\s*\.\s*)(?:"%s"|'%s'|%s)(?=\s*\])""" % (q, q, q))
-        new = pat.sub(lambda m: m.group(1) + '"%s"' % dst, new)
+    for src, dst in todo.items():
+        if dst not in have:
+            q = re.escape(src)
+            pat = re.compile(r"""(?m)^(\s*\[\s*overrides\s*\.\s*)(?:"%s"|'%s'|%s)(?=\s*\])""" % (q, q, q))
+            new = pat.sub(lambda m: m.group(1) + '"%s"' % dst, new)
+    try:
+        got = tomli.loads(new).get("overrides") or {} if new != text else have
+    except tomli.TOMLDecodeError:
+        got, new = have, text
+    missed = sorted(s for s in todo if s in got)
+    if missed:  # another table form, or the short id has its own table: the old one no longer applies
+        log(data, "config.toml: overrides for %s apply to merged rows; move them by hand (%s)"
+            % (", ".join(missed), ", ".join(todo[s] for s in missed)))
     if new == text:
         return 0
-    try:
-        got = tomli.loads(new).get("overrides") or {}
-    except tomli.TOMLDecodeError:
-        return 0
-    n = sum(1 for s, d in pairs.items() if s in have and s not in got and d in got)
     tmp = p + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
@@ -127,6 +132,7 @@ def rekey_overrides(data, pairs):
         os.replace(tmp, p)
     except OSError:
         return 0
+    n = len(todo) - len(missed)
     log(data, "config.toml: %d override(s) re-keyed after a merge" % n)
     return n
 

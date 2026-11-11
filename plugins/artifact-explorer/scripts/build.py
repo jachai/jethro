@@ -76,7 +76,7 @@ def collect(data, cfg):
         rows.append({
             "id": r["id"], "title": r["title"] or r["id"], "kind": r["kind"] or "", "url": r["url"] or "",
             "category": o.get("category") or categorise(rules, r["title"], desc, r["kind"]),
-            "created_by": created_by(r), "sharing": sharing_label(r["sharing"]),
+            "created_by": created_by(r), "sharing": sharing_label(r["sharing"]) or ("Shared with me" if r["owned"] == 0 else ""),
             "created": created, "modified": modified,
             # sort key for "Modified": shared rows have no modified time, so use the last access, then created
             "recent": modified or r["last_accessed"] or created,
@@ -89,6 +89,10 @@ def collect(data, cfg):
 
 
 def build(data):
+    con = db.connect(data)
+    pairs = db.merged_ids(con)
+    con.close()
+    common.rekey_overrides(data, pairs)  # overrides keyed by a uuid follow the row it merged into
     cfg = common.load_config(data)
     rows, old_hash = collect(data, cfg)
     names = [c["name"] for c in cfg.get("categories", [])] + [FALLBACK]
