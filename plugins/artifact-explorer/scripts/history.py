@@ -81,8 +81,9 @@ def _query(path, kind, after):
 
 def clean_title(t):
     t = (t or "").strip()
-    if t.endswith(" - Claude"):
-        t = t[:-len(" - Claude")].strip()
+    for suffix in (" - Claude", " \u2013 Claude", " \u2014 Claude"):  # hyphen, en dash, em dash
+        if t.endswith(suffix):
+            t = t[:-len(suffix)].strip()
     if not t or t.lower() in IGNORED_TITLES or "not found" in t.lower():
         return None
     return t
@@ -108,12 +109,16 @@ def scan(con, data):
             aid = db.resolve(con, db.id_from_url(url))
             if not aid or any(s <= ts <= (e if e is not None else s + 7200) for s, e in windows):
                 continue
-            if db.get(con, aid) is None:
-                db.upsert_artifact(con, aid, url=url, title=clean_title(title), desc_status="pending")
+            row, t = db.get(con, aid), clean_title(title)
+            if row is None:
+                db.upsert_artifact(con, aid, url=url, title=t, desc_status="pending")
+            elif t and not row["title"]:  # the first visit may have caught "Page not found"; a later one names it
+                db.upsert_artifact(con, aid, title=t)
             new += db.add_event(con, aid, ts, "visit", "browser:" + name)
         if rows:
             cur["t"] = rows[-1][2]
         cursors[path] = {"t": cur["t"], "stamp": stamp}
     db.state_set(con, "history_cursors", cursors)
+    db.fold_twins(con)
     con.commit()
     return new

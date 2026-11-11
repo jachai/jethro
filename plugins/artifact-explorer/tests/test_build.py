@@ -60,7 +60,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual((a["created_by"], a["category"]), ("me", "Reports"))
         self.assertEqual((r["bbbbbbbbbb"]["created_by"], r["bbbbbbbbbb"]["category"]), ("Sam", "Decks"))
         self.assertEqual((r["cccccccccc"]["category"], r["cccccccccc"]["pending"], r["cccccccccc"]["created_by"]),
-                         ("Uncategorised", True, ""))
+                         ("Uncategorised", True, "unknown"))
 
     def test_sharing_labels(self):
         db.upsert_artifact(self.con, "aaaaaaaaaa", sharing="withme")

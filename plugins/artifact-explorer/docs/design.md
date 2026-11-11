@@ -58,6 +58,16 @@ state(key TEXT PRIMARY KEY, value TEXT)    -- JSON values: cursors, last pass, d
 ```
 Repos, "created by" and "last accessed" are derived at build time from `events` + `artifacts`.
 Created = earliest publish event, else `created`. Modified = latest publish, else `modified`.
+"Created by" is `me`, the creator (or "someone else") for shared rows, and "unknown" when `owned` is NULL. The page sorts
+"Modified" by `recent` = Modified, else last accessed, else Created (shared rows have no modified time).
+New rows start with `thumb_status` pending. `PRAGMA user_version` 1 marks the one-off 0.1.1 fixes run on open
+(NULL thumb_status → pending, one browser history rescan, title-twin fold, uuid override re-keying).
+
+**Title twins.** A `claude.ai/code/artifact/<uuid>` visit creates a uuid-keyed row, and the artifact list gives the same
+artifact as a short id without its uuid, so nothing links them but the title. `db.fold_twins` folds a uuid-keyed row into
+the short-id row when that title names exactly one of each and the short-id row has no other uuid; it runs after every
+history scan and `ae ingest-list`. Every merge renames a `[overrides."<old id>"]` table in DATA/config.toml to the new id
+(when the new id has none; only that header form, and only when the result still parses).
 
 ## Data flow
 
@@ -80,6 +90,7 @@ Created = earliest publish event, else `created`. Modified = latest publish, els
    `places.sqlite`, on macOS, Linux and Windows. Copy the file and its `-wal` to a temp dir, then query urls like `https://claude.ai/%artifact/%`.
    Incremental per profile (cursor = max visit time). A `visit` event per visit, `source=browser:<name>`. Unknown ids are inserted
    with the page title (strip " - Claude"; ignore "Claude", "Claude Artifact" and "not found"), `owned` NULL and `desc_status` pending.
+   A row with no title takes the first usable title of a later visit.
    Visits inside the share-harvest windows (`state.share_windows`) are skipped.
 4. **Transcripts** (`transcript_reads`): `~/.claude/projects/*/*.jsonl`, incremental by (path → byte offset, inode). Pair `tool_use` name `Artifact`
    with its result line's `toolUseResult`. Publish gives a `publish` event (source `transcript`, fills created/version/local_path for

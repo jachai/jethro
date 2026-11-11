@@ -25,7 +25,7 @@ def created_by(r):
         return "me"
     if r["owned"] == 0:
         return r["creator"] or "someone else"
-    return ""
+    return "unknown"
 
 
 def compile_rules(data, cats):
@@ -71,12 +71,15 @@ def collect(data, cfg):
                 or (r["owned"] == 0 and not flt.get("include_shared", True))):
             continue
         desc = o.get("description") or r["description"] or ""
+        created, modified = r["first_pub"] or r["created"], r["last_pub"] or r["modified"]
         thumb = r["thumb"] if r["thumb"] and os.path.exists(os.path.join(data, r["thumb"])) else ""
         rows.append({
             "id": r["id"], "title": r["title"] or r["id"], "kind": r["kind"] or "", "url": r["url"] or "",
             "category": o.get("category") or categorise(rules, r["title"], desc, r["kind"]),
             "created_by": created_by(r), "sharing": sharing_label(r["sharing"]),
-            "created": r["first_pub"] or r["created"], "modified": r["last_pub"] or r["modified"],
+            "created": created, "modified": modified,
+            # sort key for "Modified": shared rows have no modified time, so use the last access, then created
+            "recent": modified or r["last_accessed"] or created,
             "accessed": r["last_accessed"], "accessed_by": r["last_access_by"] or "",
             "size": r["size"], "description": desc, "pending": not desc and r["desc_status"] == "pending",
             "repos": repos, "thumb": thumb.replace(os.sep, "/")})
