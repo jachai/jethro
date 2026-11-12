@@ -26,9 +26,13 @@ Change them in `/config` (plugins).
 - `describe_model`: model of the background describer session (default `haiku`). The `describer` agent itself always runs on `haiku`.
 - `describe_daily_cap`: USD per day for background describer runs (default 1.0). A run starts only when today's spend plus one run's $0.25 limit stays within it, and only one run goes at a time.
 
+## Which artifacts get described
+
+Only a recent window, 60 days by default (`[window] days` in config.toml; `0` covers everything). Older rows sit in a collapsed "N older artifacts" group on the page. `/artifact-explorer:refresh older` widens the window by 30 days and describes them. Docs, Slides and Dashboard artifacts are described from their own source (the Doc's lead paragraph, the deck outline, the dashboard page and datasets). When that source cannot be read the title stands in, and `/artifact-explorer:refresh retry` tries again.
+
 ## What leaves the machine
 
-Only Claude's own calls: the Artifact list and read calls against your claude.ai account, and the describer model that writes one sentence per artifact. There is no telemetry. Browser history and transcripts are read locally from copies, and only claude.ai artifact URLs and Artifact tool lines are kept.
+Only Claude's own calls: the Artifact list and read calls against your claude.ai account (plus ArtifactData and Claude Docs reads for Dashboards and Docs), and the describer model that writes one sentence per artifact. There is no telemetry. Browser history and transcripts are read locally from copies, and only claude.ai artifact URLs and Artifact tool lines are kept.
 
 ## How it stays fresh
 
