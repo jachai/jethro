@@ -63,6 +63,7 @@ def collect(data, cfg):
     inc, exc = set(flt.get("include_repos", [])), set(flt.get("exclude_repos", []))
     exc_ids = set(flt.get("exclude_ids", []))
     con = db.connect(data)
+    win = db.window(con, cfg)
     rows = []
     for r in con.execute(SQL):
         o = over.get(r["id"], {})
@@ -83,10 +84,13 @@ def collect(data, cfg):
             "accessed": r["last_accessed"], "accessed_by": r["last_access_by"] or "",
             "size": r["size"], "description": desc, "pending": not desc and r["desc_status"] == "pending",
             "skipped": (r["desc_note"] or "no text") if not desc and r["desc_status"] == "skipped" else "",
-            "repos": repos, "thumb": thumb.replace(os.sep, "/")})
+            "repos": repos, "thumb": thumb.replace(os.sep, "/"), "older": not db.in_window(r, win)})
     state = db.state_get(con, "build_hash")
     con.close()
-    return rows, state
+    # the cutoff is a day boundary in the payload, so an unchanged catalog still hashes the same within a day
+    cut = win["cutoff"]
+    return rows, state, {"days": win["days"] + win["extra"] if cut is not None else 0,
+                         "cutoff": int(cut // 86400 * 86400) if cut is not None else None}
 
 
 def status(data, now):
@@ -108,11 +112,11 @@ def build(data, max_age=None):
     con.close()
     common.rekey_overrides(data, pairs)  # overrides keyed by a uuid follow the row it merged into
     cfg = common.load_config(data)
-    rows, old_hash = collect(data, cfg)
+    rows, old_hash, window = collect(data, cfg)
     names = [c["name"] for c in cfg.get("categories", [])] + [FALLBACK]
     names += sorted({r["category"] for r in rows} - set(names))
     page = {k: cfg.get("page", {}).get(k) for k in ("title", "accent", "columns")}
-    payload = {"config": dict(page, categories=names), "rows": rows}
+    payload = {"config": dict(page, categories=names), "rows": rows, "window": window}
     with open(os.path.join(common.ROOT, "page", "template.html"), encoding="utf-8") as f:
         tpl = f.read()
     digest = hashlib.sha256((json.dumps(payload, sort_keys=True) + tpl).encode()).hexdigest()
