@@ -43,6 +43,8 @@ def main(argv=None):
     s.add_argument("--owned-only", action="store_true")
     s.add_argument("--json", action="store_true")
     s.add_argument("--retry-no-source", action="store_true", help="first put title-only and typed-skipped rows back in the queue")
+    s = sub.add_parser("window", help="show the recent window rows are described in; --widen N adds N days")
+    s.add_argument("--widen", type=int, default=0)
     s = sub.add_parser("rows", help="list artifacts as JSON")
     s.add_argument("--json", action="store_true", required=True)
     s.add_argument("--owned", action="store_true")
@@ -141,6 +143,8 @@ def main(argv=None):
             return describe.set_sharing(data, a.id, f.read())
     if a.cmd == "pending":
         return describe.pending(data, owned_only=a.owned_only, as_json=a.json, retry_no_source=a.retry_no_source)
+    if a.cmd == "window":
+        return describe.widen(data, a.widen)
     if a.cmd == "status":
         return describe.status(data, as_json=a.json)
     return 2

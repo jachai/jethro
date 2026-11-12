@@ -84,7 +84,8 @@ def record(con, data, tin, tresp, ts, source, session_id=None, cwd=None):
 
 def _start(data):
     con = db.connect(data, timeout=3)
-    n = con.execute("SELECT COUNT(*) FROM artifacts WHERE owned=0 AND desc_status='pending'").fetchone()[0]
+    cond, args = db.window_sql(db.window(con, common.load_config(data)))
+    n = con.execute("SELECT COUNT(*) FROM artifacts WHERE owned=0 AND desc_status='pending' AND " + cond, args).fetchone()[0]
     con.close()
     if n:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext":

@@ -70,10 +70,12 @@ def run(data, aid=None, limit=None):
         if aid:
             rows = con.execute("SELECT id, local_path, thumb_status FROM artifacts WHERE id=?", (aid,)).fetchall()
         else:
-            # 'none' = nothing to capture headlessly (no local file); such a row is retried once its file exists
-            rows = con.execute("SELECT id, local_path, thumb_status FROM artifacts WHERE thumb_status IS NULL "
-                               "OR thumb_status='pending' OR (thumb_status='none' AND local_path<>'') "
-                               "ORDER BY updated DESC").fetchall()
+            # 'none' = nothing to capture headlessly (no local file); such a row is retried once its file exists.
+            # Rows older than the window wait (the page shows them collapsed, without a picture).
+            cond, args = db.window_sql(db.window(con, common.load_config(data)))
+            rows = con.execute("SELECT id, local_path, thumb_status FROM artifacts WHERE (thumb_status IS NULL "
+                               "OR thumb_status='pending' OR (thumb_status='none' AND local_path<>'')) AND " + cond +
+                               " ORDER BY updated DESC", args).fetchall()
             rows = [r for r in rows if r["thumb_status"] != "none" or os.path.isfile(r["local_path"])]
         browser, made = None, 0
         os.makedirs(os.path.join(data, "thumbs"), exist_ok=True)

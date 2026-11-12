@@ -195,9 +195,14 @@ def set_sharing(data, aid, text):
 COLS = "id,url,title,kind,owned,thumb_status,desc_status,modified,local_path"
 
 
-def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None, need_desc=False):
-    """The one row query: `ae rows`, `ae pending` and the describer launch all come through here."""
+def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None, need_desc=False, win=None):
+    """The one row query: `ae rows`, `ae pending` and the describer launch all come through here.
+    `win` (db.window) keeps only rows inside the window."""
     where, args = [], []
+    if win is not None:
+        cond, wargs = db.window_sql(win)
+        where.append(cond)
+        args += wargs
     if owned:
         where.append("owned=1")
     if desc_status:
@@ -221,15 +226,19 @@ def rows(data, **kw):
     return 0
 
 
-def pending_rows(con, owned_only):
-    return list_rows(con, owned=owned_only, desc_status="pending", need_desc=True)
+def pending_rows(con, owned_only, win=None):
+    return list_rows(con, owned=owned_only, desc_status="pending", need_desc=True, win=win)
+
+
+def data_window(data, con):
+    return db.window(con, common.load_config(data))
 
 
 def pending(data, owned_only=False, as_json=False, retry_no_source=False):
     con = db.connect(data)
     if retry_no_source:
         requeue_no_source(con)
-    rs = pending_rows(con, owned_only)
+    rs = pending_rows(con, owned_only, data_window(data, con))
     if as_json:
         print(json.dumps(rs))
     else:
@@ -308,7 +317,7 @@ def _launch(data):
     con = db.connect(data)
     if _running(data, con):
         return 0
-    rows = pending_rows(con, owned_only=True)
+    rows = pending_rows(con, owned_only=True, win=data_window(data, con))
     if not rows:
         return 0
     now = time.time()
@@ -353,15 +362,42 @@ def _launch(data):
     return 0
 
 
+def widen(data, days):
+    """`ae window --widen N`: the window covers N more days from now on (the page's "Describe older")."""
+    con = db.connect(data)
+    if days:
+        db.state_set(con, "window_extra_days", max(0, int(db.state_get(con, "window_extra_days", 0) or 0) + days))
+        con.commit()
+    w = data_window(data, con)
+    con.close()
+    print(window_label(w, total=True) if w["cutoff"] is not None else "window: off (every row is described)")
+    return 0
+
+
+def window_label(w, total=False):
+    s = "window: %d days" % w["days"] + (" (+%d)" % w["extra"] if w["extra"] else "")
+    return s + (" = %d days" % (w["days"] + w["extra"]) if total and w["extra"] else "")
+
+
 def status(data, as_json=False):
     con = db.connect(data)
-    one = lambda sql: con.execute(sql).fetchone()[0]  # noqa: E731
+    win = data_window(data, con)
+    cond, wargs = db.window_sql(win)
+    one = lambda sql, a=(): con.execute(sql, a).fetchone()[0]  # noqa: E731
+    inw = lambda sql: one(sql + " AND " + cond, wargs)  # noqa: E731
+    outw = lambda sql: one(sql + " AND NOT " + cond, wargs)  # noqa: E731
+    nodesc = "(description IS NULL OR description='')"
     out = {
         "total": one("SELECT COUNT(*) FROM artifacts"),
         "mine": one("SELECT COUNT(*) FROM artifacts WHERE owned=1"),
         "shared": one("SELECT COUNT(*) FROM artifacts WHERE owned=0"),
         "unknown": one("SELECT COUNT(*) FROM artifacts WHERE owned IS NULL"),
-        "pending_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE " + PENDING),
+        "pending_descriptions": inw("SELECT COUNT(*) FROM artifacts WHERE " + PENDING),
+        "window_days": win["days"] + win["extra"] if win["cutoff"] is not None else 0,
+        "window_rows": inw("SELECT COUNT(*) FROM artifacts WHERE 1=1"),
+        "window_described": inw("SELECT COUNT(*) FROM artifacts WHERE NOT " + nodesc + " AND desc_status<>'no-source'"),
+        "older": outw("SELECT COUNT(*) FROM artifacts WHERE 1=1"),
+        "older_pending": outw("SELECT COUNT(*) FROM artifacts WHERE " + nodesc),
         "skipped_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE desc_status='skipped'"),
         "no_source_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE desc_status='no-source'"),
         "thumbs_ok": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status='ok'"),
@@ -378,6 +414,11 @@ def status(data, as_json=False):
         return 0
     lp = out["last_pass"]
     print("artifacts: %(total)d (mine %(mine)d, shared %(shared)d, unknown %(unknown)d)" % out)
+    if win["cutoff"] is not None:
+        print("%s: %d rows, %d described, %d waiting" % (window_label(win), out["window_rows"],
+                                                        out["window_described"], out["pending_descriptions"]))
+        if out["older"]:
+            print("older: %(older_pending)d not described (run /artifact-explorer:refresh older)" % out)
     print("descriptions pending: %(pending_descriptions)d (no text, skipped: %(skipped_descriptions)d; "
           "no source: %(no_source_descriptions)d, title shown)" % out)
     print("thumbnails: %(thumbs_ok)d ok, %(thumbs_missing)d waiting or failed" % out)

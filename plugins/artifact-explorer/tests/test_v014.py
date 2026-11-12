@@ -159,5 +159,101 @@ class NoSourceTest(Base):
         self.assertIn("no source: 1", run(self.d, "status")[1])
 
 
+def old(con, aid, days, **kw):
+    """A row last modified `days` ago."""
+    db.upsert_artifact(con, aid, modified=time.time() - days * DAY, **kw)
+
+
+class WindowTest(Base):
+    CFG = {"window": {"days": 60, "key": "modified"}}
+
+    def setUp(self):
+        super().setUp()
+        old(self.con, A, 5, title="new", owned=1, desc_status="pending")
+        old(self.con, B, 75, title="old", owned=1, desc_status="pending")
+        old(self.con, C, 200, title="ancient", owned=0, desc_status="pending")
+        db.upsert_artifact(self.con, D, title="undated", owned=0, desc_status="pending")  # counts by first_seen
+        self.con.commit()
+
+    def test_default_config_has_a_60_day_window(self):
+        import common
+        self.assertEqual(common.load_config(self.d)["window"], {"days": 60, "key": "modified"})
+
+    def test_in_window_and_cutoff(self):
+        w = db.window(self.con, self.CFG)
+        self.assertEqual((w["days"], w["extra"]), (60, 0))
+        self.assertAlmostEqual(w["cutoff"], time.time() - 60 * DAY, delta=5)
+        got = {r["id"]: db.in_window(r, w) for r in self.con.execute("SELECT * FROM artifacts")}
+        self.assertEqual(got, {A: True, B: False, C: False, D: True})
+
+    def test_created_and_first_seen_count_when_modified_is_unknown(self):
+        db.upsert_artifact(self.con, "EEEEEEEEEEEE", created=time.time() - 90 * DAY)
+        self.con.execute("UPDATE artifacts SET first_seen=? WHERE id='EEEEEEEEEEEE'", (time.time() - 90 * DAY,))
+        w = db.window(self.con, self.CFG)
+        self.assertFalse(db.in_window(db.get(self.con, "EEEEEEEEEEEE"), w))
+
+    def test_zero_days_means_everything(self):
+        w = db.window(self.con, {"window": {"days": 0}})
+        self.assertIsNone(w["cutoff"])
+        self.assertTrue(all(db.in_window(r, w) for r in self.con.execute("SELECT * FROM artifacts")))
+
+    def test_pending_is_windowed(self):
+        rows = json.loads(run(self.d, "pending", "--json")[1])
+        self.assertEqual(sorted(r["id"] for r in rows), [A, D])
+
+    def test_widen_persists_and_widens(self):
+        rc, out = run(self.d, "window", "--widen", "30")
+        self.assertEqual(rc, 0)
+        self.assertIn("90 days", out)
+        self.row(A)  # reopen: the CLI wrote through its own connection
+        self.assertEqual(db.state_get(self.con, "window_extra_days"), 30)
+        self.assertEqual(sorted(r["id"] for r in json.loads(run(self.d, "pending", "--json")[1])), [A, B, D])
+        run(self.d, "window", "--widen", "30")
+        self.assertIn("120 days", run(self.d, "window")[1])
+
+    def test_status_window_lines_and_json(self):
+        s = json.loads(run(self.d, "status", "--json")[1])
+        self.assertEqual((s["window_days"], s["pending_descriptions"], s["older"], s["older_pending"]), (60, 2, 2, 2))
+        text = run(self.d, "status")[1]
+        self.assertIn("window: 60 days: 2 rows, 0 described, 2 waiting", text)
+        self.assertIn("older: 2 not described (run /artifact-explorer:refresh older)", text)
+        run(self.d, "window", "--widen", "30")
+        self.assertIn("window: 60 days (+30): 3 rows", run(self.d, "status")[1])
+
+    def test_describer_launch_queue_is_windowed(self):
+        old(self.con, A, 5, desc_status="ok", description="done", desc_source="describer")
+        self.con.commit()
+        with mock.patch.object(describe.shutil, "which", return_value="/bin/claude"), \
+                mock.patch.object(describe.common, "allow_rule_present", return_value=True), \
+                mock.patch.object(describe.common, "detach") as det:
+            describe.launch(self.d)
+        det.assert_not_called()  # the only own pending row is older than the window
+
+    def test_thumbs_only_in_window(self):
+        import thumbs
+        for aid in (A, B):
+            f = self.write(aid + ".html", "<p>page</p>")
+            db.upsert_artifact(self.con, aid, local_path=f, thumb_status="pending")
+        self.con.commit()
+        seen = []
+
+        def fake(browser, src, out):
+            seen.append(os.path.basename(src))
+            open(out, "wb").write(b"png")
+            return True
+        with mock.patch.object(thumbs, "_shot", fake), mock.patch.object(thumbs, "find_browser", lambda: "b"), \
+                mock.patch("build.build"):
+            thumbs.run(self.d)
+        self.assertEqual(seen, [A + ".html"])
+        self.assertEqual(self.row(B)["thumb_status"], "pending")
+
+    def test_session_start_count_is_windowed(self):
+        import hook
+        out = io.StringIO()
+        with redirect_stdout(out):
+            hook._start(self.d)
+        self.assertIn("1 shared artifacts", out.getvalue())  # D (undated) is in, C (200 days) is not
+
+
 if __name__ == "__main__":
     unittest.main()

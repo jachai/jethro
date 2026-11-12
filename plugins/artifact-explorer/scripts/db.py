@@ -203,6 +203,38 @@ def add_event(con, aid, ts, kind, source, session_id=None, cwd=None, repo=None, 
     return bool(cur.rowcount)
 
 
+WINDOW_KEYS = {"modified": ("modified", "created", "first_seen"), "created": ("created", "modified", "first_seen")}
+
+
+def window(con, cfg, now=None):
+    """The recent window rows are described and captured in: [window] days (0 = no window) plus the days
+    `ae window --widen` added. A row's time is its key column, else the next known one (first_seen always is)."""
+    w = cfg.get("window") or {}
+    try:
+        days = max(0, int(w.get("days", 60)))
+    except (TypeError, ValueError):
+        days = 60
+    extra = int(state_get(con, "window_extra_days", 0) or 0)
+    cols = WINDOW_KEYS.get(str(w.get("key", "modified")).lower(), WINDOW_KEYS["modified"])
+    cutoff = None if days == 0 else (now or time.time()) - (days + extra) * 86400
+    return {"days": days, "extra": extra, "cutoff": cutoff, "cols": cols,
+            "expr": "coalesce(%s)" % ", ".join(cols)}
+
+
+def in_window(row, win):
+    if win["cutoff"] is None:
+        return True
+    t = next((row[c] for c in win["cols"] if row[c] is not None), None)
+    return t is None or t >= win["cutoff"]
+
+
+def window_sql(win):
+    """(SQL condition, args) selecting the rows inside the window."""
+    if win["cutoff"] is None:
+        return "1=1", []
+    return "(%s IS NULL OR %s>=?)" % (win["expr"], win["expr"]), [win["cutoff"]]
+
+
 def state_get(con, key, default=None):
     r = con.execute("SELECT value FROM state WHERE key=?", (key,)).fetchone()
     return json.loads(r[0]) if r else default

@@ -39,6 +39,13 @@ kinds = ["Docs"]
 name = "Personal"
 keywords = ["personal","travel","trip","recipe","home","family","budget"]
 
+# Only artifacts touched in the last `days` are described and get a thumbnail; older ones sit in a collapsed
+# "older artifacts" group on the page. key = "modified" (else created, else first seen) or "created".
+# days = 0 describes everything. `/artifact-explorer:refresh older` widens the window by 30 days each time.
+[window]
+days = 60
+key = "modified"
+
 # Which rows to show. Empty lists mean "show everything".
 [filter]
 include_repos = []      # show only rows touched from one of these repos (rows with no repo are then hidden)
