@@ -179,9 +179,11 @@ class NeverWaits(Base):
     def test_skill_runs_describer_in_foreground_and_stops_on_refusal(self):
         _, txt = self.skill_tools()
         bg = txt.split("## Background mode", 1)[1].split("## Full mode", 1)[0]
-        self.assertIn("run_in_background", bg)
+        one = txt.split("## Describe one row", 1)[1].split("## Background mode", 1)[0]  # 0.1.4: shared by both modes
+        self.assertIn("Describe one row", bg)
+        self.assertIn("run_in_background: false", one)
         self.assertIn("refused", bg)
-        self.assertIn("--id", bg)
+        self.assertIn("--id", one)
 
     def test_result_logged(self):
         describe.launch(self.d)

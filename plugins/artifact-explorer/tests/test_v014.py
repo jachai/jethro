@@ -102,6 +102,23 @@ class ExcerptSourcesTest(Base):
         got = open(out, encoding="utf-8").read()
         self.assertLess(got.index("First part"), got.index("Datasets:"))
 
+    def test_json_field_applies_to_json_files_only(self):
+        p = self.write("index.html.json", json.dumps({"text": "<p>Sprint Burndown: open issues per week, team trend.</p>"}))
+        t = self.write("source.txt", "Datasets: burndown by week (issues closed per week).")
+        out = os.path.join(self.d, "excerpt.txt")
+        run(self.d, "excerpt", p, t, "--json-field", "text", "--out", out)
+        got = open(out, encoding="utf-8").read()
+        self.assertIn("Sprint Burndown", got)
+        self.assertIn("Datasets: burndown", got)
+
+    def test_skill_allows_the_typed_sources(self):
+        tools = describe._skill_tools()
+        for t in ("ArtifactData", "mcp__claude_ai_Claude_Docs__read", "mcp__claude_ai_Claude_Docs__guide"):
+            self.assertIn(t, tools)
+        skill = open(os.path.join(os.path.dirname(TPL), "..", "skills", "refresh", "SKILL.md"), encoding="utf-8").read()
+        for s in ("set-kind", "--no-source", "--json-field text", "deck.json", "window --widen 30", "--retry-no-source"):
+            self.assertTrue(s in skill, s)
+
     def test_missing_json_field_gives_no_text(self):
         p = self.write("x.json", json.dumps({"edit": 1}))
         out = os.path.join(self.d, "excerpt.txt")

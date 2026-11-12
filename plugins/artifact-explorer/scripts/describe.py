@@ -103,7 +103,8 @@ class _Text(HTMLParser):
 
 def excerpt(path, chars=3000, json_field=None):
     """Visible text of a saved artifact file (HTML or plain text), whitespace-collapsed and capped. With
-    json_field the file is JSON and that field's string is the text (a Dashboard's files/index.html.json)."""
+    json_field the file is JSON and that field's string is the text (a Dashboard's files/index.html.json);
+    excerpt_for passes it for .json files only."""
     with open(path, encoding="utf-8", errors="replace") as f:
         raw = f.read(2_000_000)
     if json_field:
@@ -128,7 +129,8 @@ def excerpt_for(data, paths, out, aid=None, kind=None, chars=3000, json_field=No
     A source with almost no text marks the row 'skipped' (with the reason) so no run picks it again.
     Returns (text, skipped)."""
     paths = [paths] if isinstance(paths, str) else list(paths)
-    text = " ".join(t for t in (excerpt(p, chars, json_field) for p in paths) if t)[:chars]
+    texts = (excerpt(p, chars, json_field if p.lower().endswith(".json") else None) for p in paths)
+    text = " ".join(t for t in texts if t)[:chars]
     kind = db.norm_kind(kind)
     skipped = len(text) < MIN_TEXT
     with open(out, "w", encoding="utf-8") as f:
