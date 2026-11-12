@@ -63,7 +63,7 @@ def main(argv=None):
     sub.add_parser("ingest-hooks", help="record spooled hook payloads (run by the hook and by each watcher pass)")
     s = sub.add_parser("excerpt", help="write the visible text of a saved artifact file, capped, to --out for the describer agent")
     s.add_argument("file", nargs="+", help="one or more saved source files, joined in order")
-    s.add_argument("--json-field", help="the files are JSON: use this field's string (HTML or text)")
+    s.add_argument("--json-field", help="for the .json files: use this field's string (HTML or text)")
     s.add_argument("--out", required=True, help="where the excerpt goes; the caller never reads it, the describer agent does")
     s.add_argument("--chars", type=int, default=3000)
     s.add_argument("--id", help="the row: a typed artifact or a page with almost no text is marked skipped")
