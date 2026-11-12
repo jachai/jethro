@@ -118,14 +118,15 @@ class SkipTyped(Base):
         with mock.patch("builtins.print") as pr:
             ae.main(["--data", self.d, "excerpt", self.save("Slides"), "--out", out, "--id", A, "--type", "Slides"])
         self.assertTrue(pr.call_args[0][0].startswith("skipped"))
-        self.assertEqual(db.get(self.con(), A)["desc_status"], "skipped")
+        # 0.1.4: a typed row whose source has no text shows its title (no-source) so `retry` can try again
+        self.assertEqual(db.get(self.con(), A)["desc_status"], "no-source")
 
-    def test_describable_rows_first(self):
+    def test_typed_rows_are_not_queued_last(self):
         con = self.con()
-        db.upsert_artifact(con, A, kind="Docs", modified=time.time())  # newest, but a typed shell
+        db.upsert_artifact(con, A, kind="Docs", modified=time.time())  # newest; 0.1.4 describes typed rows from their source
         db.upsert_artifact(con, B, modified=time.time() - 10)
         con.commit()
-        self.assertEqual([r["id"] for r in describe.pending_rows(con, True)][-1], A)
+        self.assertEqual([r["id"] for r in describe.pending_rows(con, True)][0], A)
 
 
 class ReviewFixes(Base):
