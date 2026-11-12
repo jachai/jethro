@@ -255,5 +255,58 @@ class WindowTest(Base):
         self.assertIn("1 shared artifacts", out.getvalue())  # D (undated) is in, C (200 days) is not
 
 
+TPL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "page", "template.html")
+
+
+def payload(path):
+    s = open(path, encoding="utf-8").read()
+    a = s.index("const DATA = ") + len("const DATA = ")
+    return json.JSONDecoder().raw_decode(s[a:])[0]
+
+
+class PageTest(Base):
+    def test_payload_has_window_and_older_flags(self):
+        import build
+        old(self.con, A, 5, title="new")
+        old(self.con, B, 75, title="old")
+        self.con.commit()
+        p = payload(build.build(self.d, max_age=0))
+        self.assertEqual(p["window"]["days"], 60)
+        self.assertAlmostEqual(p["window"]["cutoff"], time.time() - 60 * DAY, delta=DAY)  # a day boundary
+        self.assertEqual({r["id"]: r["older"] for r in p["rows"]}, {A: False, B: True})
+        run(self.d, "window", "--widen", "30")
+        p = payload(build.build(self.d, max_age=0))
+        self.assertEqual((p["window"]["days"], {r["id"]: r["older"] for r in p["rows"]}[B]), (90, False))
+
+    def test_template_has_older_group(self):
+        tpl = open(TPL, encoding="utf-8").read()
+        for s in ("older artifact", "Describe older", "/artifact-explorer:refresh older", "aria-expanded",
+                  "navigator.clipboard", "#older"):
+            self.assertTrue(s in tpl, s)
+
+
+NODE = __import__("shutil").which("node")
+
+
+@unittest.skipUnless(NODE, "node not installed")
+class OlderGroupJsTest(unittest.TestCase):
+    def run_js(self, body):
+        import subprocess
+        tpl = open(TPL, encoding="utf-8").read()
+        a, b = tpl.index("/*OLD-START*/"), tpl.index("/*OLD-END*/")
+        code = tpl[a:b] + "\n" + body
+        return json.loads(subprocess.run([NODE, "-e", code], capture_output=True, text=True, check=True).stdout)
+
+    def test_split_keeps_order_and_labels(self):
+        out = self.run_js(
+            'const l=[{id:"a",older:false},{id:"b",older:true},{id:"c"},{id:"d",older:true}];'
+            'const s=splitOlder(l);'
+            'console.log(JSON.stringify({recent:s.recent.map(r=>r.id),older:s.older.map(r=>r.id),'
+            'one:olderLabel(1),many:olderLabel(46),days:windowNote({days:60})}))')
+        self.assertEqual((out["recent"], out["older"]), (["a", "c"], ["b", "d"]))
+        self.assertEqual((out["one"], out["many"]), ("1 older artifact", "46 older artifacts"))
+        self.assertIn("60 days", out["days"])
+
+
 if __name__ == "__main__":
     unittest.main()

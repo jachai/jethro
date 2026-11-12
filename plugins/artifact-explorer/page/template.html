@@ -66,6 +66,14 @@ a{color:var(--link)}
 .tt{display:flex;align-items:center;gap:10px}
 .av{flex:none;width:42px;height:28px;border-radius:5px;overflow:hidden;background:var(--chip);border:1px solid var(--line)}
 .av img,.av svg{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.older{margin-top:22px}
+.oh{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:12px}
+.oh button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+.oh button.tog{font-weight:600}
+.oh button.tog::before{content:"\25B8  ";color:var(--muted)}
+.oh button.tog[aria-expanded=true]::before{content:"\25BE  "}
+.oh .note{color:var(--muted);font-size:12.5px}
+.oh code{background:var(--chip);border-radius:4px;padding:1px 6px;font-size:12.5px;user-select:all}
 .empty{padding:40px;text-align:center;color:var(--muted)}
 @media (max-width:600px){.wrap{padding:14px 10px 40px}.grid{grid-template-columns:minmax(0,1fr)}}
 </style>
@@ -163,9 +171,49 @@ function placeholderSVG(id, title, cat){
 /*PH-END*/
 function picture(r, cls){
  const box = el("div", cls);
- if (r.thumb) { const i = el("img"); i.src = r.thumb; i.alt = ""; i.loading = "lazy"; box.appendChild(i); }
+ if (r.thumb && !r.older) { const i = el("img"); i.src = r.thumb; i.alt = ""; i.loading = "lazy"; box.appendChild(i); }
  else box.innerHTML = placeholderSVG(r.id, r.title, r.category);  // only escaped text and generated numbers
  return box;
+}
+// Rows older than the window (DATA.window) sit in a collapsed group, rendered only when opened.
+/*OLD-START*/
+function splitOlder(list){
+ const recent = [], older = [];
+ list.forEach(r => (r.older ? older : recent).push(r));
+ return {recent, older};
+}
+function olderLabel(n){ return n + " older artifact" + (n === 1 ? "" : "s"); }
+function windowNote(w){
+ return w && w.days ? "Not touched in the last " + w.days + " days: not described, no thumbnail." : "";
+}
+/*OLD-END*/
+const OLDER_CMD = "/artifact-explorer:refresh older";
+let olderOpen = location.hash === "#older";
+function olderGroup(list){
+ const sec = el("section", "older"), head = el("div", "oh"), tog = el("button", "tog", olderLabel(list.length));
+ sec.id = "older";
+ tog.setAttribute("aria-expanded", String(olderOpen));
+ tog.setAttribute("aria-controls", "older-body");
+ tog.onclick = () => { olderOpen = !olderOpen; render(); };
+ head.appendChild(tog);
+ head.appendChild(el("span", "note", windowNote(DATA.window)));
+ const btn = el("button", "", "Describe older"), msg = el("span", "note");
+ btn.title = "Copies " + OLDER_CMD + ": run it in Claude Code to widen the window by 30 days and describe those rows";
+ btn.onclick = () => {
+  const show = ok => {  // the command stays visible: a file:// page may have no clipboard access
+   msg.textContent = ok ? "Copied. Paste in Claude Code: " : "Run in Claude Code: ";
+   const c = el("code", "", OLDER_CMD); msg.appendChild(c);
+  };
+  try { navigator.clipboard.writeText(OLDER_CMD).then(() => show(true), () => show(false)); } catch(e) { show(false); }
+ };
+ head.appendChild(btn); head.appendChild(msg);
+ sec.appendChild(head);
+ if (olderOpen) {
+  const body = st.view === "cards" ? cards(list) : table(list);
+  body.id = "older-body";
+  sec.appendChild(body);
+ }
+ return sec;
 }
 function bytes(n){
  if (!n) return "";
@@ -259,7 +307,7 @@ function cards(list){
  const g = el("div", "grid");
  list.forEach(r => {
   const c = el("div", "card"), s = el("div", "shot");
-  if (r.thumb) s.appendChild(picture(r, "ph"));
+  if (r.thumb && !r.older) s.appendChild(picture(r, "ph"));
   else {
    const p = picture(r, "ph"), t = el("div", "tc");
    t.appendChild(el("small", "", r.category)); t.appendChild(document.createTextNode(r.title)); p.appendChild(t); s.appendChild(p);
@@ -282,10 +330,11 @@ function render(){
  $("vc").setAttribute("aria-pressed", String(st.view === "cards"));
  $("sortsel").style.display = st.view === "cards" ? "" : "none";
  $("sortsel").value = st.sort + ":" + st.dir;
- const out = $("out");
+ const out = $("out"), parts = splitOlder(list);
  out.textContent = "";
  if (!list.length) out.appendChild(el("div", "empty", rows.length ? "Nothing matches." : "No artifacts yet. They appear here once you publish or open one."));
- else out.appendChild(st.view === "cards" ? cards(list) : table(list));
+ if (parts.recent.length) out.appendChild(st.view === "cards" ? cards(parts.recent) : table(parts.recent));
+ if (parts.older.length) out.appendChild(olderGroup(parts.older));
 }
 
 // Status: the page is a static file, so everything but "now" is as of the build; the times refresh while it is open.
