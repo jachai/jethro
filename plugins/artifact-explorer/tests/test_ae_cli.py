@@ -35,7 +35,7 @@ class CliTest(unittest.TestCase):
         self.assertEqual(len(self.rows()), 3)
         r = self.rows("--owned")
         self.assertEqual([x["id"] for x in r], ["aaaaaaaaaa"])
-        self.assertEqual(sorted(r[0]), sorted("id url title owned thumb_status desc_status modified local_path".split()))
+        self.assertEqual(sorted(r[0]), sorted("id url title kind owned thumb_status desc_status modified local_path".split()))
         self.assertEqual([x["id"] for x in self.rows("--thumb-status", "pending")], ["bbbbbbbbbb"])
         self.assertEqual(len(self.rows("--desc-status", "pending", "--limit", "2")), 2)
 

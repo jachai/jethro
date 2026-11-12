@@ -30,13 +30,19 @@ def main(argv=None):
     s.add_argument("file")
     s = sub.add_parser("set-desc", help="set a description written by the describer")
     s.add_argument("id")
-    s.add_argument("--file", required=True, help="UTF-8 file holding the sentence (never pass artifact-derived text as an argument)")
+    g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--file", help="UTF-8 file holding the sentence (never pass artifact-derived text as an argument)")
+    g.add_argument("--no-source", action="store_true", help="no readable source: show the title, retried by `pending --retry-no-source`")
+    s = sub.add_parser("set-kind", help="record the Artifact type a read reported (Data and Dashboard are one kind)")
+    s.add_argument("id")
+    s.add_argument("kind")
     s = sub.add_parser("set-sharing", help="record an artifact's sharing state")
     s.add_argument("id")
     s.add_argument("--file", required=True, help="UTF-8 file holding the phrase (never pass page-derived text as an argument)")
     s = sub.add_parser("pending", help="rows waiting for a description")
     s.add_argument("--owned-only", action="store_true")
     s.add_argument("--json", action="store_true")
+    s.add_argument("--retry-no-source", action="store_true", help="first put title-only and typed-skipped rows back in the queue")
     s = sub.add_parser("rows", help="list artifacts as JSON")
     s.add_argument("--json", action="store_true", required=True)
     s.add_argument("--owned", action="store_true")
@@ -54,7 +60,8 @@ def main(argv=None):
     sub.add_parser("open", help="open explorer.html in the default browser")
     sub.add_parser("ingest-hooks", help="record spooled hook payloads (run by the hook and by each watcher pass)")
     s = sub.add_parser("excerpt", help="write the visible text of a saved artifact file, capped, to --out for the describer agent")
-    s.add_argument("file")
+    s.add_argument("file", nargs="+", help="one or more saved source files, joined in order")
+    s.add_argument("--json-field", help="the files are JSON: use this field's string (HTML or text)")
     s.add_argument("--out", required=True, help="where the excerpt goes; the caller never reads it, the describer agent does")
     s.add_argument("--chars", type=int, default=3000)
     s.add_argument("--id", help="the row: a typed artifact or a page with almost no text is marked skipped")
@@ -70,7 +77,7 @@ def main(argv=None):
         return hook.ingest(data)
     if a.cmd == "excerpt":
         import describe
-        text, skipped = describe.excerpt_for(data, a.file, a.out, a.id, a.type, a.chars)
+        text, skipped = describe.excerpt_for(data, a.file, a.out, a.id, a.type, a.chars, a.json_field)
         print("skipped: no text to describe" if skipped else "%d characters" % len(text))
         return 0
     if a.cmd == "watch":
@@ -120,7 +127,11 @@ def main(argv=None):
         return describe.launch(data)
     if a.cmd == "ingest-list":
         return describe.ingest_list(data, a.file)
+    if a.cmd == "set-kind":
+        return describe.set_kind(data, a.id, a.kind)
     if a.cmd == "set-desc":
+        if a.no_source:
+            return describe.set_no_source(data, a.id)
         with open(a.file, encoding="utf-8") as f:
             return describe.set_desc(data, a.id, f.read())
     if a.cmd == "rows":
@@ -129,7 +140,7 @@ def main(argv=None):
         with open(a.file, encoding="utf-8") as f:
             return describe.set_sharing(data, a.id, f.read())
     if a.cmd == "pending":
-        return describe.pending(data, owned_only=a.owned_only, as_json=a.json)
+        return describe.pending(data, owned_only=a.owned_only, as_json=a.json, retry_no_source=a.retry_no_source)
     if a.cmd == "status":
         return describe.status(data, as_json=a.json)
     return 2

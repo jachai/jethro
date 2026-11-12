@@ -101,10 +101,17 @@ class _Text(HTMLParser):
             self.out.append(s.strip())
 
 
-def excerpt(path, chars=3000):
-    """Visible text of a saved artifact file (HTML or plain text), whitespace-collapsed and capped."""
+def excerpt(path, chars=3000, json_field=None):
+    """Visible text of a saved artifact file (HTML or plain text), whitespace-collapsed and capped. With
+    json_field the file is JSON and that field's string is the text (a Dashboard's files/index.html.json)."""
     with open(path, encoding="utf-8", errors="replace") as f:
         raw = f.read(2_000_000)
+    if json_field:
+        try:
+            raw = json.loads(raw).get(json_field)
+        except (ValueError, AttributeError):
+            raw = None
+        raw = raw if isinstance(raw, str) else ""
     if "<" in raw and ">" in raw:
         p = _Text()
         p.feed(raw)
@@ -113,16 +120,17 @@ def excerpt(path, chars=3000):
 
 
 MIN_TEXT = 50  # fewer visible characters than this is a viewer shell, not something to describe
-TYPED = {"docs", "slides", "data", "dashboard"}  # Artifact types whose saved index.html is only the viewer shell
+TYPED = {"docs", "slides", "data", "dashboard"}  # kinds whose index.html is only the viewer shell (their source is elsewhere)
 
 
-def excerpt_for(data, path, out, aid=None, kind=None, chars=3000):
-    """Write the excerpt of a saved artifact to `out` for the describer agent. A typed artifact or a page
-    with almost no text marks the row 'skipped' (with the reason) so no run picks it again.
+def excerpt_for(data, paths, out, aid=None, kind=None, chars=3000, json_field=None):
+    """Write the excerpt of one or more saved source files (joined in order) to `out` for the describer agent.
+    A source with almost no text marks the row 'skipped' (with the reason) so no run picks it again.
     Returns (text, skipped)."""
-    text = excerpt(path, chars)
-    typed = (kind or "").strip().lower() in TYPED
-    skipped = typed or len(text) < MIN_TEXT
+    paths = [paths] if isinstance(paths, str) else list(paths)
+    text = " ".join(t for t in (excerpt(p, chars, json_field) for p in paths) if t)[:chars]
+    kind = db.norm_kind(kind)
+    skipped = len(text) < MIN_TEXT
     with open(out, "w", encoding="utf-8") as f:
         f.write("" if skipped else text)
     if aid:
@@ -131,8 +139,8 @@ def excerpt_for(data, path, out, aid=None, kind=None, chars=3000):
             con.close()
             return text, skipped
         if skipped:
-            db.upsert_artifact(con, aid, kind=kind or None, desc_status="skipped",
-                               desc_note="no text: typed artifact" if typed else "no text: under %d characters" % MIN_TEXT)
+            db.upsert_artifact(con, aid, kind=kind, desc_status="skipped",
+                               desc_note="no text: under %d characters" % MIN_TEXT)
         elif kind:
             db.upsert_artifact(con, aid, kind=kind)
         con.commit()
@@ -147,6 +155,36 @@ def set_desc(data, aid, text):
     return 0
 
 
+def set_no_source(data, aid):
+    """No readable source for this artifact (connector absent, read refused): its title stands in, ranked
+    below any real description, so a later describer sentence still wins."""
+    con = db.connect(data)
+    r = db.get(con, aid)
+    if r is not None and not r["description"]:
+        db.upsert_artifact(con, aid, description=(r["title"] or aid)[:200], desc_source="title", desc_status="no-source")
+        con.commit()
+    con.close()
+    return 0
+
+
+def set_kind(data, aid, kind):
+    con = db.connect(data)
+    if db.get(con, aid) is not None and db.norm_kind(kind):
+        db.upsert_artifact(con, aid, kind=db.norm_kind(kind))
+        con.commit()
+    con.close()
+    return 0
+
+
+def requeue_no_source(con):
+    """Put title-only rows and the typed rows 0.1.2-0.1.3 skipped back in the queue. Returns the count."""
+    n = con.execute("UPDATE artifacts SET description=NULL, desc_source=NULL, desc_status='pending', desc_note=NULL, "
+                    "updated=? WHERE (desc_status='no-source' AND desc_source='title') OR "
+                    "(desc_status='skipped' AND desc_note='no text: typed artifact')", (time.time(),)).rowcount
+    con.commit()
+    return n
+
+
 def set_sharing(data, aid, text):
     con = db.connect(data)
     db.upsert_artifact(con, aid, sharing=" ".join(text.split())[:80])
@@ -154,7 +192,7 @@ def set_sharing(data, aid, text):
     return 0
 
 
-COLS = "id,url,title,owned,thumb_status,desc_status,modified,local_path"
+COLS = "id,url,title,kind,owned,thumb_status,desc_status,modified,local_path"
 
 
 def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None, need_desc=False):
@@ -187,8 +225,11 @@ def pending_rows(con, owned_only):
     return list_rows(con, owned=owned_only, desc_status="pending", need_desc=True)
 
 
-def pending(data, owned_only=False, as_json=False):
-    rs = pending_rows(db.connect(data), owned_only)
+def pending(data, owned_only=False, as_json=False, retry_no_source=False):
+    con = db.connect(data)
+    if retry_no_source:
+        requeue_no_source(con)
+    rs = pending_rows(con, owned_only)
     if as_json:
         print(json.dumps(rs))
     else:
@@ -322,6 +363,7 @@ def status(data, as_json=False):
         "unknown": one("SELECT COUNT(*) FROM artifacts WHERE owned IS NULL"),
         "pending_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE " + PENDING),
         "skipped_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE desc_status='skipped'"),
+        "no_source_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE desc_status='no-source'"),
         "thumbs_ok": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status='ok'"),
         # waiting for a headless capture (or failed it)
         "thumbs_missing": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status IS NULL OR thumb_status IN ('pending','failed')"),
@@ -336,7 +378,8 @@ def status(data, as_json=False):
         return 0
     lp = out["last_pass"]
     print("artifacts: %(total)d (mine %(mine)d, shared %(shared)d, unknown %(unknown)d)" % out)
-    print("descriptions pending: %(pending_descriptions)d (no text, skipped: %(skipped_descriptions)d)" % out)
+    print("descriptions pending: %(pending_descriptions)d (no text, skipped: %(skipped_descriptions)d; "
+          "no source: %(no_source_descriptions)d, title shown)" % out)
     print("thumbnails: %(thumbs_ok)d ok, %(thumbs_missing)d waiting or failed" % out)
     if out["thumbs_none"]:
         print("no thumbnail: %(thumbs_none)d (no local file: turn on chrome_screenshots to capture them)" % out)

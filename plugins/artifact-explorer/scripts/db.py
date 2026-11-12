@@ -149,6 +149,15 @@ def merge(con, src, dst):
     con.execute("UPDATE artifacts SET %s WHERE id=?" % ",".join(k + "=?" for k in f), list(f.values()) + [dst])
 
 
+KINDS = {"data": "Dashboard", "dashboard": "Dashboard", "slides": "Slides", "docs": "Docs", "page": "Page", "html": "Page"}
+
+
+def norm_kind(kind):
+    """The one kind name for an Artifact type the read reported: Data and Dashboard are one kind."""
+    k = " ".join(str(kind or "").split())
+    return KINDS.get(k.lower(), k[:40]) if k else None
+
+
 def get(con, aid):
     return con.execute("SELECT * FROM artifacts WHERE id=?", (aid,)).fetchone()
 
