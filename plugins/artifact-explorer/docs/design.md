@@ -48,7 +48,7 @@ artifacts(id TEXT PRIMARY KEY,   -- the id in claude.ai/artifact/<id>, or the uu
   creator TEXT, sharing TEXT, size INTEGER,
   created REAL, modified REAL, last_accessed REAL, last_access_by TEXT,   -- unix seconds; by = browser|agent
   version TEXT, seq INTEGER, local_path TEXT,
-  description TEXT, desc_source TEXT, desc_status TEXT,  -- source rank: title<publish<describer<import ; status ok|pending|skipped
+  description TEXT, desc_source TEXT, desc_status TEXT,  -- source rank: title<publish<describer<import ; status ok|pending|skipped|no-source
   desc_note TEXT,  -- (0.1.2, added on open) why a skipped row has no description, e.g. 'no text: typed artifact'
   thumb TEXT, thumb_source TEXT, thumb_status TEXT,      -- thumb = path relative to DATA; source headless|chrome|import ; status ok|pending|failed|none
   first_seen REAL, updated REAL)
@@ -114,14 +114,22 @@ when the result still parses; anything else is logged to watch.log to move by ha
    "waiting" after its last reply, and its describer subagent ran async, so runs piled up.) When the data dir ends in `-inline` (the plugin was loaded with `--plugin-dir`), the command also gets
    `--plugin-dir <plugin root>`. **Single flight**: launch decisions run under `DATA/describer.lock`; the launch books $0.25, then atomically writes `DATA/describer.json` {pid, t, day, booked}; while that pid is alive and the record is younger than 30 min, no
    other run starts (each skipped tick logs "still running"). Once the pid has ended, the next tick logs the result line, its cost and any refused tools from `describer.out`, and corrects
-   the $0.25 booked at launch to the real `total_cost_usd` (kept at $0.25 when the result can't be read). **Typed artifacts**: Docs, Slides and Data artifacts save only their viewer
-   shell as index.html, so `ae excerpt --id --type` marks them (and any page under 50 visible characters) `skipped` with a `desc_note`; they never return to the queue, `ae status`
-   counts them apart, the page shows "no description (typed)", and the queue puts rows of a known typed kind last.
+   the $0.25 booked at launch to the real `total_cost_usd` (kept at $0.25 when the result can't be read). **Typed artifacts (0.1.4)**: Docs, Slides and Data artifacts save only their viewer
+   shell as index.html; the read's result text names the type ('an Artifact of type "Docs"'), which `ae set-kind` records (`db.norm_kind`: Data|Dashboard → Dashboard, HTML → Page).
+   The refresh skill then reads the real source: Dashboard = ArtifactData `files` (saved to `ae tmpdir ID`, a per-row folder in the system temp dir, because ArtifactData refuses an
+   `out_dir` inside the plugin data folder) + `datasets` titles; Slides = `project/deck.json` + cover slide; Docs = Claude Docs connector (project → outline → lead paragraph).
+   No readable source → `ae set-desc ID --no-source` (description = title, desc_source `title`, desc_status `no-source`; a describer sentence outranks it). `ae pending --retry-no-source`
+   flips `no-source` and the 0.1.2 "no text: typed artifact" skips back to pending. Only pages under 50 visible characters are still `skipped`.
+   **Window (0.1.4)**: `[window] days` (60) and `key` (`modified`); a row is in the window when coalesce(key, the other of modified/created, first_seen) ≥ now − (days + state
+   `window_extra_days`) days (`db.in_window`, `db.window_sql`; days 0 = off). The pending queue, the describer launch, `thumbs.run` (without `--id`) and the SessionStart count are windowed.
+   `ae window --widen N` adds to `window_extra_days`. `last_accessed` is never the key (automation browser visits make it noise).
    Shared rows wait for an interactive `/artifact-explorer:refresh` (SessionStart reminder).
 7. **Build**: `page/template.html` with a `/*__DATA__*/` placeholder replaced by JSON {config, rows, generated}. Write to a temp file, then rename.
    Rows: apply `[filter]`, then overrides, then category rules. Thumbs are relative paths `thumbs/<file>`.
    Columns: Title, Category, Created by, Sharing, Modified, Last accessed, Created, Size, Description, Repos, Open.
    Page: search box, category chips with counts, sortable columns, card/table toggle, light/dark tokens, works at 375 px, no external scripts.
+   The payload carries `window` {days, cutoff (rounded to a day)} and `older` per row; older rows go in a collapsed "N older artifacts" group (cards and table), rendered only
+   when opened (button or `#older`) and without thumbnail images; "Describe older" copies `/artifact-explorer:refresh older`.
 
 ## config.toml
 
@@ -154,7 +162,7 @@ hidden = false
 - `setup`: show the current options (from `/config`), write DATA/config.toml from defaults when it is missing (or offer `ae import` when
   `~/.claude/artifact-explorer/meta.json` exists), run the refresh skill in full mode, show allow rules for `Bash(sh */artifact-explorer/*/bin/ae *)`
   and write them to settings.json **only on yes**, then `ae open`.
-- `refresh [full|describe-only]`: (1) Artifact list scope `mine` then `shared` (`limit` 200, `page_token` while a `next_page_token` is given).
+- `refresh [full|describe-only|older|retry]` (0.1.4: `older` = `ae window --widen 30` then full; `retry` = pending with `--retry-no-source`; typed rows branch as in Data flow 6): (1) Artifact list scope `mine` then `shared` (`limit` 200, `page_token` while a `next_page_token` is given).
   The list answers in text lines (`- (mine) TITLE — URL — updated YYYY-MM-DD`; shared lines carry no date), so it gives only url, title,
   owned and a modified date. Sharing comes from the sharing skill. Kind and size are filled only by `ae import` (neither the hook's
   tool_response nor the list carries them), so kind rules in config.toml match imported rows only. Rows → `DATA/inbox/list.json` →
@@ -162,7 +170,7 @@ hidden = false
   page text never enters the refresh session: `ae excerpt FILE --out DATA/inbox/excerpt.txt` (≤3000 visible characters) and the `describer`
   agent (tools: Read only) reads that file. (2) `ae pending --json`. Own rows: Artifact read → excerpt → `describer` → sentence to a file →
   `ae set-desc ID --file`. Other rows (owned 0 or unknown): only in full mode (each read asks for consent once). (3) `ae thumbs`, `ae build`. (4) Report counts.
-  `allowed-tools`: Artifact, Agent, Read, Write, Bash(sh *bin/ae *). They pre-approve only for the turn that runs the skill; the
+  `allowed-tools`: Artifact, ArtifactData, Agent, Read, Write, ToolSearch, mcp__claude_ai_Claude_Docs__read, mcp__claude_ai_Claude_Docs__guide, Bash(sh *bin/ae *). They pre-approve only for the turn that runs the skill; the
   setup skill's allow rule `Bash(sh */artifact-explorer/*/bin/ae *)` (added only on the user's yes) is what lets the background session run `ae`.
 - `open`: `ae open`.
 - `screenshots` (when `chrome_screenshots` is on): `ae rows --json --thumb-status none|failed` → Claude in Chrome captures each inside
