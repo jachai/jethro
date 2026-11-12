@@ -83,6 +83,21 @@ class KindTest(Base):
         self.assertEqual(rows[0]["kind"], "Docs")
 
 
+class TmpdirTest(Base):
+    def test_tmpdir_is_an_empty_folder_outside_the_data_folder(self):
+        rc, out = run(self.d, "tmpdir", A)
+        path = out.strip()
+        self.assertEqual(rc, 0)
+        self.assertTrue(os.path.isdir(path))
+        self.assertEqual(os.path.basename(path), A)
+        self.assertFalse(os.path.abspath(path).startswith(os.path.abspath(self.d)))
+        open(os.path.join(path, "stale.json"), "w").close()
+        self.assertEqual(os.listdir(run(self.d, "tmpdir", A)[1].strip()), [])
+
+    def test_tmpdir_refuses_a_path_like_id(self):
+        self.assertEqual(run(self.d, "tmpdir", "../x")[0], 2)
+
+
 class ExcerptSourcesTest(Base):
     def test_json_field_is_read_as_html(self):
         p = self.write("index.html.json", json.dumps({"edit": 3, "text": "<html><body><h1>Sprint Burndown</h1>"
