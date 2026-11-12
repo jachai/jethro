@@ -68,8 +68,23 @@ def main(argv=None):
     s.add_argument("--chars", type=int, default=3000)
     s.add_argument("--id", help="the row: a typed artifact or a page with almost no text is marked skipped")
     s.add_argument("--type", help='the Artifact type the read reported (e.g. "Docs", "Slides", "HTML")')
+    s = sub.add_parser("tmpdir", help="print an empty per-row folder in the system temp dir for ArtifactData out_dir (the data folder is refused there)")
+    s.add_argument("id")
     a = p.parse_args(argv)
     data = common.data_dir(a.data)
+
+    if a.cmd == "tmpdir":
+        import re
+        import shutil
+        import tempfile
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", a.id):
+            print("bad id", file=sys.stderr)
+            return 2
+        path = os.path.join(tempfile.gettempdir(), "artifact-explorer", a.id)
+        shutil.rmtree(path, ignore_errors=True)
+        os.makedirs(path)
+        print(path)
+        return 0
 
     if a.cmd == "hook":
         import hook
