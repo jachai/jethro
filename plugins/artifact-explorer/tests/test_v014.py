@@ -83,6 +83,47 @@ class KindTest(Base):
         self.assertEqual(rows[0]["kind"], "Docs")
 
 
+class ReviewWaveTest(Base):
+    def test_share_keeps_every_source(self):
+        texts = ["x" * 5000, "Dataset: Burndown - per day counts"]
+        got = describe.share(texts, 3000)
+        self.assertEqual(got[1], texts[1])
+        self.assertEqual(len(" ".join(got)), 3000)
+        self.assertEqual(describe.share(["ab", "", "cd"], 3000), ["ab", "", "cd"])
+
+    def test_long_page_cannot_push_out_the_datasets(self):
+        page = self.write("index.html.json", json.dumps({"text": "<p>" + "Burndown chart text. " * 400 + "</p>"}))
+        src = self.write("source.txt", "Dataset: Team per-day counts - fixed, triaged, new.")
+        out = os.path.join(self.d, "excerpt.txt")
+        run(self.d, "excerpt", page, src, "--json-field", "text", "--out", out)
+        got = open(out, encoding="utf-8").read()
+        self.assertTrue(got.endswith("Dataset: Team per-day counts - fixed, triaged, new."), got[-80:])
+        self.assertLessEqual(len(got), 3000)
+
+    def test_retry_leaves_older_rows_alone(self):
+        now = time.time()
+        db.upsert_artifact(self.con, A, title="New", owned=1, modified=now - DAY)
+        db.upsert_artifact(self.con, B, title="Old", owned=1, modified=now - 400 * DAY)
+        self.con.commit()
+        describe.set_no_source(self.d, A)
+        describe.set_no_source(self.d, B)
+        run(self.d, "pending", "--retry-no-source", "--json")
+        self.assertEqual(self.row(A)["desc_status"], "pending")
+        self.assertEqual(self.row(B)["desc_status"], "no-source")
+        self.assertEqual(self.row(B)["description"], "Old")
+
+    def test_status_counts_null_status_and_only_pending_older(self):
+        now = time.time()
+        db.upsert_artifact(self.con, A, title="A", owned=1, modified=now - DAY, description="Has one")
+        self.con.execute("UPDATE artifacts SET desc_status=NULL WHERE id=?", (A,))
+        db.upsert_artifact(self.con, B, title="B", owned=1, modified=now - 400 * DAY, desc_status="skipped")
+        db.upsert_artifact(self.con, C, title="C", owned=1, modified=now - 400 * DAY, desc_status="pending")
+        self.con.commit()
+        st = json.loads(run(self.d, "status", "--json")[1])
+        self.assertEqual(st["window_described"], 1)
+        self.assertEqual(st["older_pending"], 1)
+
+
 class TmpdirTest(Base):
     def test_tmpdir_is_an_empty_folder_outside_the_data_folder(self):
         rc, out = run(self.d, "tmpdir", A)
@@ -93,6 +134,18 @@ class TmpdirTest(Base):
         self.assertFalse(os.path.abspath(path).startswith(os.path.abspath(self.d)))
         open(os.path.join(path, "stale.json"), "w").close()
         self.assertEqual(os.listdir(run(self.d, "tmpdir", A)[1].strip()), [])
+
+    @unittest.skipUnless(hasattr(os, "symlink") and hasattr(os, "getuid"), "posix")
+    def test_tmpdir_replaces_a_planted_symlink_without_touching_its_target(self):
+        path = run(self.d, "tmpdir", A)[1].strip()
+        os.rmdir(path)
+        target = helpers.tmp()
+        keep = os.path.join(target, "keep.txt")
+        open(keep, "w").close()
+        os.symlink(target, path)
+        again = run(self.d, "tmpdir", A)[1].strip()
+        self.assertFalse(os.path.islink(again))
+        self.assertTrue(os.path.exists(keep))
 
     def test_tmpdir_refuses_a_path_like_id(self):
         self.assertEqual(run(self.d, "tmpdir", "../x")[0], 2)

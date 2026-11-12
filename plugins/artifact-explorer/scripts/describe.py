@@ -120,6 +120,25 @@ def excerpt(path, chars=3000, json_field=None):
     return " ".join(raw.split())[:chars]
 
 
+def share(texts, chars):
+    """Cut several sources so all of them fit in `chars` together: short ones keep everything, the rest split
+    what is left equally (a long dashboard page cannot push its dataset titles out). Order is kept."""
+    budget = chars - max(len(texts) - 1, 0)  # the joining spaces
+    caps, left = {}, [i for i, t in enumerate(texts) if t]
+    while left:
+        each = max(budget // len(left), 0)
+        fits = [i for i in left if len(texts[i]) <= each]
+        if not fits:
+            for i in left:
+                caps[i] = each
+            break
+        for i in fits:
+            caps[i] = len(texts[i])
+            budget -= len(texts[i])
+            left.remove(i)
+    return [t[:caps.get(i, 0)] for i, t in enumerate(texts)]
+
+
 MIN_TEXT = 50  # fewer visible characters than this is a viewer shell, not something to describe
 TYPED = {"docs", "slides", "data", "dashboard"}  # kinds whose index.html is only the viewer shell (their source is elsewhere)
 
@@ -129,8 +148,8 @@ def excerpt_for(data, paths, out, aid=None, kind=None, chars=3000, json_field=No
     A source with almost no text marks the row 'skipped' (with the reason) so no run picks it again.
     Returns (text, skipped)."""
     paths = [paths] if isinstance(paths, str) else list(paths)
-    texts = (excerpt(p, chars, json_field if p.lower().endswith(".json") else None) for p in paths)
-    text = " ".join(t for t in texts if t)[:chars]
+    texts = [excerpt(p, chars, json_field if p.lower().endswith(".json") else None) for p in paths]
+    text = " ".join(t for t in share(texts, chars) if t)
     kind = db.norm_kind(kind)
     skipped = len(text) < MIN_TEXT
     with open(out, "w", encoding="utf-8") as f:
@@ -139,6 +158,15 @@ def excerpt_for(data, paths, out, aid=None, kind=None, chars=3000, json_field=No
         con = db.connect(data)
         if db.get(con, aid) is None:  # the id comes from the run; never invent a row
             con.close()
+            return text, skipped
+        r = db.get(con, aid)
+        typed = (kind or r["kind"] or "").lower() in TYPED
+        if skipped and typed:  # a typed artifact's own source came back empty: show the title, `retry` tries again
+            if kind:
+                db.upsert_artifact(con, aid, kind=kind)
+            con.commit()
+            con.close()
+            set_no_source(data, aid)
             return text, skipped
         if skipped:
             db.upsert_artifact(con, aid, kind=kind, desc_status="skipped",
@@ -178,11 +206,14 @@ def set_kind(data, aid, kind):
     return 0
 
 
-def requeue_no_source(con):
-    """Put title-only rows and the typed rows 0.1.2-0.1.3 skipped back in the queue. Returns the count."""
+def requeue_no_source(con, win=None):
+    """Put title-only rows and the typed rows 0.1.2-0.1.3 skipped back in the queue, inside the window only
+    (an older row put back would show "pending" with nothing ever picking it). Returns the count."""
+    cond, wargs = db.window_sql(win) if win is not None else ("1=1", [])
     n = con.execute("UPDATE artifacts SET description=NULL, desc_source=NULL, desc_status='pending', desc_note=NULL, "
-                    "updated=? WHERE (desc_status='no-source' AND desc_source='title') OR "
-                    "(desc_status='skipped' AND desc_note='no text: typed artifact')", (time.time(),)).rowcount
+                    "updated=? WHERE ((desc_status='no-source' AND desc_source='title') OR "
+                    "(desc_status='skipped' AND desc_note='no text: typed artifact')) AND " + cond,
+                    [time.time()] + list(wargs)).rowcount
     con.commit()
     return n
 
@@ -215,9 +246,8 @@ def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None,
         args.append(thumb_status)
     if need_desc:
         where.append("(description IS NULL OR description='')")
-    typed_last = "CASE WHEN lower(coalesce(kind,'')) IN (%s) THEN 1 ELSE 0 END" % ",".join("'%s'" % t for t in sorted(TYPED))
-    sql = "SELECT %s FROM artifacts%s ORDER BY owned DESC, %s, modified DESC, id" % (
-        COLS, " WHERE " + " AND ".join(where) if where else "", typed_last)
+    sql = "SELECT %s FROM artifacts%s ORDER BY owned DESC, modified DESC, id" % (
+        COLS, " WHERE " + " AND ".join(where) if where else "")
     if limit is not None:
         sql += " LIMIT %d" % limit
     return [dict(r) for r in con.execute(sql, args)]
@@ -239,7 +269,7 @@ def data_window(data, con):
 def pending(data, owned_only=False, as_json=False, retry_no_source=False):
     con = db.connect(data)
     if retry_no_source:
-        requeue_no_source(con)
+        requeue_no_source(con, data_window(data, con))
     rs = pending_rows(con, owned_only, data_window(data, con))
     if as_json:
         print(json.dumps(rs))
@@ -397,9 +427,9 @@ def status(data, as_json=False):
         "pending_descriptions": inw("SELECT COUNT(*) FROM artifacts WHERE " + PENDING),
         "window_days": win["days"] + win["extra"] if win["cutoff"] is not None else 0,
         "window_rows": inw("SELECT COUNT(*) FROM artifacts WHERE 1=1"),
-        "window_described": inw("SELECT COUNT(*) FROM artifacts WHERE NOT " + nodesc + " AND desc_status<>'no-source'"),
+        "window_described": inw("SELECT COUNT(*) FROM artifacts WHERE NOT " + nodesc + " AND coalesce(desc_status,'')<>'no-source'"),
         "older": outw("SELECT COUNT(*) FROM artifacts WHERE 1=1"),
-        "older_pending": outw("SELECT COUNT(*) FROM artifacts WHERE " + nodesc),
+        "older_pending": outw("SELECT COUNT(*) FROM artifacts WHERE " + nodesc + " AND coalesce(desc_status,'pending')='pending'"),
         "skipped_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE desc_status='skipped'"),
         "no_source_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE desc_status='no-source'"),
         "thumbs_ok": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status='ok'"),

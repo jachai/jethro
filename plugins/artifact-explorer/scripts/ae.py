@@ -80,9 +80,17 @@ def main(argv=None):
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", a.id):
             print("bad id", file=sys.stderr)
             return 2
-        path = os.path.join(tempfile.gettempdir(), "artifact-explorer", a.id)
+        uid = getattr(os, "getuid", lambda: os.environ.get("USERNAME", "user"))()
+        base = os.path.join(tempfile.gettempdir(), "artifact-explorer-%s" % uid)
+        os.makedirs(base, mode=0o700, exist_ok=True)
+        if os.path.islink(base) or (hasattr(os, "getuid") and os.stat(base).st_uid != os.getuid()):
+            print("unsafe temp folder: " + base, file=sys.stderr)
+            return 2
+        path = os.path.join(base, a.id)
+        if os.path.islink(path):
+            os.unlink(path)
         shutil.rmtree(path, ignore_errors=True)
-        os.makedirs(path)
+        os.makedirs(path, mode=0o700)
         print(path)
         return 0
 

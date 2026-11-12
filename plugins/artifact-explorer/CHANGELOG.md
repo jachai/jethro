@@ -8,7 +8,7 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - Descriptions cover a recent window: `[window] days = 60, key = "modified"` in config.toml (a row's date is its modified time, else created, else first seen; `days = 0` covers everything). The pending queue, the background describer, thumbnails and the SessionStart count only look at rows inside it. `ae status` adds "window: 60 days: X rows, Y described, Z waiting" and "older: M not described (run /artifact-explorer:refresh older)".
-- Docs, Slides and Dashboard artifacts are described from their own source instead of being skipped: a Dashboard from its ArtifactData `files` page and `datasets` titles, a Slides deck from `project/deck.json` and its cover slide, a Doc from its title, outline and lead paragraph through the Claude Docs connector. Only pages with under 50 characters of text are still skipped.
+- Docs, Slides and Dashboard artifacts are described from their own source instead of being skipped: a Dashboard from its ArtifactData `files` page and `datasets` titles, a Slides deck from `project/deck.json` and its cover slide, a Doc from its title, outline and lead paragraph through the Claude Docs connector. Only pages with under 50 characters of text are still skipped; a typed artifact whose own source comes back empty shows its title instead (`retry` tries again). Several sources share the 3000-character excerpt, so a long dashboard page cannot push out its dataset titles, and typed rows are no longer queued last.
 - The page shows rows older than the window in a collapsed "N older artifacts" group (cards and table). It is drawn only when opened (button or `#older`), without thumbnail images.
 
 ### Added
@@ -17,7 +17,7 @@ All notable changes to this project are documented here. The format is based on
 - `ae set-desc ID --no-source`: when a typed artifact's source cannot be read, the title stands in (status `no-source`); a later describer sentence still replaces it. `ae pending --retry-no-source` queues those rows again, and also the 0.1.2-era "no text: typed artifact" skips.
 - `ae window [--widen N]` shows the window and widens it by N days (kept in the catalog). `/artifact-explorer:refresh older` widens it by 30 days and describes; the page's "Describe older" button copies that command.
 - `ae excerpt` takes several files, joined in order, and `--json-field F` reads that field of a `.json` file as HTML or text.
-- `ae tmpdir ID` prints an empty per-row folder in the system temp dir. A Dashboard's files are saved there, because ArtifactData refuses an `out_dir` inside the plugin data folder.
+- `ae tmpdir ID` prints an empty per-row folder in a private per-user folder of the system temp dir (it refuses a symlinked or foreign one). A Dashboard's files are saved there, because ArtifactData refuses an `out_dir` inside the plugin data folder.
 - `/artifact-explorer:refresh retry` runs `ae pending --retry-no-source` first.
 
 ### Not built (follow-up)

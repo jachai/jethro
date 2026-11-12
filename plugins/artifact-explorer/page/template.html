@@ -184,7 +184,7 @@ function splitOlder(list){
 }
 function olderLabel(n){ return n + " older artifact" + (n === 1 ? "" : "s"); }
 function windowNote(w){
- return w && w.days ? "Not touched in the last " + w.days + " days: not described, no thumbnail." : "";
+ return w && w.days ? "Not touched in the last " + w.days + " days. Shown without thumbnails; new ones are described only after Describe older." : "";
 }
 /*OLD-END*/
 const OLDER_CMD = "/artifact-explorer:refresh older";
