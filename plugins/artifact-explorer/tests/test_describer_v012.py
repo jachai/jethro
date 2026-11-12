@@ -88,30 +88,29 @@ class SkipTyped(Base):
             f.write("<html><body>%s</body></html>" % text)
         return p
 
-    def test_shell_and_typed_rows_skipped(self):
+    def test_shell_rows_skipped_typed_source_described(self):
         out = os.path.join(self.d, "excerpt.txt")
         long = "Quarterly plan for the monitor fixes with owners, dates and the open questions for ops. " * 2
         self.assertTrue(describe.excerpt_for(self.d, self.save("Claude Docs"), out, A, None)[1])
-        self.assertTrue(describe.excerpt_for(self.d, self.save(long), out, B, "Slides")[1])
+        # 0.1.4: a typed artifact's own source (deck.json, Docs lead) is described, not skipped
+        self.assertFalse(describe.excerpt_for(self.d, self.save(long), out, B, "Slides")[1])
         text, skipped = describe.excerpt_for(self.d, self.save(long), out, C, "HTML")
         self.assertFalse(skipped)
         self.assertEqual(open(out).read(), text)
         con = self.con()
-        a, b = db.get(con, A), db.get(con, B)
+        a, b, c = db.get(con, A), db.get(con, B), db.get(con, C)
         self.assertEqual((a["desc_status"], a["desc_note"]), ("skipped", "no text: under 50 characters"))
-        self.assertEqual((b["desc_status"], b["desc_note"], b["kind"]), ("skipped", "no text: typed artifact", "Slides"))
-        self.assertEqual([r["id"] for r in describe.pending_rows(con, True)], [C])
+        self.assertEqual((b["kind"], c["kind"]), ("Slides", "Page"))
+        self.assertEqual(sorted(r["id"] for r in describe.pending_rows(con, True)), [B, C])
         with mock.patch("builtins.print") as pr:
             describe.status(self.d, as_json=True)
         s = json.loads(pr.call_args[0][0])
-        self.assertEqual((s["pending_descriptions"], s["skipped_descriptions"]), (1, 2))
-        f = os.path.join(self.d, "list.json")  # a later list refresh never puts them back in the queue
+        self.assertEqual((s["pending_descriptions"], s["skipped_descriptions"]), (2, 1))
+        f = os.path.join(self.d, "list.json")  # a later list refresh never puts a skipped row back in the queue
         describe.ingest_list(self.d, f)
-        self.assertEqual([r["id"] for r in describe.pending_rows(self.con(), True)], [C])
+        self.assertEqual(sorted(r["id"] for r in describe.pending_rows(self.con(), True)), [B, C])
         rows = {r["id"]: r for r in build.collect(self.d, {})[0]}
-        self.assertEqual((rows[B]["skipped"], rows[B]["pending"]), ("no text: typed artifact", False))
-        tpl = open(os.path.join(common.ROOT, "page", "template.html"), encoding="utf-8").read()
-        self.assertIn("no description (typed)", tpl)
+        self.assertEqual((rows[A]["skipped"], rows[A]["pending"]), ("no text: under 50 characters", False))
 
     def test_cli_excerpt_skip(self):
         import ae

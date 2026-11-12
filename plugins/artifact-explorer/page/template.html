@@ -187,7 +187,7 @@ function when(t, by){
 }
 function desc(r){
  if (r.pending) return el("span", "pend", "description pending");
- if (r.skipped){ const s = el("span", "dim", "no description (typed)"); s.title = r.skipped; return s; }
+ if (r.skipped){ const s = el("span", "dim", "no description"); s.title = r.skipped; return s; }
  return el("span", r.description ? "" : "dim", r.description);
 }
 function openLink(r){
