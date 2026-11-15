@@ -46,13 +46,32 @@ def owned_of(row):
     return None if o is None else int(bool(o))
 
 
-def ingest_list(data, file):
+def access_of(row):
+    """'view' | 'comment' | 'edit' from a list row's access ("can edit" counts), else None."""
+    a = str(first(row, "access", "permission") or "").lower().replace("can ", "").strip()
+    return a if a in ("view", "comment", "edit") else None
+
+
+def mark_revoked(con, listed_ids, now):
+    """Rows owned by someone else, seen in an earlier shared list, missing from this complete one: shared_gone
+    = now. Returns the number marked. The caller guarantees the list had at least one shared row."""
+    listed = set(listed_ids)
+    n = 0
+    for r in con.execute("SELECT id FROM artifacts WHERE owned=0 AND shared_seen IS NOT NULL AND shared_gone IS NULL").fetchall():
+        if r["id"] not in listed:
+            con.execute("UPDATE artifacts SET shared_gone=?, updated=? WHERE id=?", (now, now, r["id"]))
+            n += 1
+    return n
+
+
+def ingest_list(data, file, shared_complete=False):
     with open(file, encoding="utf-8") as f:
         rows = json.load(f)
     if isinstance(rows, dict):
         rows = first(rows, "artifacts", "items", "rows") or []
     con = db.connect(data)
-    n = 0
+    n, now = 0, time.time()
+    listed, shared = set(), 0
     for r in rows:
         aid = db.resolve(con, db.id_from_url(first(r, "url", "link")) or first(r, "id"))
         if not aid:
@@ -74,8 +93,20 @@ def ingest_list(data, file):
             sharing=sharing if sharing is None or isinstance(sharing, str) else json.dumps(sharing),
             creator=first(r, "creator", "owner", "author") if owned_of(r) == 0 else None,
             description=desc, desc_source="publish" if desc else None,
-            desc_status=status)
+            desc_status=status, access=access_of(r) if owned_of(r) == 0 else None,
+            other_org=int(bool(r["other_org"])) if owned_of(r) == 0 and r.get("other_org") is not None else None)
+        listed.add(aid)
+        if owned_of(r) == 0:
+            shared += 1
+            con.execute("UPDATE artifacts SET shared_seen=?, shared_gone=NULL WHERE id=?", (now, aid))
         n += 1
+    if shared_complete:
+        if shared:
+            gone = mark_revoked(con, listed, now)
+            if gone:
+                common.log(data, "ingest-list: %d shared rows no longer in the shared list" % gone)
+        else:
+            common.log(data, "ingest-list: --shared-complete with no shared rows: nothing marked revoked")
     db.fold_twins(con)
     con.commit()
     print("ingested %d rows" % n)
@@ -144,6 +175,21 @@ MIN_TEXT = 50  # fewer visible characters than this is a viewer shell, not somet
 TYPED = {"docs", "slides", "data", "dashboard"}  # kinds whose index.html is only the viewer shell (their source is elsewhere)
 
 
+def _keep_copy(data, r, paths):
+    """Someone else's page: keep its HTML file in DATA/copies/<id>.html (for when the share is revoked).
+    Own rows never get a copy. Returns the relative path or None."""
+    if r["owned"] != 0 or not paths or not str(paths[0]).lower().endswith((".html", ".htm")):
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", r["id"]):
+        return None
+    try:
+        os.makedirs(os.path.join(data, "copies"), exist_ok=True)
+        shutil.copyfile(paths[0], os.path.join(data, "copies", r["id"] + ".html"))
+    except OSError:
+        return None
+    return "copies/%s.html" % r["id"]
+
+
 def excerpt_for(data, paths, out, aid=None, kind=None, chars=3000, json_field=None):
     """Write the excerpt of one or more saved source files (joined in order) to `out` for the describer agent.
     A source with almost no text marks the row 'skipped' (with the reason) so no run picks it again.
@@ -161,6 +207,9 @@ def excerpt_for(data, paths, out, aid=None, kind=None, chars=3000, json_field=No
             con.close()
             return text, skipped
         r = db.get(con, aid)
+        copy = _keep_copy(data, r, paths)
+        if copy:
+            db.upsert_artifact(con, aid, local_copy=copy)
         typed = (kind or r["kind"] or "").lower() in TYPED
         if skipped and typed:  # a typed artifact's own source came back empty: show the title, `retry` tries again
             if kind:
@@ -186,15 +235,20 @@ def set_desc(data, aid, text):
     return 0
 
 
-def set_no_source(data, aid):
+def set_no_source(data, aid, con=None):
     """No readable source for this artifact (connector absent, read refused): its title stands in, ranked
-    below any real description, so a later describer sentence still wins."""
-    con = db.connect(data)
+    below any real description, so a later describer sentence still wins. With `con` the write goes on that
+    connection and the caller commits (a second connection would hit the caller's write lock)."""
+    own = con is None
+    if own:
+        con = db.connect(data)
     r = db.get(con, aid)
     if r is not None and not r["description"]:
         db.upsert_artifact(con, aid, description=(r["title"] or aid)[:200], desc_source="title", desc_status="no-source")
-        con.commit()
-    con.close()
+        if own:
+            con.commit()
+    if own:
+        con.close()
     return 0
 
 
@@ -247,6 +301,8 @@ def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None,
         args.append(thumb_status)
     if need_desc:
         where.append("(description IS NULL OR description='')")
+    if desc_status == "pending" and need_desc:
+        where.append("(owned=1 OR shared_gone IS NULL)")
     sql = "SELECT %s FROM artifacts%s ORDER BY owned DESC, modified DESC, id" % (
         COLS, " WHERE " + " AND ".join(where) if where else "")
     if limit is not None:
@@ -513,6 +569,10 @@ def status(data, as_json=False):
         # no local file to capture: only a Chrome screenshot (or an older catalog) can give these a thumbnail
         "thumbs_none": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status='none'"),
         "thumbs_importable": importer.thumbs_available(con),
+        "described": one("SELECT COUNT(*) FROM artifacts WHERE NOT " + nodesc + " AND coalesce(desc_source,'')<>'title'"),
+        "categorized": one("SELECT COUNT(*) FROM artifacts WHERE NOT " + nodesc +
+                           " AND coalesce(desc_source,'')<>'title' AND category IS NOT NULL "
+                           "AND coalesce(cat_source,'')<>'none'"),
         "last_pass": db.state_get(con, "last_pass"),
         "spend_today": round(db.spend_today(con), 2),
         "spend_cap": common.options()["describe_daily_cap"],
@@ -527,6 +587,7 @@ def status(data, as_json=False):
                                                         out["window_described"], out["pending_descriptions"]))
         if out["older"]:
             print("older: %(older_pending)d not described (run /artifact-explorer:refresh older)" % out)
+    print("categorized: %(categorized)d of %(described)d described" % out)
     print("descriptions pending: %(pending_descriptions)d (no text, skipped: %(skipped_descriptions)d; "
           "no source: %(no_source_descriptions)d, title shown)" % out)
     print("thumbnails: %(thumbs_ok)d ok, %(thumbs_missing)d waiting or failed" % out)
@@ -541,4 +602,238 @@ def status(data, as_json=False):
         print("last describer run: %s (%s)" % (res["line"], time.strftime("%Y-%m-%d %H:%M", time.localtime(res.get("t") or 0))))
     elif os.path.exists(os.path.join(data, RUN_FILE)):
         print("last describer run: still running")
+    return 0
+
+
+# ---- batches (0.2.0): one describer call over several excerpts, category + topics in the same reply ----
+
+def batch_root(data):
+    return os.path.join(data, "inbox", "batch")
+
+
+def batch_start(data):
+    """A new empty folder INBOX/batch/<n> (n = next free integer); prints its path."""
+    root = batch_root(data)
+    os.makedirs(root, exist_ok=True)
+    used = [int(x) for x in os.listdir(root) if x.isdigit()]
+    path = os.path.join(root, str(max(used, default=0) + 1))
+    _clear_old(root)
+    os.makedirs(path)
+    print(path)
+    return 0
+
+
+def _clear_old(root):
+    """Remove the older numbered batch folders (they are scratch; a new batch starts clean)."""
+    for x in os.listdir(root):
+        if x.isdigit() and os.path.isdir(os.path.join(root, x)):
+            shutil.rmtree(os.path.join(root, x), ignore_errors=True)
+
+
+def _json_list(v):
+    try:
+        c = json.loads(v) if v else []
+    except (ValueError, TypeError):
+        return []
+    return [x for x in c if isinstance(x, str)] if isinstance(c, list) else []
+
+
+def _one_line(s):
+    return " ".join(str(s or "").split())
+
+
+def write_manifest(data, folder, items):
+    """FOLDER/manifest.txt for the describer. items = [(id, "file"|"text", value)]. Returns the item count."""
+    cfg = common.load_config(data)
+    cats = [c["name"] for c in cfg.get("categories", []) if c.get("name")]
+    tops = [t["name"] for t in cfg.get("topics", []) if t.get("name")]
+    lines = ["Categories (pick exactly one): " + ", ".join(cats),
+             "Topics (pick 0-3 that fit; you may propose one new short topic): " + (", ".join(tops) or "(none configured yet)")]
+    for aid, how, val in items:
+        lines += ["## ITEM " + aid, "%s: %s" % (how, _one_line(val) if how == "text" else val)]
+    with open(os.path.join(folder, "manifest.txt"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return len(items)
+
+
+def _report(folder, n):
+    print(os.path.join(folder, "manifest.txt"))
+    print("items: %d" % n)
+    return 0
+
+
+def batch_manifest(data, folder):
+    folder = os.path.abspath(folder)
+    items = []
+    for name in sorted(os.listdir(folder)):
+        p = os.path.join(folder, name)
+        if name.endswith(".txt") and name != "manifest.txt" and os.path.getsize(p) > 0:
+            items.append((name[:-4], "file", p))
+    return _report(folder, write_manifest(data, folder, items))
+
+
+def batch_recat(data, limit=40):
+    """New folder + manifest of described rows that have no category pick yet (text items, nothing to read)."""
+    con = db.connect(data)
+    rs = con.execute("SELECT id, title, description FROM artifacts WHERE description IS NOT NULL AND description<>'' "
+                     "AND coalesce(desc_source,'')<>'title' AND cat_source IS NULL "
+                     "ORDER BY owned DESC, modified DESC, id LIMIT ?", (max(0, limit),)).fetchall()
+    con.close()
+    if not rs:
+        print("items: 0")
+        return 0
+    root = batch_root(data)
+    os.makedirs(root, exist_ok=True)
+    used = [int(x) for x in os.listdir(root) if x.isdigit()]
+    folder = os.path.join(root, str(max(used, default=0) + 1))
+    _clear_old(root)
+    os.makedirs(folder)
+    items = [(r["id"], "text", "%s \u2014 %s" % (_one_line(r["title"]) or r["id"], _one_line(r["description"]))) for r in rs]
+    return _report(folder, write_manifest(data, folder, items))
+
+
+def _text_items(folder):
+    """Ids the manifest next to a reply listed as text: items (their category is a recat)."""
+    out, cur = set(), None
+    try:
+        with open(os.path.join(folder, "manifest.txt"), encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("## ITEM "):
+                    cur = line[8:].strip()
+                elif cur and line.startswith("text:"):
+                    out.add(cur)
+                elif cur and line.startswith("file:"):
+                    cur = None
+    except OSError:
+        pass
+    return out
+
+
+def _save_line(con, line, cats, tops, texts, done):
+    """Store one reply line on `con`. Returns the number of new suggestions, or None when nothing was saved."""
+    try:
+        o = json.loads(line)
+    except ValueError:
+        return None
+    aid = db.resolve(con, o.get("id")) if isinstance(o, dict) and isinstance(o.get("id"), str) else None
+    if not aid or db.get(con, aid) is None:
+        return None
+    is_text = aid in texts
+    fields = {}
+    d = o.get("description")
+    if not is_text and isinstance(d, str):
+        d = " ".join(d.split())[:200]
+        if d.lower().strip(". ") in ("", "unreadable"):
+            set_no_source(None, aid, con)
+        else:
+            fields.update(description=d, desc_source="describer", desc_status="ok")
+    cat = cats.get(str(o.get("category") or "").strip().lower())
+    if cat:
+        fields.update(category=cat, cat_source="recat" if is_text else "describer")
+        done.add(aid)
+    tl = o.get("topics")
+    if isinstance(tl, list):
+        keep = []
+        for t in tl:
+            c = tops.get(str(t).strip().lower()) if isinstance(t, (str, int)) else None
+            if c and c not in keep:
+                keep.append(c)
+        if keep:  # none picked stays NULL, so the title keywords still decide
+            fields["topics"] = json.dumps(keep[:3])
+    sug = 0
+    nt = " ".join(str(o.get("new_topic") or "").split())
+    if nt and len(nt) <= 40 and nt.lower() not in tops:
+        cur = _json_list(db.get(con, aid)["topic_suggest"])
+        if nt.lower() not in [x.lower() for x in cur]:
+            fields["topic_suggest"] = json.dumps(cur + [nt])
+            sug = 1
+    if not fields:
+        return None
+    db.upsert_artifact(con, aid, **fields)
+    return sug
+
+
+def batch_save(data, file):
+    """Parse the describer's reply (one JSON object per line; anything else is ignored) and store it."""
+    cfg = common.load_config(data)
+    cats = {c["name"].lower(): c["name"] for c in cfg.get("categories", []) if c.get("name")}
+    tops = {t["name"].lower(): t["name"] for t in cfg.get("topics", []) if t.get("name")}
+    texts = _text_items(os.path.dirname(os.path.abspath(file)))
+    with open(file, encoding="utf-8", errors="replace") as f:
+        lines = f.read().splitlines()
+    con = db.connect(data)
+    saved = skipped = sug = 0
+    done = set()
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            r = _save_line(con, line, cats, tops, texts, done)
+        except Exception as e:  # one bad line must not lose the others
+            common.log(data, "batch save: skipped a line: %s" % e)
+            r = None
+        if r is None:
+            skipped += 1
+        else:
+            saved += 1
+            sug += r
+    for aid in texts - done:  # asked for a category and got none: do not ask again
+        try:
+            con.execute("UPDATE artifacts SET cat_source='none' WHERE id=? AND cat_source IS NULL", (aid,))
+        except Exception:
+            pass
+    con.commit()
+    con.close()
+    print("saved %d, skipped %d, suggested %d" % (saved, skipped, sug))
+    return 0
+
+
+def topics_cmd(data, accept=None, reject=None):
+    """List configured topics (with row counts) and the describer's suggestions; or accept / reject one suggestion."""
+    cfg = common.load_config(data)
+    names = [t["name"] for t in cfg.get("topics", []) if t.get("name")]
+    con = db.connect(data)
+    if accept is not None:
+        name = " ".join(accept.split())
+        if not name or len(name) > 40:
+            print("bad topic name", file=sys.stderr)
+            return 2
+        if name.lower() in [n.lower() for n in names]:
+            print("already a topic: " + name)
+            return 0
+        path = os.path.join(data, "config.toml")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(("\n" if os.path.exists(path) and os.path.getsize(path) else "") + "[[topics]]\nname = %s\n" % importer.toml_str(name))
+        print("added topic: " + name)
+        return 0
+    if reject is not None:
+        n = 0
+        for r in con.execute("SELECT id, topic_suggest FROM artifacts WHERE topic_suggest IS NOT NULL").fetchall():
+            cur = _json_list(r["topic_suggest"])
+            new = [x for x in cur if x.lower() != reject.strip().lower()]
+            if new != cur:
+                con.execute("UPDATE artifacts SET topic_suggest=? WHERE id=?", (json.dumps(new) if new else None, r["id"]))
+                n += 1
+        con.commit()
+        print("rejected %r on %d rows" % (reject, n))
+        return 0
+    count, sugg = {}, {}
+    for r in con.execute("SELECT topics, topic_suggest FROM artifacts").fetchall():
+        for t in _json_list(r["topics"]):
+            count[t.lower()] = count.get(t.lower(), 0) + 1
+        for t in _json_list(r["topic_suggest"]):
+            sugg[t] = sugg.get(t, 0) + 1
+    print("topics:")
+    for n in names:
+        print("  %s (%d)" % (n, count.get(n.lower(), 0)))
+    if not names:
+        print("  (none configured)")
+    known = {n.lower() for n in names}
+    print("suggested:")
+    shown = [(t, c) for t, c in sorted(sugg.items(), key=lambda x: (-x[1], x[0])) if t.lower() not in known]
+    for t, c in shown:
+        print("  %s (%d)" % (t, c))
+    if not shown:
+        print("  (none)")
     return 0

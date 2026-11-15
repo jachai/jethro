@@ -3,15 +3,21 @@
 
 [page]
 title = "Artifact Explorer"     # heading and browser tab title
-accent = "#0f6b5c"              # accent colour (links, active chips, focus rings)
+accent = "#0f6b5c"              # accent color (links, active chips, focus rings)
 # Columns shown in table view, in order. Choose from:
-# title category created_by sharing modified last_accessed created size description repos open
-columns = ["title","category","created_by","sharing","modified","last_accessed","created","size","description","repos","open"]
+# title category created_by sharing modified last_accessed created size description repos
+# (created_by is shown as "From")
+columns = ["title","category","created_by","sharing","modified","last_accessed","created","size","description","repos"]
+# Ask GitHub (at most once a day) whether a newer release is out and show an "update available" badge. false = never ask.
+update_check = true
 
-# Categories. The first one that matches wins.
+# Categories. The describer picks one per artifact; for rows it has not described, the first category whose
+# `kinds` has the row's kind wins, then the first whose keywords match.
 #   keywords = case-insensitive regexes tried on title + description
 #   kinds    = artifact kinds (Page, Docs, Slides, ...) matched case-insensitively
-# Rows that match nothing fall into "Uncategorised".
+#   color, color_dark = optional "#rrggbb" for the category pill (light and dark theme). Without them a category
+#              takes a palette color by its position in this list (the 9th and later get a neutral gray).
+# Rows that match nothing fall into "Uncategorized" (always gray).
 [[categories]]
 name = "Reports"
 keywords = ["report","audit","review","post-?mortem","summary","analysis","findings"]
@@ -38,6 +44,13 @@ kinds = ["Docs"]
 [[categories]]
 name = "Personal"
 keywords = ["personal","travel","trip","recipe","home","family","budget"]
+
+# Topics: your own labels, a row can have several (the describer tags up to 3 from this list; unlisted rows are
+# matched on title keywords). Topics are personal, so none ship by default: add yours to your config.toml, e.g.
+# [[topics]]
+# name = "Housing Twin"
+# keywords = ["housing", "twin"]     # optional regexes on the TITLE; default is the name itself
+# `ae topics` lists them and the describer's suggestions; `ae topics --accept NAME` adds one.
 
 # Only artifacts touched in the last `days` are described and get a thumbnail; older ones sit in a collapsed
 # "older artifacts" group on the page. key = "modified" (else created, else first seen) or "created".
