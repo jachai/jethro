@@ -105,10 +105,14 @@ class DescribeTest(unittest.TestCase):
             self.assertEqual(argv[-1], "/artifact-explorer:refresh describe-only")
             self.assertNotIn("--plugin-dir", argv)
             self.assertEqual(det.call_args[1]["cwd"], self.d)
+            con = db.connect(self.d)
+            self.assertAlmostEqual(db.spend_today(con), describe.RUN_BUDGET)  # booked at launch
+            con.close()
             describe.launch(self.d)  # inside watch_interval
             self.assertEqual(det.call_count, 1)
             con = db.connect(self.d)
-            self.assertAlmostEqual(db.spend_today(con), describe.RUN_BUDGET)
+            # 0.1.5: the run ended (pid gone) without a cost report, so its booking was given back
+            self.assertAlmostEqual(db.spend_today(con), 0)
             db.state_set(con, "describer_last", time.time() - 3600)
             db.add_spend(con, 5)  # over the cap
             con.commit()

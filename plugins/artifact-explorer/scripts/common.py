@@ -28,9 +28,12 @@ def claude_dir():
     return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
 
 
+def default_data_dir():
+    return os.path.join(claude_dir(), "plugins", "data", "artifact-explorer-artifact-explorer")
+
+
 def data_dir(arg=None):
-    d = arg or os.environ.get("AE_DATA") or os.path.join(
-        claude_dir(), "plugins", "data", "artifact-explorer-artifact-explorer")
+    d = arg or os.environ.get("AE_DATA") or default_data_dir()
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -162,6 +165,30 @@ def _pid_alive(pid):
     except PermissionError:
         return True
     return True
+
+
+def pid_cmdline(pid):
+    """The command line of a live pid, or None (not found, or no `ps` here: Windows)."""
+    if os.name == "nt":
+        return None
+    try:
+        out = subprocess.run(["ps", "-o", "command=", "-p", str(int(pid))], capture_output=True, text=True,
+                             timeout=10).stdout.strip()
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    return out or None
+
+
+def stop_pid(pid):
+    """Ask a process to end (SIGTERM; taskkill on Windows). Never raises."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(int(pid))], capture_output=True, timeout=10)
+        else:
+            import signal
+            os.kill(int(pid), signal.SIGTERM)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
 
 
 class Lock:
