@@ -304,11 +304,11 @@ def _skill_tools():
 
 
 def allowed_tools():
-    """--allowedTools for the background run: the skill's tools plus AE_TOOL, one comma-separated value."""
+    """--allowedTools for the background run: the skill's tools plus AE_TOOL, one comma-separated value as the skill writes it."""
     tools = [t.strip() for t in re.split(r",(?![^()]*\))", _skill_tools()) if t.strip()]
     if AE_TOOL not in tools:
         tools.append(AE_TOOL)
-    return ",".join(tools)
+    return ", ".join(tools)
 
 
 def _result(data):

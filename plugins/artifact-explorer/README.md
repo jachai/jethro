@@ -12,7 +12,20 @@ It stores a SQLite db, a `config.toml` and a static `explorer.html`. It needs Py
 /artifact-explorer:setup
 ```
 
-Setup shows the options, writes `config.toml`, offers to import an older catalog, runs a first refresh, offers one permission rule (only written if you say yes) and opens the page. Run `/artifact-explorer:open` any time after.
+Setup first prints the version it runs and whether your data folder is empty, then shows the options, writes `config.toml`, offers to import a catalog from the pre-plugin version, runs a first refresh, offers one permission rule (only written if you say yes; it says when the rule is already there), offers a one-row test of the background describer and opens the page. Run `/artifact-explorer:open` any time after.
+
+## Update
+
+```
+claude plugin marketplace update artifact-explorer
+claude plugin update artifact-explorer@artifact-explorer
+```
+
+Then open a new Claude Code window: a running session keeps the version it started with. Updating the marketplace alone does not move the installed plugin. `sh ~/.claude/plugins/cache/artifact-explorer/artifact-explorer/*/bin/ae doctor` (or the first step of `/artifact-explorer:setup`) prints the version this window runs, the installed version and the marketplace version, and says MISMATCH when they differ.
+
+## Cost
+
+Descriptions are written by a background `claude -p` run on `haiku` (the `describe_model` option). Each run is limited to $0.20, $0.25 is booked against the daily cap when it starts, and the real cost replaces the booking when it ends. The default cap is $1.00 a day (`describe_daily_cap`); `ae status` shows today's spend. A run that ends without reporting its cost gives its booking back, and after two such runs in a day the describer waits for the next day. Without the setup permission rule no background run starts and nothing is spent; `/artifact-explorer:refresh` in a session describes on your normal usage.
 
 ## Options
 

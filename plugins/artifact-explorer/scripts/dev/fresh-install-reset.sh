@@ -31,7 +31,7 @@ WATCHERS="$(ae_watchers | sort -u -k1,1)"
 if [ -n "$WATCHERS" ]; then
   echo
   echo "Refusing: an Artifact Explorer watcher is running on $DATA."
-  echo "$WATCHERS" | while read -r pid ppid cmd; do
+  while read -r pid ppid cmd; do
     # walk up to the claude session that started it
     p="$ppid"; owner=""
     while [ -n "$p" ] && [ "$p" -gt 1 ]; do
@@ -41,9 +41,10 @@ if [ -n "$WATCHERS" ]; then
       p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ' || true)"
     done
     echo "  watcher pid $pid, session process ${owner:-unknown}"
-  done
+  done <<< "$WATCHERS"
   echo "Close those sessions first: type /exit in each window, or \`claude stop <id>\` for a background session"
   echo "(\`claude agents\` lists them). Then run this again."
+  # no kill hint: a claimed bg-spare keeps its `bg-spare` command line, so it may be a live session
   [ "$DRY" = 1 ] || exit 1
   echo "  (dry run: continuing to show the remaining steps)"
 fi
@@ -100,18 +101,20 @@ check() {  # check <status> <message>: status 0 is ok
 if [ "$DRY" = 1 ]; then
   echo "  (dry run: nothing was changed, so nothing to check)"
 else
-  if [ -n "$BACKUP" ]; then [ -d "$BACKUP" ]; check $? "data folder moved to $BACKUP"; fi
-  [ ! -e "$DATA" ]; check $? "no data folder at $DATA (a session that still has the plugin loaded recreates it)"
+  if [ -n "$BACKUP" ]; then
+    if [ -d "$BACKUP" ]; then r=0; else r=1; fi; check $r "data folder moved to $BACKUP"
+  fi
+  if [ ! -e "$DATA" ]; then r=0; else r=1; fi; check $r "no data folder at $DATA (a session that still has the plugin loaded recreates it)"
   INST="$(python3 -c 'import json,sys
 try: d=json.load(open(sys.argv[1]))
 except Exception: d={}
 e=(d.get("plugins") or {}).get("artifact-explorer@artifact-explorer")
 print(", ".join(str(x.get("version")) for x in e) if isinstance(e,list) else "")' "$CONFIG/plugins/installed_plugins.json")"
-  [ -z "$INST" ]; check $? "plugin not in installed_plugins.json${INST:+ (still lists $INST)}"
-  [ ! -d "$CONFIG/plugins/marketplaces/artifact-explorer" ]; check $? "marketplace clone removed"
+  if [ -z "$INST" ]; then r=0; else r=1; fi; check $r "plugin not in installed_plugins.json${INST:+ (still lists $INST)}"
+  if [ ! -d "$CONFIG/plugins/marketplaces/artifact-explorer" ]; then r=0; else r=1; fi; check $r "marketplace clone removed"
   if grep -qF 'Bash(sh */artifact-explorer/*/bin/ae *)' "$SETTINGS" 2>/dev/null; then r=1; else r=0; fi
-  check $r "allow rule not in settings.json"
-  [ -z "$(ae_watchers)" ]; check $? "no watcher running"
+  check $r "allow rule not in settings.json"  # (a failing command outside an if would end the script: set -e)
+  if [ -z "$(ae_watchers)" ]; then r=0; else r=1; fi; check $r "no watcher running"
 fi
 if [ "$FAIL" = 1 ]; then
   echo
