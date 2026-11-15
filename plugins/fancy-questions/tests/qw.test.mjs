@@ -64,3 +64,4 @@ test('a part without a visual builds without a warning, and draws no empty figur
   const c2 = card(); delete c2.visual; assert.match(check(page(), [c2]).warnings.join('\n'), /no visual/);
   assert.match(readFileSync(join(root, 'page/app.js'), 'utf8'), /\$\{q\.visual\|\|q\.example\|\|facts\.length/);
 });
+test('the progress bar really hides on the opening screen', () => { assert.match(readFileSync(join(root, 'page/template.html'), 'utf8'), /\.bar\[hidden\]\{display:none\}/); });
