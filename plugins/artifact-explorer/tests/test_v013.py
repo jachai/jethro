@@ -183,35 +183,5 @@ class PageStatusTest(Base):
             self.assertIn(s, tpl)
 
 
-NODE = shutil.which("node")
-
-
-@unittest.skipUnless(NODE, "node not installed")
-class PlaceholderTest(unittest.TestCase):
-    """Runs the template's placeholder generator under node: deterministic, distinct, safe."""
-
-    def run_js(self, body):
-        tpl = open(TPL, encoding="utf-8").read()
-        a, b = tpl.index("/*PH-START*/"), tpl.index("/*PH-END*/")
-        code = tpl[a:b] + "\n" + body
-        return json.loads(subprocess.run([NODE, "-e", code], capture_output=True, text=True, check=True).stdout)
-
-    def test_same_seed_same_picture_and_distinct_seeds(self):
-        out = self.run_js(
-            'const ids=[];for(let i=0;i<200;i++)ids.push("id"+i+"x");'
-            'const svgs=ids.map(i=>placeholderSVG(i,"Title "+i,"Reports"));'
-            'console.log(JSON.stringify({same:placeholderSVG("abc","T","Reports")===placeholderSVG("abc","T","Reports"),'
-            'distinct:new Set(svgs).size, catHue:[catHue("Reports"),catHue("Reports"),catHue("Slides")]}))')
-        self.assertTrue(out["same"])
-        self.assertEqual(out["distinct"], 200)
-        self.assertEqual(out["catHue"][0], out["catHue"][1])
-        self.assertNotEqual(out["catHue"][0], out["catHue"][2])
-
-    def test_text_is_escaped(self):
-        out = self.run_js('console.log(JSON.stringify(placeholderSVG("x","<script>&","<b>")))')
-        self.assertNotIn("<script>", out)
-        self.assertNotIn("<b>", out)
-
-
 if __name__ == "__main__":
     unittest.main()

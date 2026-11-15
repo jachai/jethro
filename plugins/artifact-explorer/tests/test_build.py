@@ -47,28 +47,29 @@ class BuildTest(unittest.TestCase):
         self.assertNotIn("\u2028", data)
         self.assertIn("x <!--<script> y & \u2028 </script>", [r["title"] for r in payload(path)["rows"]])
 
-    def test_open_link_only_for_claude_urls(self):
-        tpl = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "page", "template.html"), encoding="utf-8").read()
-        self.assertIn('if (r.url.startsWith("https://claude.ai/")) a.href = r.url;', tpl)
-        self.assertNotIn("a.href = r.url; a.target", tpl)
+    def test_only_claude_urls_in_payload(self):
+        db.upsert_artifact(self.con, "dddddddddd", title="x", url="javascript:alert(1)")
+        self.con.commit()
+        self.assertEqual(self.rows()["dddddddddd"]["url"], "")
 
     def test_derived_fields(self):
         r = self.rows()
         a = r["aaaaaaaaaa"]
         self.assertEqual((a["created"], a["modified"], a["accessed"], a["accessed_by"]), (150, 300, 400, "browser"))
         self.assertEqual(a["repos"], ["other", "proj"])
-        self.assertEqual((a["created_by"], a["category"]), ("me", "Reports"))
-        self.assertEqual((r["bbbbbbbbbb"]["created_by"], r["bbbbbbbbbb"]["category"]), ("Sam", "Decks"))
-        self.assertEqual((r["cccccccccc"]["category"], r["cccccccccc"]["pending"], r["cccccccccc"]["created_by"]),
-                         ("Uncategorised", True, "unknown"))
+        self.assertEqual((a["from"], a["category"]), ("", "Reports"))
+        self.assertEqual((r["bbbbbbbbbb"]["from"], r["bbbbbbbbbb"]["category"]), ("Sam", "Decks"))
+        self.assertEqual((r["cccccccccc"]["category"], r["cccccccccc"]["pending"], r["cccccccccc"]["from"]),
+                         ("Uncategorized", True, ""))
+        self.assertNotIn("created_by", a)
 
     def test_sharing_labels(self):
-        db.upsert_artifact(self.con, "aaaaaaaaaa", sharing="withme")
+        db.upsert_artifact(self.con, "aaaaaaaaaa", sharing="private", owned=1)
         db.upsert_artifact(self.con, "bbbbbbbbbb", sharing="shared with 3 people")
         self.con.commit()
         r = self.rows()
         self.assertEqual((r["aaaaaaaaaa"]["sharing"], r["bbbbbbbbbb"]["sharing"], r["cccccccccc"]["sharing"]),
-                         ("Shared with me", "shared with 3 people", ""))
+                         ("Private", "", ""))  # only own rows carry a sharing phrase
 
     def test_filter_and_overrides(self):
         self.cfg('[filter]\ninclude_repos=["proj"]\n[overrides."aaaaaaaaaa"]\ncategory="Plans"\ndescription="Mine"\n')
