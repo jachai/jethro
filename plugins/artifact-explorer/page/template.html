@@ -88,7 +88,9 @@ a.stretch:focus-visible{outline:none;text-decoration:underline}
 .cb h3{margin:0;font-size:14px;font-weight:600;overflow-wrap:anywhere}
 .cb p{margin:0;font-size:13px}
 .row2{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
-.foot{margin-top:auto;display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);align-items:center}
+.foot{margin-top:auto;display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;font-size:12px;color:var(--muted);align-items:center}
+.foot .fk{opacity:.75}
+.foot .fd > span:last-child:not(.dim){color:var(--ink)}
 .status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;font-size:12.5px;color:var(--muted);margin:-4px 0 14px}
 .status:empty{display:none}
 .status b{font-weight:600;color:var(--ink)}
@@ -149,6 +151,7 @@ const COLS = {
  repos:{h:"Repos",k:r=>r.repos.join(" ").toLowerCase()}
 };
 const cols = (cfg.columns||[]).filter(c=>COLS[c]);  // unknown keys (such as the old "open") are ignored
+if (cols.indexOf("title") < 0) cols.unshift("title");  // the title carries the row link, so it is always shown
 const $ = id => document.getElementById(id);
 if (cfg.accent) document.documentElement.style.setProperty("--accent", cfg.accent);
 document.title = cfg.title || "Artifact Explorer";
@@ -280,13 +283,13 @@ function el(tag, cls, text){
 }
 function when(t, by){
  if (!t) return el("span", "dim", "unknown");
- const s = el("span", "", rel(t));
+ const s = el("span", "sec", rel(t));  // sec: above the row link, so the full-date tooltip shows
  s.title = new Date(t*1000).toLocaleString() + (by ? " (" + by + ")" : "");
  return s;
 }
 function desc(r){
  if (r.pending) return el("span", "pend", "description pending");
- if (r.skipped){ const s = el("span", "dim", "no description"); s.title = r.skipped; return s; }
+ if (r.skipped){ const s = el("span", "dim sec", "no description"); s.title = r.skipped; return s; }
  return el("span", r.description ? "" : "dim", r.description);
 }
 
@@ -307,7 +310,7 @@ function topicPills(r){
  if (!r.topics.length && !r.suggested.length) return null;
  const box = el("div", "tps");
  r.topics.forEach(t => box.appendChild(el("span", "tp", t)));
- r.suggested.forEach(t => { const e = el("span", "tp sug", t); e.title = "Suggested topic (not in your config yet): " + t; box.appendChild(e); });
+ r.suggested.forEach(t => { const e = el("span", "tp sug sec", t); e.title = "Suggested topic (not in your config yet): " + t; box.appendChild(e); });
  return box;
 }
 function fromNode(r){ return r.from ? el("span", "fm", "from " + r.from) : null; }
@@ -417,8 +420,10 @@ function cards(list){
   const tp = topicPills(r); if (tp) b.appendChild(tp);
   b.appendChild(el("p")).appendChild(desc(r));
   const sh = sharingNode(r); if (sh) b.appendChild(sh);
-  const l = el("span"); if (r.modified) l.appendChild(when(r.modified));
-  f.appendChild(l);
+  // both dates, labelled, so created and modified are told apart at a glance
+  [["Created", r.created], ["Modified", r.modified]].forEach(([k, t]) => {
+   const d = el("span", "fd"); d.appendChild(el("span", "fk", k + " ")); d.appendChild(when(t)); f.appendChild(d);
+  });
   b.appendChild(f); c.appendChild(s); c.appendChild(b); g.appendChild(c);
  });
  return g;
