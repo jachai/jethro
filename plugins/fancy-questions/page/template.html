@@ -165,10 +165,10 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-b
 .sum table{width:100%;border-collapse:collapse;font-size:14px}
 .sum td{padding:8px 6px;border-top:1px solid var(--line);vertical-align:top}
 .sum td:first-child{white-space:nowrap;font-family:var(--mono);font-size:12.5px;color:var(--muted);width:1%}
-.sum td:nth-child(2){overflow-wrap:anywhere}
+.sum td:nth-child(2){overflow-wrap:break-word}
 .sum td:last-child{text-align:right;width:1%;min-width:5.5em;max-width:42vw}
-.sum .pill{white-space:normal;text-align:left;overflow-wrap:break-word}
-@media (max-width:559px){.sum td:first-child{white-space:normal;overflow-wrap:anywhere;max-width:6.5em}.sum td:last-child{max-width:38vw}}
+.sum .pill{white-space:nowrap}
+@media (max-width:559px){.sum td:first-child{white-space:normal;overflow-wrap:break-word;min-width:5.5em;max-width:7.5em}.sum td:last-child{max-width:38vw}.sum .pill{white-space:normal;text-align:left;overflow-wrap:break-word;border-radius:10px}}
 .pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--surface-2);color:var(--muted)}
 .pill.yes{background:var(--yes-soft);color:var(--yes)} .pill.no{background:var(--no-soft);color:var(--no)} .pill.discuss{background:var(--discuss-soft);color:var(--discuss)}
 .sum .note{color:var(--muted);font-size:13px;display:block;margin-top:2px}

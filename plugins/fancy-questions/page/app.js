@@ -260,7 +260,7 @@ const celebrations=[], seenMs=new Set();
 let msT;
 function afterPick(wasDone, before, card, from){
   const after=answered(), kind=celebrateKind(wasDone, isDone(card), after, TOTAL), ms=milestoneAt(before, after, TOTAL);
-  if(kind){ celebrations.push(kind); if(!reduced()) confetti(kind==='final'?140:28, kind==='final'?null:from); }
+  if(kind){ celebrations.push(kind); if(!reduced()) confetti(kind==='final'?140:34, kind==='final'?null:from); }
   if(ms && !seenMs.has(ms)){ seenMs.add(ms); const b=$('milestone'); if(b){ b.textContent=milestoneText(ms, after, TOTAL); b.className='milestone show '+ms; clearTimeout(msT); msT=setTimeout(()=>{ b.className='milestone'; }, ms==='done'?3200:2400); } }
   const tr=fill.parentNode; if(kind && tr && !reduced()){ tr.classList.remove('bump'); void tr.offsetWidth; tr.classList.add('bump'); }
 }
@@ -274,11 +274,11 @@ function confetti(n, from){
   if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); }
   g.setTransform(dpr,0,0,dpr,0,0);
   const cs=getComputedStyle(document.documentElement), cols=['--yes','--accent','--discuss','--no'].map(v=>cs.getPropertyValue(v).trim()||'#1D5C8A');
-  const r=from&&from.getBoundingClientRect?from.getBoundingClientRect():null, now=performance.now();
+  const r=from&&from.getBoundingClientRect?from.getBoundingClientRect():null, now=performance.now(), L=Math.max(W*0.08,W/2-440), R=Math.min(W*0.92,W/2+440);
   for(let i=0;i<n;i++){
     const big=!r, a=big?Math.PI*(1.15+0.7*Math.random()):Math.PI*(1.1+0.8*Math.random()), sp=big?9+Math.random()*9:4+Math.random()*5;
-    const x=big?(i%2?W*0.08:W*0.92):r.right-24, y=big?H*0.95:r.top+20;
-    bits.push({x, y, vx:Math.cos(a)*sp*(big&&i%2?-1:1), vy:Math.sin(a)*sp, w:5+Math.random()*5, h:3+Math.random()*4, rot:Math.random()*6, vr:(Math.random()-.5)*.4, c:cols[i%cols.length], t0:now, life:big?2000:950});
+    const x=big?(i%2?L:R):r.right-24, y=big?H*0.95:r.top+20;
+    bits.push({x, y, vx:Math.cos(a)*sp*(big&&i%2?-1:1), vy:Math.sin(a)*sp, w:6+Math.random()*6, h:4+Math.random()*4, rot:Math.random()*6, vr:(Math.random()-.5)*.4, c:cols[i%cols.length], t0:now, life:big?2000:1100});
   }
   if(!raf){ let last=now; const tick=t=>{ const dt=Math.min(2.5,(t-last)/16.7); last=t; g.clearRect(0,0,W,H);
       bits=bits.filter(b=>t-b.t0<b.life); bits.forEach(b=>{ b.vy+=0.32*dt; b.vx*=Math.pow(0.985,dt); b.x+=b.vx*dt; b.y+=b.vy*dt; b.rot+=b.vr*dt;
