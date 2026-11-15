@@ -6,6 +6,7 @@ catalog or the user beyond what any HTTPS request does (an IP address and a gene
 import json
 import os
 import re
+import threading
 import time
 import urllib.request
 
@@ -14,6 +15,7 @@ URL = "https://api.github.com/repos/%s/releases/latest" % REPO
 CACHE = "update.json"
 EVERY = 86400  # seconds between checks, also after a failed one
 TIMEOUT = 3
+BUDGET = 3  # total seconds a check may take (DNS and slow reads are not bounded by the socket timeout)
 UPDATE_CMDS = ["/plugin marketplace update artifact-explorer", "/plugin update artifact-explorer@artifact-explorer"]
 
 
@@ -55,6 +57,16 @@ def _read(path):
         return None
 
 
+def _write(path, now, tag):
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"checked": now, "latest": tag}, f)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
 def latest(data, version, now=None, get=None):
     """The latest release tag: from the cache when it is under a day old, else one request (cached, also when
     it fails). `get` replaces the request in tests."""
@@ -63,16 +75,22 @@ def latest(data, version, now=None, get=None):
     c = _read(path)
     if c is not None and 0 <= now - c["checked"] < EVERY:
         return c.get("latest")
-    tag = (get or fetch)(version)
-    if tag is None and c is not None and c.get("latest"):
-        tag = c["latest"]  # a failed check keeps the last good answer
-    tmp = path + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"checked": now, "latest": tag}, f)
-        os.replace(tmp, path)
-    except OSError:
-        pass
+    keep = c.get("latest") if c is not None else None
+    _write(path, now, keep)  # stamped first: a hang below cannot repeat on every pass
+    box = []
+
+    def run():
+        try:
+            box.append((get or fetch)(version))
+        except Exception:
+            pass
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(BUDGET)
+    tag = box[0] if box else None
+    if tag is None:
+        return keep  # a failed check keeps the last good answer
+    _write(path, now, tag)
     return tag
 
 
