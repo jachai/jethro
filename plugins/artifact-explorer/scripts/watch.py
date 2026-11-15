@@ -65,6 +65,8 @@ def run_pass(data, force=False):
                 changed += history.scan(con, data)
             if opts["transcript_reads"]:
                 changed += transcripts.scan(con, data)
+            changed += db.backfill(con)
+            con.commit()
             con.close()
             thumbs.run(data, limit=5)
             import describe

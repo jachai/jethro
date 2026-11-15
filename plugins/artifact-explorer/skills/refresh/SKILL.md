@@ -7,7 +7,7 @@ allowed-tools: Artifact, ArtifactData, Agent, Read, Write, ToolSearch, mcp__clau
 
 # Refresh
 
-Argument: `$ARGUMENTS`. If it is `describe-only`, this is the background mode. Anything else is the full mode.
+Argument: `$ARGUMENTS`. If it is `describe-only` or `describe-only 1`, this is the background mode (`describe-only 1` is setup's test run: one row only). Anything else is the full mode.
 
 Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DATA}"`, and `INBOX` means `${CLAUDE_PLUGIN_DATA}/inbox`.
 
@@ -32,7 +32,7 @@ A failed read of one artifact (not found, an error) skips that row and goes on.
 
 You run unattended (`claude -p`, no one is there). Do not ask questions and never wait for anything: finish all the steps in this one turn. Do not read any artifact owned by someone else: reading one always asks for consent and nobody is there to answer. If a tool call is refused for permission (the result says it was denied, not allowed, or needs approval), stop at once and reply with one line, `stopped: refused` followed by that tool's name, for example `stopped: refused Bash`. A Docs source that is simply not there (no Claude Docs tools in this session) is not a refusal: that row gets `--no-source`. Otherwise end with the one line of step 4.
 
-1. Run `AE pending --owned-only --json`. It prints the rows that need a description. If there are none, say "nothing to describe" and stop.
+1. Run `AE pending --owned-only --json`, with `--limit 1` added when the argument is `describe-only 1`. It prints the rows that need a description. If there are none, say "nothing to describe" and stop.
 2. Take at most 10 rows and describe each one as in "Describe one row".
 3. Run `AE build`.
 4. Reply with one line: `described N of M, skipped K, no source S`.
