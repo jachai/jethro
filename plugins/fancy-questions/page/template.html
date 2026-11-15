@@ -37,7 +37,7 @@ button{font:inherit;color:inherit}
 .bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:14px 10px;display:flex;flex-direction:column;gap:8px;max-width:760px;width:100%;margin:0 auto}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
 .track{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden}
-.fill{height:100%;width:0;background:var(--accent);border-radius:3px;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.fill{height:100%;width:100%;background:var(--accent);transform:scaleX(0);transform-origin:left center;transition:transform .7s cubic-bezier(.34,1.5,.64,1);will-change:transform}
 .barrow{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:13px;color:var(--muted)}
 .chips{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
 .chip{flex:none;white-space:nowrap;font-size:12px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--surface);letter-spacing:.01em}
@@ -51,12 +51,14 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 @keyframes pulse{50%{opacity:.3}}
 
 main{flex:1;display:flex;justify-content:center;align-items:flex-start;position:relative;max-width:760px;width:100%;margin:0 auto;padding-block:8px 0}
-.screen{width:100%;background:var(--surface);border-radius:18px;box-shadow:var(--shadow);padding:28px clamp(18px,4vw,36px) 26px;animation:enter .45s cubic-bezier(.2,.8,.2,1) both}
-.screen.leaving{position:absolute;inset:8px 0 auto 0;animation:leave .3s ease both;pointer-events:none}
-@keyframes enter{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
-@keyframes leave{to{opacity:0;transform:translateX(-28px)}}
+.screen{width:100%;background:var(--surface);border-radius:18px;box-shadow:var(--shadow);padding:28px clamp(18px,4vw,36px) 26px;animation:enter .42s cubic-bezier(.2,.9,.25,1.05) both;transform-origin:50% 100%}
+.screen.leaving{position:absolute;inset:8px 0 auto 0;animation:leave .28s cubic-bezier(.4,0,.8,.4) both;pointer-events:none}
+.screen.leaving.back{animation-name:leaveBack}
+@keyframes enter{from{opacity:0;transform:translateX(44px) rotate(1.6deg)}to{opacity:1;transform:none}}
+@keyframes leave{to{opacity:0;transform:translateX(-56px) rotate(-2.4deg) scale(.97)}}
+@keyframes leaveBack{to{opacity:0;transform:translateX(56px) rotate(2.4deg) scale(.97)}}
 .screen.back{animation-name:enterBack}
-@keyframes enterBack{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+@keyframes enterBack{from{opacity:0;transform:translateX(-44px) rotate(-1.6deg)}to{opacity:1;transform:none}}
 
 .eyebrow{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;font-size:13px;color:var(--muted);margin-bottom:12px}
 .prio{font-family:var(--mono);font-size:12px;font-weight:600;padding:1px 7px;border-radius:6px;color:#fff;background:var(--p3)}
@@ -76,7 +78,7 @@ h2{font-size:clamp(21px,3.6vw,27px);line-height:1.22}
 .figure .hub{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;text-decoration:none;color:var(--accent);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
 .figure .hub:hover{border-color:var(--accent)}
 .figure .hub:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.bar-grow rect.g{transform-origin:left center;transform:scaleX(0);transition:transform .9s cubic-bezier(.2,.8,.2,1)}
+.bar-grow rect.g{transform-box:fill-box;transform-origin:left center;transform:scaleX(0);transition:transform .9s cubic-bezier(.2,.8,.2,1)}
 .screen.ready .bar-grow rect.g{transform:none}
 .bar-grow text{font-family:var(--mono);font-size:14px;fill:var(--fg)}
 .bar-grow text.l{font-family:var(--body);fill:var(--muted)}
@@ -91,10 +93,11 @@ h2{font-size:clamp(21px,3.6vw,27px);line-height:1.22}
 .ask{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:20px 0 8px}
 .opts{display:grid;gap:10px;grid-template-columns:1fr}
 @media (min-width:640px){.opts.n3,.opts.n4{grid-template-columns:repeat(3,minmax(0,1fr))}.opts.n4{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.opt{text-align:left;border:2px solid var(--line);background:var(--surface);border-radius:14px;padding:14px 14px 12px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-width:0;position:relative;transition:border-color .2s,transform .15s,background .2s;animation:pop .4s cubic-bezier(.2,.8,.2,1) both}
+.opt{text-align:left;border:2px solid var(--line);background:var(--surface);border-radius:14px;padding:14px 14px 12px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-width:0;position:relative;transition:border-color .2s,transform .18s cubic-bezier(.3,1.4,.5,1),background .2s,box-shadow .2s;animation:pop .36s cubic-bezier(.2,.8,.2,1) backwards}
 .opt:nth-child(2){animation-delay:.06s}.opt:nth-child(3){animation-delay:.12s}.opt:nth-child(4){animation-delay:.18s}
 @keyframes pop{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-.opt:hover{transform:translateY(-2px)}
+@media (hover:hover){.opt:hover{transform:translateY(-3px);box-shadow:0 8px 18px rgba(23,33,43,.10)}}
+.opt:active{transform:scale(.985)}
 .opt:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .opt .head{display:flex;align-items:center;gap:8px}
 .opt .key{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:0 5px;line-height:18px}
@@ -142,7 +145,9 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-b
 @media (min-width:560px){.stat.you{grid-column:auto}}
 .stat.you .big{color:var(--accent)}
 .split{height:14px;border-radius:7px;background:var(--surface-2);overflow:hidden;display:flex;margin:14px 0 6px}
-.split i{display:block;height:100%;background:var(--yes);width:0;transition:width 1.1s cubic-bezier(.2,.8,.2,1)}
+.split{transform:scaleX(0);transform-origin:left center;transition:transform 1s cubic-bezier(.2,.8,.2,1) .2s}
+.screen.ready .split{transform:none}
+.split i{display:block;height:100%;background:var(--yes);width:var(--w)}
 .split i.you{background:var(--accent)}
 .legend{display:flex;gap:16px;font-size:13px;color:var(--muted);flex-wrap:wrap}
 .legend b{color:var(--fg)}
@@ -160,7 +165,10 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-b
 .sum table{width:100%;border-collapse:collapse;font-size:14px}
 .sum td{padding:8px 6px;border-top:1px solid var(--line);vertical-align:top}
 .sum td:first-child{white-space:nowrap;font-family:var(--mono);font-size:12.5px;color:var(--muted);width:1%}
-.sum td:last-child{text-align:right;white-space:nowrap;width:1%}
+.sum td:nth-child(2){overflow-wrap:anywhere}
+.sum td:last-child{text-align:right;width:1%;min-width:5.5em;max-width:42vw}
+.sum .pill{white-space:normal;text-align:left;overflow-wrap:break-word}
+@media (max-width:559px){.sum td:first-child{white-space:normal;overflow-wrap:anywhere;max-width:6.5em}.sum td:last-child{max-width:38vw}}
 .pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--surface-2);color:var(--muted)}
 .pill.yes{background:var(--yes-soft);color:var(--yes)} .pill.no{background:var(--no-soft);color:var(--no)} .pill.discuss{background:var(--discuss-soft);color:var(--discuss)}
 .sum .note{color:var(--muted);font-size:13px;display:block;margin-top:2px}
@@ -170,9 +178,14 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-b
 .toast.show{opacity:1;transform:translateX(-50%)}
 
 @media (prefers-reduced-motion: reduce){
-  *,*::before,*::after{animation-duration:.01ms !important;animation-delay:0s !important;transition-duration:.01ms !important}
+  *,*::before,*::after{animation-duration:.01ms !important;animation-delay:0s !important;transition-duration:.01ms !important;transition-delay:0s !important}
   .bar-grow rect.g{transform:none}
+  .confetti{display:none}
 }
+/* the same, switched on by <html data-motion="reduce"> (a test toggle: add #reduce-motion to the URL) */
+:root[data-motion="reduce"] *,:root[data-motion="reduce"] *::before,:root[data-motion="reduce"] *::after{animation-duration:.01ms !important;animation-delay:0s !important;transition-duration:.01ms !important;transition-delay:0s !important}
+:root[data-motion="reduce"] .bar-grow rect.g{transform:none}
+:root[data-motion="reduce"] .confetti{display:none}
 /* walkthrough additions */
 textarea::placeholder,input::placeholder{color:var(--muted);opacity:1}
 .badge{font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:1px 8px;border-radius:999px;background:var(--discuss-soft);color:var(--discuss)}
@@ -199,7 +212,6 @@ textarea::placeholder,input::placeholder{color:var(--muted);opacity:1}
 .cards7 li .n{flex:none;font-family:var(--mono);font-size:12px;color:var(--accent);border:1px solid var(--line);border-radius:6px;padding:0 6px;line-height:20px;background:var(--surface)}
 .cards7 li b{font-weight:600}
 .cards7 li.done .n{background:var(--yes);color:#fff;border-color:var(--yes)}
-.screen.ready .split i{width:var(--w)}
 /* card 3 part 2 + card 8 unit toggles */
 .partsep{display:flex;align-items:center;gap:10px;margin:34px 0 14px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .partsep::before,.partsep::after{content:"";flex:1;border-top:1px solid var(--line)}
@@ -228,8 +240,9 @@ button.chip{cursor:pointer;font-family:inherit;line-height:inherit}
 .uhint.warn{color:var(--no);font-weight:600}
 .checks .z{color:var(--muted);font-size:12.5px}
 .qv-split-bar{display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--surface)}
-.qv-split-bar i{display:block;width:0;transition:width .9s cubic-bezier(.2,.8,.2,1)}
-.screen.ready .qv-split-bar i{width:var(--w)}
+.qv-split-bar{transform:scaleX(0);transform-origin:left center;transition:transform .9s cubic-bezier(.2,.8,.2,1) .15s}
+.screen.ready .qv-split-bar{transform:none}
+.qv-split-bar i{display:block;width:var(--w)}
 .qv-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:13px;color:var(--muted)}
 .qv-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 .qv-legend b{color:var(--fg)}
@@ -272,6 +285,36 @@ button.chip{cursor:pointer;font-family:inherit;line-height:inherit}
 .copyrow{margin:10px 0 0;text-align:right}
 .linkbtn{background:none;border:0;padding:6px 0;color:var(--accent);font:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .linkbtn:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:4px}
+/* v0.2.0 motion: transform and opacity only, nothing blocks a tap (the next pick works at once) */
+.track.bump{animation:bump .5s cubic-bezier(.3,1.6,.5,1)}
+@keyframes bump{40%{transform:scaleY(1.9)}}
+.opt.just .mark{animation:checkpop .5s cubic-bezier(.3,1.7,.5,1)}
+@keyframes checkpop{0%{transform:scale(.6)}55%{transform:scale(1.3)}100%{transform:none}}
+.confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:30}
+.milestone{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);z-index:25;pointer-events:none;font-size:14px;font-weight:600;padding:7px 14px;border-radius:999px;background:var(--accent);color:var(--accent-ink);box-shadow:var(--shadow);opacity:0;transform:translate(-50%,-12px) scale(.9);transition:opacity .25s,transform .35s cubic-bezier(.3,1.6,.5,1)}
+.milestone.done{background:var(--yes);color:var(--surface)}
+.milestone.show{opacity:1;transform:translate(-50%,0)}
+.qv-flow li,.qv-steps li,.qv-tree li,.qv-table tbody tr{opacity:0;transform:translateY(10px);transition:opacity .35s ease,transform .45s cubic-bezier(.2,.9,.3,1.2);transition-delay:calc(.15s + min(var(--i,0),10) * .11s)}
+.qv-tree li{transform:translateX(-10px)}
+.qv-table tbody tr{transform:none}
+.screen.ready .qv-flow li,.screen.ready .qv-steps li,.screen.ready .qv-tree li,.screen.ready .qv-table tbody tr{opacity:1;transform:none}
+.qv-col{transition:opacity .4s ease .1s,transform .5s cubic-bezier(.2,.9,.3,1.1) .1s;opacity:0}
+.qv-col.before{transform:translateX(-24px)} .qv-col.after{transform:translateX(24px);transition-delay:.3s}
+.qv-arrow{opacity:0;transition:opacity .3s ease .5s}
+.qv-col li{opacity:0;transition:opacity .3s ease;transition-delay:calc(.45s + min(var(--i,0),8) * .08s)}
+.qv-col.after li{transition-delay:calc(.65s + min(var(--i,0),8) * .08s)}
+.screen.ready .qv-col,.screen.ready .qv-col li,.screen.ready .qv-arrow{opacity:1}
+.screen.ready .qv-col{transform:none}
+.qv-img,.figure>svg.ico,.figure>.two{animation:fadeup .5s cubic-bezier(.2,.8,.2,1) .1s backwards}
+@keyframes fadeup{from{opacity:0;transform:translateY(8px)}}
+.sum tr{animation:rowin .38s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:calc(.2s + var(--i,0) * .045s)}
+@keyframes rowin{from{opacity:0;transform:translateY(8px)}}
+.sum.all h3{animation:fadeup .4s ease backwards}
+.donecheck{display:inline-block;width:.9em;height:.9em;vertical-align:-.08em;margin-right:.3em;color:var(--yes);animation:checkpop .6s cubic-bezier(.3,1.7,.5,1) .15s backwards}
+.donecheck svg{width:100%;height:100%;display:block}
+.donecheck circle{fill:var(--yes-soft);stroke:currentColor;stroke-width:2}
+.donecheck path{fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:20;stroke-dashoffset:20;animation:draw .45s ease .45s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
 </style>
 
 <div class="shell">
@@ -286,6 +329,7 @@ button.chip{cursor:pointer;font-family:inherit;line-height:inherit}
   <main id="stage" aria-live="polite"></main>
 </div>
 <div class="toast" id="toast" role="status"></div>
+<div class="milestone" id="milestone" role="status"></div>
 
 <script>
 /*QW_APP*/
