@@ -92,6 +92,9 @@ test('Copy all my answers: plain text, one line per question and part, ready to 
   assert.match(lines[1], /^1\. .+: Yes/);
   assert.match(lines.at(-2), /not answered$/);
   assert.ok(!/[<>]/.test(p.clip[0]), 'no markup');
+  // the line shape the collect skill parses
+  lines.slice(1, -1).forEach(l => assert.match(l, /^\d+[a-z]?\. .+?( \[[^\]]+\])?: (.+?|not answered)(\. Ticked: .+)?(\. Note: .+)?$/));
+  assert.equal(lines.at(-1), 'Page: example-questions');
 });
 test('every card and the summary carry the copy button', () => {
   const n = (app.match(/\$\{COPYROW\}/g) || []).length;

@@ -58,3 +58,9 @@ test('urls must be https and on allowed hosts', () => {
 });
 test('lint and stats commands', () => { const d = fresh(); assert.match(qw('lint', d).stdout, /^ok · 2 cards/); assert.match(qw('stats', d).stdout, /1 urgent/); });
 test('new refuses to overwrite', () => { const d = fresh(); assert.equal(qw('new', d).status, 1); const d2 = join(mkdtempSync(join(tmpdir(), 'qw-')), 'n'); assert.equal(qw('new', d2).status, 0); assert.equal(qw('build', d2).status, 0); });
+test('a part without a visual builds without a warning, and draws no empty figure', () => {
+  const c = card(); c.parts = [{ id: 'q-fee-2', question: 'And the second half?', recommend: 'Yes.', options: [{ id: 'y', tone: 'yes', recommended: true, name: 'Yes', sub: 'Do it.' }, { tone: 'discuss' }] }];
+  const r = check(page(), [c]); assert.deepEqual(r.errors, []); assert.deepEqual(r.warnings, []);
+  const c2 = card(); delete c2.visual; assert.match(check(page(), [c2]).warnings.join('\n'), /no visual/);
+  assert.match(readFileSync(join(root, 'page/app.js'), 'utf8'), /\$\{q\.visual\|\|q\.example\|\|facts\.length/);
+});
