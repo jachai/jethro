@@ -6,7 +6,7 @@ allowed-tools: Bash(sh *bin/ae *), Write, mcp__claude-in-chrome__*
 
 # Sharing
 
-Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DATA}"`.
+Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DATA}"`. Write each `AE` command out in full in every Bash call; never store it in a shell variable (zsh does not split `$AE` into words, so `$AE pending` fails).
 
 1. Check the option. It is `share_harvest` in `/config` (plugins). If it is off, say so and stop. Do not turn it on yourself.
 2. Run `AE rows --json --owned`. Take at most 20 rows, those with the oldest `modified` first. If there are none, stop.

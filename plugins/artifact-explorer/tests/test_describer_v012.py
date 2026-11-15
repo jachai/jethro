@@ -156,7 +156,7 @@ class ReviewFixes(Base):
 
     def test_column_race(self):
         con = self.con()  # the column exists: a second ALTER (another process won the race) must not raise
-        db._add_desc_note(con)
+        db._add_column(con, "desc_note", "TEXT")
         self.assertIn("desc_note", {r[1] for r in con.execute("PRAGMA table_info(artifacts)")})
 
 
@@ -177,14 +177,15 @@ class NeverWaits(Base):
         self.assertLess(float(argv[argv.index("--max-budget-usd") + 1]), describe.RUN_BUDGET)
         self.assertEqual(kw["out"], os.path.join(self.d, "describer.out"))
 
-    def test_skill_runs_describer_in_foreground_and_stops_on_refusal(self):
+    def test_skill_batches_describer_calls_and_stops_on_refusal(self):  # 0.2.0: batches, no per-row call
         _, txt = self.skill_tools()
         bg = txt.split("## Background mode", 1)[1].split("## Full mode", 1)[0]
-        one = txt.split("## Describe one row", 1)[1].split("## Background mode", 1)[0]  # 0.1.4: shared by both modes
-        self.assertIn("Describe one row", bg)
-        self.assertIn("run_in_background: false", one)
+        one = txt.split("## Describe rows", 1)[1].split("## Background mode", 1)[0]
+        self.assertIn("Describe rows", bg)
         self.assertIn("refused", bg)
-        self.assertIn("--id", one)
+        self.assertIn("AE batch manifest", one)
+        self.assertIn("AE batch save", one)
+        self.assertNotIn("run_in_background", txt)
 
     def test_result_logged(self):
         describe.launch(self.d)

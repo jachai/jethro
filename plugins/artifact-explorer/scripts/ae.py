@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-VERSION = "0.1.5"
+VERSION = "0.2.0"
 
 
 def main(argv=None):
@@ -33,6 +33,8 @@ def main(argv=None):
     s = sub.add_parser("allow-rule", help="say whether the setup permission rule is in ~/.claude/settings.json")
     s = sub.add_parser("ingest-list", help="record Artifact list rows from a JSON file")
     s.add_argument("file")
+    s.add_argument("--shared-complete", action="store_true",
+                   help="the file holds every page of the shared list: shared rows missing from it are marked no longer shared")
     s = sub.add_parser("set-desc", help="set a description written by the describer")
     s.add_argument("id")
     g = s.add_mutually_exclusive_group(required=True)
@@ -74,6 +76,19 @@ def main(argv=None):
     s.add_argument("--chars", type=int, default=3000)
     s.add_argument("--id", help="the row: a typed artifact or a page with almost no text is marked skipped")
     s.add_argument("--type", help='the Artifact type the read reported (e.g. "Docs", "Slides", "HTML")')
+    s = sub.add_parser("batch", help="describe several artifacts in one describer call: start | manifest FOLDER | recat | save FILE")
+    bs = s.add_subparsers(dest="bcmd", required=True)
+    bs.add_parser("start", help="print a new empty batch folder")
+    b = bs.add_parser("manifest", help="write FOLDER/manifest.txt from the excerpts in it")
+    b.add_argument("folder")
+    b = bs.add_parser("recat", help="new batch folder + manifest of described rows that have no category pick yet")
+    b.add_argument("--limit", type=int, default=40)
+    b = bs.add_parser("save", help="store the describer's JSON lines")
+    b.add_argument("file")
+    s = sub.add_parser("topics", help="list topics and the describer's suggestions; --accept NAME adds one to config.toml")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--accept", metavar="NAME")
+    g.add_argument("--reject", metavar="NAME")
     s = sub.add_parser("tmpdir", help="print an empty per-row folder in the system temp dir for ArtifactData out_dir (the data folder is refused there)")
     s.add_argument("id")
     a = p.parse_args(argv)
@@ -164,7 +179,13 @@ def main(argv=None):
     if a.cmd == "launch-describer":
         return describe.launch(data, test=a.test)
     if a.cmd == "ingest-list":
-        return describe.ingest_list(data, a.file)
+        return describe.ingest_list(data, a.file, shared_complete=a.shared_complete)
+    if a.cmd == "batch":
+        return {"start": lambda: describe.batch_start(data), "manifest": lambda: describe.batch_manifest(data, getattr(a, "folder", None)),
+                "recat": lambda: describe.batch_recat(data, getattr(a, "limit", 40)),
+                "save": lambda: describe.batch_save(data, getattr(a, "file", None))}[a.bcmd]()
+    if a.cmd == "topics":
+        return describe.topics_cmd(data, accept=a.accept, reject=a.reject)
     if a.cmd == "set-kind":
         return describe.set_kind(data, a.id, a.kind)
     if a.cmd == "set-desc":

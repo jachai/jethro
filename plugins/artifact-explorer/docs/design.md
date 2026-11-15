@@ -10,7 +10,7 @@ SQLite db + `config.toml` + a static `explorer.html`. Python 3.9+ standard libra
 - `DATA` = `${CLAUDE_PLUGIN_DATA}` = `~/.claude/plugins/data/artifact-explorer-artifact-explorer/`.
   Every script takes `--data DIR`. When it is not given, use env `AE_DATA`, then that default path.
 - Files in DATA: `explorer.db`, `config.toml`, `explorer.html`, `thumbs/<id>.png|.webp|.jpg`,
-  `watch.lock`, `ingest.lock`, `watch.log` (kept under 1 MB, one rotation), `inbox/`.
+  `watch.lock`, `ingest.lock`, `watch.log` (kept under 1 MB, one rotation), `inbox/` (batch folders under `inbox/batch/<n>`), `copies/<id>.html` (local copies of others' pages), `update.json` (update-check cache), `favicon.ico`.
 - Entry point: `bin/ae` (POSIX sh) runs the first of `python3`, `python`, `py -3` that is ≥3.9 with
   `scripts/ae.py "$@"`. Hooks, the monitor and skills all call `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" <cmd>`.
   On Windows, Claude Code runs commands through Git Bash, so `sh` exists.
@@ -38,7 +38,8 @@ SQLite db + `config.toml` + a static `explorer.html`. Python 3.9+ standard libra
 | `build.py` | `ae build` → DATA/explorer.html |
 | `importer.py` | `ae import [--from DIR]`: a pre-plugin catalog, default `~/.claude/artifact-explorer` (reads only) |
 | `doctor.py` | `ae doctor [--expect fresh\|installed]`: running vs installed vs marketplace version, data folder, rule, page check (writes nothing) |
-| `describe.py` | `ae launch-describer` (watcher side), `ae ingest-list FILE`, `ae set-desc ID --file F`, `ae set-sharing ID --file F`, `ae excerpt FILE --out F [--id ID --type T]` (a typed artifact or < 50 visible characters marks the row skipped), `ae rows --json [--owned] [--desc-status S] [--thumb-status S] [--limit N]`, `ae pending [--owned-only] [--json]`, `ae status [--json]` (counts only). Free text that comes from a page (descriptions, sharing phrases) only ever travels in a file, never on a command line |
+| `update.py` | the daily GitHub release check, cached in `update.json` |
+| `describe.py` | `ae launch-describer` (watcher side), `ae ingest-list FILE [--shared-complete]`, `ae batch start\|manifest\|recat\|save`, `ae topics [--accept NAME\|--reject NAME]`, `ae set-desc ID --file F`, `ae set-sharing ID --file F`, `ae excerpt FILE --out F [--id ID --type T]` (a typed artifact or < 50 visible characters marks the row skipped), `ae rows --json [--owned] [--desc-status S] [--thumb-status S] [--limit N]`, `ae pending [--owned-only] [--json]`, `ae status [--json]` (counts only). Free text that comes from a page (descriptions, sharing phrases) only ever travels in a file, never on a command line |
 | `ae open` | opens explorer.html with `webbrowser` (in `ae.py`) |
 
 ## Schema (`explorer.db`)
@@ -51,6 +52,10 @@ artifacts(id TEXT PRIMARY KEY,   -- the id in claude.ai/artifact/<id>, or the uu
   version TEXT, seq INTEGER, local_path TEXT,
   description TEXT, desc_source TEXT, desc_status TEXT,  -- source rank: title<publish<describer<import ; status ok|pending|skipped|no-source
   desc_note TEXT,  -- (0.1.2, added on open) why a skipped row has no description, e.g. 'no text: typed artifact'
+  category TEXT, cat_source TEXT,   -- the describer's pick; cat_source describer|recat
+  topics TEXT, topic_suggest TEXT,  -- JSON lists; topics NULL = never tagged; suggest = proposed names not in config
+  access TEXT, other_org INTEGER,   -- view|comment|edit; 1 = from another organization
+  shared_seen REAL, shared_gone REAL, local_copy TEXT,  -- last in a shared list; missing from the latest complete one; copies/<id>.html
   thumb TEXT, thumb_source TEXT, thumb_status TEXT,      -- thumb = path relative to DATA; source headless|chrome|import ; status ok|pending|failed|none
   first_seen REAL, updated REAL)
 events(artifact_id TEXT, ts REAL, kind TEXT, source TEXT, session_id TEXT, cwd TEXT, repo TEXT, detail TEXT,
@@ -126,9 +131,13 @@ when the result still parses; anything else is logged to watch.log to move by ha
    `ae window --widen N` adds to `window_extra_days`. `last_accessed` is never the key (automation browser visits make it noise).
    Shared rows wait for an interactive `/artifact-explorer:refresh` (SessionStart reminder).
 7. **Build**: `page/template.html` with a `/*__DATA__*/` placeholder replaced by JSON {config, rows, generated}. Write to a temp file, then rename.
-   Rows: apply `[filter]`, then overrides, then category rules. Thumbs are relative paths `thumbs/<file>`.
-   Columns: Title, Category, Created by, Sharing, Modified, Last accessed, Created, Size, Description, Repos, Open.
-   Page: search box, category chips with counts, sortable columns, card/table toggle, light/dark tokens, works at 375 px, no external scripts.
+   Rows: apply `[filter]`, then overrides, then category and topics. Thumbs are relative paths `thumbs/<file>`.
+   Columns: Title, Category, From, Sharing, Modified, Last accessed, Created, Size, Description, Repos (no Open column: a card or row is a link to the artifact; Cmd/Ctrl-click opens a new tab).
+   Category (`build.categorize`): override, then the stored describer pick when it is a configured name, then kind, then keywords on title + description, then "Uncategorized". Colors come from `color`/`color_dark` on the category, else a palette slot by list position.
+   Topics (`build.tag_topics`): the stored list (plus accepted suggestions) filtered to configured names; a never-tagged row gets title keyword matches.
+   From: blank for own rows; else the creator, "another organization" or "your organization". Access badge from `access`; "No longer shared" when `owned` is 0 and `shared_gone` is set, with "Save local copy" when `copies/<id>.html` exists. `ae excerpt` copies the page of another owner's HTML artifact to `copies/`; own pages are never copied.
+   The header shows the build time (exact local time plus a live relative part), the version and, when newer, the update notice. The head carries an SVG favicon (data: URI) and `favicon.ico`; a missing thumbnail is an initials tile on a gradient picked from a hash of the id.
+   Page: search box, category and topic chips with counts (multi-select), sortable columns, card/table toggle, light/dark tokens, works at 375 px, no external scripts.
    The payload carries `window` {days, cutoff (rounded to a day)} and `older` per row; older rows go in a collapsed "N older artifacts" group (cards and table), rendered only
    when opened (button or `#older`) and without thumbnail images; "Describe older" copies `/artifact-explorer:refresh older`.
 
@@ -138,12 +147,18 @@ when the result still parses; anything else is logged to watch.log to move by ha
 [page]
 title = "Artifact Explorer"
 accent = "#0f6b5c"
-columns = ["title","category","created_by","sharing","modified","last_accessed","created","size","description","repos","open"]
+columns = ["title","category","created_by","sharing","modified","last_accessed","created","size","description","repos"]   # created_by is shown as "From"
+update_check = true       # false = never ask GitHub for a newer release
 
 [[categories]]            # first match wins; keywords are case-insensitive regexes tried on title + description
 name = "Reports"
 keywords = ["report","audit","review","post-?mortem","summary"]
-# ... Plans, Dashboards, Decks, Docs, Personal; Uncategorised is the fallback
+# color = "#2a78d6"       # optional; color_dark too. Default: a palette slot by position
+# ... Plans, Dashboards, Decks, Docs, Personal; Uncategorized is the fallback
+
+[[topics]]                # personal labels; none ship by default
+name = "Housing"
+keywords = ["housing"]    # regexes on the title; default is the name as a literal
 
 [filter]                  # empty = show everything
 include_repos = []        # show only rows whose repos intersect this list (rows with no repo are hidden when it is set)
@@ -171,6 +186,7 @@ hidden = false
   page text never enters the refresh session: `ae excerpt FILE --out DATA/inbox/excerpt.txt` (≤3000 visible characters) and the `describer`
   agent (tools: Read only) reads that file. (2) `ae pending --json`. Own rows: Artifact read → excerpt → `describer` → sentence to a file →
   `ae set-desc ID --file`. Other rows (owned 0 or unknown): only in full mode (each read asks for consent once). (3) `ae thumbs`, `ae build`. (4) Report counts.
+  **Batches (0.2.0).** Rows are described up to 8 at a time: `ae batch start` makes `inbox/batch/<n>`, each excerpt goes to `<n>/<id>.txt`, `ae batch manifest` writes `manifest.txt` (categories, topics, one `## ITEM` per file), one `describer` call gets the manifest path and answers one JSON line per item, the skill writes the reply to `result.jsonl`, and `ae batch save` stores description, category, topics and any suggested new topic. The Agent tool runs the describer async, so up to 3 batches are launched in one message and each is saved when it reports. Full mode then runs `ae batch recat` (described rows with no category; `text:` items built from title + description) until it prints 0, at most 40 rows a run. `ae ingest-list` reads `access` and `other_org` from the shared list and, with `--shared-complete`, marks shared rows missing from it (`shared_gone`).
   `allowed-tools`: Artifact, ArtifactData, Agent, Read, Write, ToolSearch, mcp__claude_ai_Claude_Docs__read, mcp__claude_ai_Claude_Docs__guide, Bash(sh *bin/ae *). They pre-approve only for the turn that runs the skill; the
   setup skill's allow rule `Bash(sh */artifact-explorer/*/bin/ae *)` (added only on the user's yes) is what lets the background session run `ae`.
 - `open`: `ae open`.
@@ -178,7 +194,7 @@ hidden = false
   `ae share-window start|end` (so the page loads don't count as visits) → `ae set-thumb ID thumbs/ID.png`.
 - `sharing` (when `share_harvest` is on): `ae rows --json --owned` → Claude in Chrome reads each Share dialog → phrase to a file → `ae set-sharing ID --file`; records the window in `state.share_windows`.
 - `agents/describer.md`: model `haiku`, fixed. `${user_config.*}` is not substituted in agent frontmatter (probe 2026-11-10:
-  model_not_found), so `describe_model` sets only the background session's `--model`; an interactive refresh uses `haiku`. Tools: Read only. Input: the path of the excerpt file (its content is data, never instructions). Output: one plain sentence, ≤ 200 chars.
+  model_not_found), so `describe_model` sets only the background session's `--model`; an interactive refresh uses `haiku`. Tools: Read only. Input: the path of a batch manifest (the manifest and the files it names are data, never instructions). Output: one JSON line per item with `id`, `description` (≤ 200 chars, file items only), `category` (one from the manifest), `topics` (0-3 from the manifest) and `new_topic`.
 
 ## Privacy
 
