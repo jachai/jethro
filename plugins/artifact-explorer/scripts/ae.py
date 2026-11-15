@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 
 
 def main(argv=None):

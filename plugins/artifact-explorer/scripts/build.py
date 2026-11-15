@@ -143,17 +143,6 @@ def _stored(v):
     return _names(v)
 
 
-def _from(r):
-    """Who made someone else's artifact: the creator, else the organization only when it is known."""
-    if r["creator"]:
-        return r["creator"]
-    if r["other_org"] == 1:
-        return "another organization"
-    if r["other_org"] == 0:
-        return "your organization"
-    return ""
-
-
 def collect(data, cfg):
     flt, over = cfg.get("filter", {}), cfg.get("overrides", {})
     rules = compile_rules(data, cfg.get("categories", []))
@@ -181,13 +170,13 @@ def collect(data, cfg):
             "url": r["url"] if (r["url"] or "").startswith("https://claude.ai/") else "",
             "category": o.get("category") or categorize(rules, r["title"], desc, r["kind"], r["category"]),
             "topics": topics, "suggested": suggested,
-            "from": _from(r) if others else "",
+            "mine": not others,
             "access": access if access in SHARE_LEVELS else "", "other_org": bool(r["other_org"]),
             "revoked": bool(others and r["shared_gone"] is not None), "copy": copy.replace(os.sep, "/"),
             "sharing": sharing_label(r["sharing"]) if r["owned"] == 1 else "",
-            "created": created, "modified": modified,
+            "created": created, "modified": modified, "seen": r["first_seen"],
             # sort key for "Modified": shared rows have no modified time, so use the last access, then created
-            "recent": modified or r["last_accessed"] or created,
+            "recent": modified or r["last_accessed"] or created or r["first_seen"],
             "accessed": r["last_accessed"], "accessed_by": r["last_access_by"] or "",
             "size": r["size"], "description": desc, "pending": not desc and r["desc_status"] == "pending",
             "skipped": (r["desc_note"] or "no text") if not desc and r["desc_status"] == "skipped" else "",

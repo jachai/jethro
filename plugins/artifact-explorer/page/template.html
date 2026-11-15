@@ -7,8 +7,8 @@
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/svg+xml" href="__FAVICON_SVG__">
 <style>
-:root{--bg:#f6f6f3;--panel:#fff;--ink:#1d2321;--muted:#5f6764;--line:#e2e4df;--chip:#eceeea;--accent:#0f6b5c;--accent-ink:#fff;--link:var(--accent);--shadow:0 1px 2px rgba(0,0,0,.05);--warn:#c4741f;--ok:#2f9e5b;--neutral:#898781}
-@media (prefers-color-scheme:dark){:root{--bg:#141716;--panel:#1c201f;--ink:#e6e9e7;--muted:#9aa39f;--line:#2c3331;--chip:#262c2a;--link:color-mix(in srgb,var(--accent) 45%,#fff);--shadow:none;--ok:#4cc27e}}
+:root{--bg:#f6f6f3;--panel:#fff;--ink:#1d2321;--muted:#5f6764;--line:#e2e4df;--chip:#eceeea;--accent:#0f6b5c;--accent-ink:#fff;--link:var(--accent);--shadow:0 1px 2px rgba(0,0,0,.05);--warn:#c4741f;--ok:#2f9e5b;--neutral:#898781;--mine:var(--accent);--other:#7b8da3}
+@media (prefers-color-scheme:dark){:root{--bg:#141716;--panel:#1c201f;--ink:#e6e9e7;--muted:#9aa39f;--line:#2c3331;--chip:#262c2a;--link:color-mix(in srgb,var(--accent) 45%,#fff);--shadow:none;--ok:#4cc27e;--other:#8fa2b8}}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}
@@ -72,13 +72,16 @@ a.stretch:focus-visible{outline:none;text-decoration:underline}
 .tps{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
 .tp{display:inline-block;padding:0 7px;border-radius:5px;font-size:11.5px;font-weight:450;color:var(--ink);background:var(--chip);border:1px solid transparent;white-space:nowrap}
 .tp.sug{background:none;border:1px dashed var(--muted);color:var(--muted);font-style:italic}
-.fm{font-size:12px;color:var(--muted);font-weight:400}
 .bd{display:inline-block;padding:0 7px;border-radius:5px;font-size:11.5px;font-weight:500;color:var(--ink);background:var(--chip);border:1px solid var(--line);white-space:nowrap}
 .bd.org{border-style:dashed}
 .bd.gone{background:color-mix(in srgb,var(--warn) 16%,var(--panel));border-color:color-mix(in srgb,var(--warn) 55%,var(--line))}
 .shr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:12px;font-weight:400}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
 .card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow);min-width:0}
+.card{border-left:4px solid var(--other)}
+.card.mine{border-left-color:var(--mine)}
+tbody tr>td:first-child{box-shadow:inset 4px 0 0 var(--other)}
+tbody tr.mine>td:first-child{box-shadow:inset 4px 0 0 var(--mine)}
 .card:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
 .card:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .shot{aspect-ratio:16/9;background:var(--chip);overflow:hidden}
@@ -135,17 +138,16 @@ const DATA = /*__DATA__*/null;
 const cfg = DATA.config, rows = DATA.rows;
 rows.forEach(r => {
  r.topics = r.topics || []; r.suggested = r.suggested || []; r.repos = r.repos || [];
- r.from = r.from || ""; r.sharing = r.sharing || ""; r.access = r.access || ""; r.category = r.category || "Uncategorized";
+ r.sharing = r.sharing || ""; r.access = r.access || ""; r.category = r.category || "Uncategorized";
  r.description = r.description || ""; r.title = r.title || "";
 });
 const COLS = {
  title:{h:"Title",k:r=>r.title.toLowerCase(),cls:"t"},
  category:{h:"Category",k:r=>r.category.toLowerCase(),cls:"w"},
- created_by:{h:"From",k:r=>r.from.toLowerCase(),cls:"w"},
  sharing:{h:"Sharing",k:r=>(r.revoked ? "z" : "") + (r.access || r.sharing).toLowerCase(),cls:"w"},
  modified:{h:"Modified",k:r=>r.recent||0,cls:"w",date:"modified"},
  last_accessed:{h:"Last accessed",k:r=>r.accessed||0,cls:"w",date:"accessed"},
- created:{h:"Created",k:r=>r.created||0,cls:"w",date:"created"},
+ created:{h:"Created",k:r=>dateOf(r,"created")[0]||0,cls:"w",date:"created"},
  size:{h:"Size",k:r=>r.size||0,cls:"n"},
  description:{h:"Description",k:r=>r.description.toLowerCase(),cls:"d"},
  repos:{h:"Repos",k:r=>r.repos.join(" ").toLowerCase()}
@@ -281,9 +283,16 @@ function el(tag, cls, text){
  if (text != null) e.textContent = text;
  return e;
 }
-function when(t, by){
+// created / modified always show a date: the artifact's own when known, else when this explorer first saw it or
+// last saw it opened, labelled as such
+function dateOf(r, d){
+ if (d === "created") return r.created ? [r.created, ""] : r.seen ? [r.seen, "first seen"] : [0, ""];
+ if (d === "modified") return r.modified ? [r.modified, ""] : r.accessed ? [r.accessed, "last accessed"] : r.seen ? [r.seen, "first seen"] : [0, ""];
+ return [r[d], ""];
+}
+function when(t, by, label){
  if (!t) return el("span", "dim", "unknown");
- const s = el("span", "sec", rel(t));  // sec: above the row link, so the full-date tooltip shows
+ const s = el("span", "sec", (label ? label + " " : "") + rel(t));  // sec: above the row link, so the full-date tooltip shows
  s.title = new Date(t*1000).toLocaleString() + (by ? " (" + by + ")" : "");
  return s;
 }
@@ -313,9 +322,8 @@ function topicPills(r){
  r.suggested.forEach(t => { const e = el("span", "tp sug sec", t); e.title = "Suggested topic (not in your config yet): " + t; box.appendChild(e); });
  return box;
 }
-function fromNode(r){ return r.from ? el("span", "fm", "from " + r.from) : null; }
 function sharingNode(r){
- const box = el("span", "shr"), own = !r.from && !r.access && !r.revoked;
+ const box = el("span", "shr"), own = r.mine && !r.access && !r.revoked;
  if (own) { if (!r.sharing) return null; box.appendChild(el("span", "dim", r.sharing)); return box; }
  if (r.revoked) {
   box.appendChild(el("span", "bd gone", "No longer shared"));
@@ -323,7 +331,6 @@ function sharingNode(r){
    const a = el("a", "sec", "Save local copy"); a.href = r.copy; a.setAttribute("download", ""); box.appendChild(a);
   } else box.appendChild(el("span", "dim", "No longer shared, no copy"));
  } else if (r.access) box.appendChild(el("span", "bd", r.access));
- if (r.other_org) box.appendChild(el("span", "bd org", "other org"));
  return box.childNodes.length ? box : null;
 }
 function addAll(parent, nodes){ nodes.forEach(n => n && parent.appendChild(n)); return parent; }
@@ -334,16 +341,14 @@ function cell(c, r){
   const w = el("div", "tt"), b = el("div"), x = el("div", "row2");
   w.appendChild(picture(r, "av")); b.appendChild(titleLink(r));
   if (cols.indexOf("category") < 0) x.appendChild(catPill(r));
-  if (cols.indexOf("created_by") < 0) { const f = fromNode(r); if (f) x.appendChild(f); }
   if (cols.indexOf("sharing") < 0) { const s = sharingNode(r); if (s) x.appendChild(s); }
   if (x.childNodes.length) b.appendChild(x);
   const tp = topicPills(r); if (tp) b.appendChild(tp);
   w.appendChild(b); td.appendChild(w);
  }
  else if (c === "category") td.appendChild(catPill(r));
- else if (c === "created_by") { const f = fromNode(r); if (f) td.appendChild(f); }
  else if (c === "sharing") { const s = sharingNode(r); if (s) td.appendChild(s); }
- else if (d) td.appendChild(when(r[d], d === "accessed" ? r.accessed_by : ""));
+ else if (d) { const v = dateOf(r, d); td.appendChild(when(v[0], d === "accessed" ? r.accessed_by : "", v[1])); }
  else if (c === "size") td.textContent = bytes(r.size);
  else if (c === "description") td.appendChild(desc(r));
  else if (c === "repos") r.repos.forEach(x => td.appendChild(el("span", "repo", x)));
@@ -352,7 +357,7 @@ function cell(c, r){
 }
 
 function match(r, q){
- return !q || (r.title+" "+r.description+" "+r.category+" "+r.topics.join(" ")+" "+r.repos.join(" ")+" "+r.from).toLowerCase().indexOf(q) >= 0;
+ return !q || (r.title+" "+r.description+" "+r.category+" "+r.topics.join(" ")+" "+r.repos.join(" ")).toLowerCase().indexOf(q) >= 0;
 }
 function sorted(list){
  const k = COLS[st.sort].k;
@@ -405,7 +410,7 @@ function table(list){
  });
  t.appendChild(el("thead")).appendChild(tr);
  const tb = el("tbody");
- list.forEach(r => { const row = el("tr"); cols.forEach(c => row.appendChild(cell(c, r))); tb.appendChild(row); });
+ list.forEach(r => { const row = el("tr", r.mine ? "mine" : "other"); cols.forEach(c => row.appendChild(cell(c, r))); tb.appendChild(row); });
  t.appendChild(tb); box.appendChild(t);
  return box;
 }
@@ -413,16 +418,16 @@ function table(list){
 function cards(list){
  const g = el("div", "grid");
  list.forEach(r => {
-  const c = el("div", "card"), s = picture(r, "shot"), b = el("div", "cb"), f = el("div", "foot");
+  const c = el("div", r.mine ? "card mine" : "card other"), s = picture(r, "shot"), b = el("div", "cb"), f = el("div", "foot");
   b.appendChild(el("h3")).appendChild(titleLink(r));
-  const meta = addAll(el("div", "row2"), [catPill(r), fromNode(r)]);
+  const meta = addAll(el("div", "row2"), [catPill(r)]);
   b.appendChild(meta);
   const tp = topicPills(r); if (tp) b.appendChild(tp);
   b.appendChild(el("p")).appendChild(desc(r));
   const sh = sharingNode(r); if (sh) b.appendChild(sh);
   // both dates, labelled, so created and modified are told apart at a glance
-  [["Created", r.created], ["Modified", r.modified]].forEach(([k, t]) => {
-   const d = el("span", "fd"); d.appendChild(el("span", "fk", k + " ")); d.appendChild(when(t)); f.appendChild(d);
+  [["Created", "created"], ["Modified", "modified"]].forEach(([k, n]) => {
+   const v = dateOf(r, n), d = el("span", "fd"); d.appendChild(el("span", "fk", k + " ")); d.appendChild(when(v[0], "", v[1])); f.appendChild(d);
   });
   b.appendChild(f); c.appendChild(s); c.appendChild(b); g.appendChild(c);
  });

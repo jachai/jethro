@@ -5,9 +5,8 @@
 title = "Artifact Explorer"     # heading and browser tab title
 accent = "#0f6b5c"              # accent color (links, active chips, focus rings)
 # Columns shown in table view, in order. Choose from:
-# title category created_by sharing modified last_accessed created size description repos
-# (created_by is shown as "From")
-columns = ["title","category","created_by","sharing","modified","last_accessed","created","size","description","repos"]
+# title category sharing modified last_accessed created size description repos
+columns = ["title","category","sharing","modified","last_accessed","created","size","description","repos"]
 # Ask GitHub (at most once a day) whether a newer release is out and show an "update available" badge. false = never ask.
 update_check = true
 

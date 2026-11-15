@@ -225,20 +225,20 @@ class TitleTest(Base):  # B5
 class CardsAndCreatorTest(Base):
     def test_unknown_owner_shows_no_from(self):  # B6 (0.2.0: own and unknown rows show nothing)
         db.upsert_artifact(self.con, "aaaaaaaaaa", title="x")
-        self.assertEqual(self.rows()["aaaaaaaaaa"]["from"], "")
+        self.assertNotIn("from", self.rows()["aaaaaaaaaa"])  # 0.2.2: no "from" text at all
 
     def test_shared_rows_without_a_harvested_label_say_nothing(self):  # B4
         db.upsert_artifact(self.con, "aaaaaaaaaa", title="x", owned=0)
         db.upsert_artifact(self.con, "bbbbbbbbbb", title="y", owned=1)
         r = self.rows()
         self.assertEqual((r["aaaaaaaaaa"]["sharing"], r["bbbbbbbbbb"]["sharing"]), ("", ""))
-        self.assertEqual((r["aaaaaaaaaa"]["from"], r["bbbbbbbbbb"]["from"]), ("", ""))
+        self.assertEqual((r["aaaaaaaaaa"]["mine"], r["bbbbbbbbbb"]["mine"]), (False, True))
 
     def test_cards_show_creator_and_sharing(self):  # B4
         tpl = open(TPL, encoding="utf-8").read()
         body = tpl[tpl.index("function cards("):tpl.index("function render(")]
-        self.assertTrue("r.from" in body or "fromNode(r" in body)  # the card shows the "from" part (own rows: none)
-        self.assertIn("r.from", tpl)
+        self.assertNotIn("fromNode", tpl)  # 0.2.2: no "from" text
+        self.assertIn("r.mine", body)  # the card carries the ownership mark
         self.assertIn("r.access", tpl)
 
 
