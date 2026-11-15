@@ -57,10 +57,10 @@ class BuildTest(unittest.TestCase):
         a = r["aaaaaaaaaa"]
         self.assertEqual((a["created"], a["modified"], a["accessed"], a["accessed_by"]), (150, 300, 400, "browser"))
         self.assertEqual(a["repos"], ["other", "proj"])
-        self.assertEqual((a["from"], a["category"]), ("", "Reports"))
-        self.assertEqual((r["bbbbbbbbbb"]["from"], r["bbbbbbbbbb"]["category"]), ("Sam", "Decks"))
-        self.assertEqual((r["cccccccccc"]["category"], r["cccccccccc"]["pending"], r["cccccccccc"]["from"]),
-                         ("Uncategorized", True, ""))
+        self.assertEqual((a["mine"], a["category"]), (True, "Reports"))
+        self.assertEqual((r["bbbbbbbbbb"]["mine"], r["bbbbbbbbbb"]["category"]), (False, "Decks"))
+        self.assertEqual((r["cccccccccc"]["category"], r["cccccccccc"]["pending"], "from" in r["cccccccccc"]),
+                         ("Uncategorized", True, False))
         self.assertNotIn("created_by", a)
 
     def test_sharing_labels(self):

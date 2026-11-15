@@ -648,7 +648,7 @@ def write_manifest(data, folder, items):
     cats = [c["name"] for c in cfg.get("categories", []) if c.get("name")]
     tops = [t["name"] for t in cfg.get("topics", []) if t.get("name")]
     lines = ["Categories (pick exactly one): " + ", ".join(cats),
-             "Topics (pick 0-3 that fit; you may propose one new short topic): " + (", ".join(tops) or "(none configured yet)")]
+             "Topics (pick 0-3 that fit; you may propose up to 3 new broad topics): " + (", ".join(tops) or "(none configured yet)")]
     for aid, how, val in items:
         lines += ["## ITEM " + aid, "%s: %s" % (how, _one_line(val) if how == "text" else val)]
     with open(os.path.join(folder, "manifest.txt"), "w", encoding="utf-8") as f:
@@ -741,11 +741,15 @@ def _save_line(con, line, cats, tops, texts, done):
         if keep:  # none picked stays NULL, so the title keywords still decide
             fields["topics"] = json.dumps(keep[:3])
     sug = 0
-    nt = " ".join(str(o.get("new_topic") or "").split())
-    if nt and len(nt) <= 40 and nt.lower() not in tops:
-        cur = _json_list(db.get(con, aid)["topic_suggest"])
-        if nt.lower() not in [x.lower() for x in cur]:
-            fields["topic_suggest"] = json.dumps(cur + [nt])
+    nts = o.get("new_topics")
+    if not isinstance(nts, list):
+        nts = [o.get("new_topic")]  # 0.2.0 replies carried one `new_topic`
+    cur = _json_list(db.get(con, aid)["topic_suggest"])
+    for nt in nts[:3]:
+        nt = " ".join(str(nt or "").split())
+        if nt and len(nt) <= 40 and nt.lower() not in tops and nt.lower() not in [x.lower() for x in cur]:
+            cur.append(nt)
+            fields["topic_suggest"] = json.dumps(cur)
             sug = 1
     if not fields:
         return None

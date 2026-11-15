@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-11-15
+
+### Changed
+
+- Ownership is shown by color, not text: every card and row has a colored left edge, the accent color for your artifacts and a neutral gray-blue for everyone else's (light and dark). All "from <name>", "from another organization" and "your organization" text is gone, and so is the `created_by` ("From") column; a `created_by` entry in your `columns` is ignored.
+- Created and Modified always show a date. When the artifact has none (shared artifacts carry no dates in the list), the page shows "first seen" (when this explorer first saw it) or "last accessed", labelled as such, instead of "unknown".
+- The describer may propose up to 3 new topics per artifact (`new_topics`), told to name broad recurring themes rather than phrases from one title, so suggestions cover more of the catalog. A 0.2.0-style single `new_topic` reply is still accepted.
+
 ## [0.2.1] - 2026-11-15
 
 ### Fixed

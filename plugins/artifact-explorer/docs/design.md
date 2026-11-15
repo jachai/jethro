@@ -147,7 +147,7 @@ when the result still parses; anything else is logged to watch.log to move by ha
 [page]
 title = "Artifact Explorer"
 accent = "#0f6b5c"
-columns = ["title","category","created_by","sharing","modified","last_accessed","created","size","description","repos"]   # created_by is shown as "From"
+columns = ["title","category","sharing","modified","last_accessed","created","size","description","repos"]
 update_check = true       # false = never ask GitHub for a newer release
 
 [[categories]]            # first match wins; keywords are case-insensitive regexes tried on title + description
