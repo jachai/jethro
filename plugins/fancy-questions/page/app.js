@@ -177,7 +177,7 @@ function blockHTML(q,p){
   <p class="recline"><b>We recommend:</b> ${esc(q.recommend)}</p>
   ${q.today?`<p class="today"><span class="lbl">${esc(q.today.label||'Today')}</span>${esc(q.today.text)}</p>`:''}
   ${q.after?`<p class="today"><span class="lbl">${esc(q.after.label||'After')}</span>${esc(q.after.text)}</p>`:''}
-  <figure class="figure">${visual(q.visual)}<figcaption>${q.example?`<span class="lbl">Worked example</span>${esc(q.example)}`:''}${facts.map(f=>`<span class="ex ph">${esc(f.text)}</span>`).join('')}${q.links&&q.links.length?`<span class="links">${q.links.map(l=>`<a class="hub" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} <span aria-hidden="true">↗</span></a>`).join('')}</span>`:''}</figcaption></figure>
+  ${q.visual||q.example||facts.length||(q.links&&q.links.length)?`<figure class="figure">${visual(q.visual)}<figcaption>${q.example?`<span class="lbl">Worked example</span>${esc(q.example)}`:''}${facts.map(f=>`<span class="ex ph">${esc(f.text)}</span>`).join('')}${q.links&&q.links.length?`<span class="links">${q.links.map(l=>`<a class="hub" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} <span aria-hidden="true">↗</span></a>`).join('')}</span>`:''}</figcaption></figure>`:''}
   <div class="ask">Your call</div>
   <div class="opts n${q.options.length}" role="radiogroup" aria-label="Decision">
     ${q.options.map((o,i)=>{ const sel=a.optionId===o.id||pending[q.id]===i;

@@ -45,12 +45,42 @@ Data dir: `walkthrough/<slug>/` in the current project unless the user names one
 6. **Publish a NEW artifact** with the Artifact tool: `file_path: <dir>/index.html`, `icon: "checklist"`,
    `capabilities: {"db": {}, "user": {"scopes": ["profile"]}}`, a one-sentence description. Never republish
    over last round's page: its answers live in its own db. Write the URL into `<dir>/state.md`.
-7. **Check before done.** Hand the URL and the data dir to the `walkthrough-checker` agent. It returns at most
+7. **Pre-share check: can a reader's answer reach you?** A reader whose share level is too low can open the
+   page but every save is refused (the page now says so in a red banner, but the answers still never reach
+   you). Run ONE write as a Contributor-level reader, then remove it. Load `ArtifactData` if it is deferred:
+   ```
+   ArtifactData action:"set" url:<url> collection:"answers" doc_id:"qw-preshare-check" as_level:"interact"
+     data:{"qid":"qw-preshare-check","note":"pre-share check; safe to delete"}
+   ArtifactData action:"delete" url:<url> collection:"answers" doc_id:"qw-preshare-check" if_version:<version from the set>
+   ```
+   The set must succeed. If it reads as "not found" or is refused, the page was published without the `db`
+   capability or with rules that need more than `interact`: republish to the same url with the step 6
+   capabilities and run the check again. Write `preshare: ok <ISO time>` into `state.md`. If you cannot make
+   this call yourself (a guided session, no claude.ai access), hand the author the two calls above verbatim.
+8. **Check before done.** Hand the URL and the data dir to the `walkthrough-checker` agent. It returns at most
    10 lines. Fix what it reports in the data, rebuild, and republish to the SAME url only while nobody has
    opened the page yet (otherwise publish a new one and say why). Don't call the page ready until the checker
    passes.
-8. **Report** the link, the card count and minutes (from `qw stats`), what is not verified, and the next step:
+9. **Report** the link, the card count and minutes (from `qw stats`), what is not verified, the pre-share
+   result, and this one line for the author, word for word with the reader's name filled in:
+   **How to share:** open the page, click Share, add <reader> as **Contributor** (not Viewer or Commenter),
+   then send the link; Viewers and Commenters can open it but their answers never reach you.
+   Then: write `shared: <ISO time>` into `state.md` once the author says it is sent, and
    `/question-walkthrough:collect <url>` once the answers are in.
+
+## Who can save answers (the platform's sharing levels; do not guess other names)
+
+| Share menu level | db level | Saves answers? |
+|---|---|---|
+| Owner, Editor | admin | yes |
+| **Contributor** (on the person, or on general access) | interact | **yes**: share at this level |
+| Commenter, Viewer | view | no: the page opens, every save is refused |
+| Anyone signed in from outside your organization (link or email invite) | view | no, whatever level you pick |
+| Signed out | none | no |
+
+A reader outside the organization cannot save on this page at any level: ask them for the "Copy all my
+answers" text instead (every card and the summary have the button), or have the author invite them by email
+as Editor while the page has no share link (an outside Editor holds `admin` only then).
 
 ## Writing rules that made the approved pages work
 
