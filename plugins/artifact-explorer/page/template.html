@@ -331,7 +331,6 @@ function sharingNode(r){
    const a = el("a", "sec", "Save local copy"); a.href = r.copy; a.setAttribute("download", ""); box.appendChild(a);
   } else box.appendChild(el("span", "dim", "No longer shared, no copy"));
  } else if (r.access) box.appendChild(el("span", "bd", r.access));
- if (r.other_org) box.appendChild(el("span", "bd org", "other org"));
  return box.childNodes.length ? box : null;
 }
 function addAll(parent, nodes){ nodes.forEach(n => n && parent.appendChild(n)); return parent; }
