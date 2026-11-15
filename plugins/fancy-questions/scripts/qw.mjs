@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { load, check } from './lint.mjs';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.1.1';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export function build(dir) {
@@ -29,8 +29,8 @@ export function build(dir) {
 function stats(data) {
   const parts = data.cards.reduce((n, c) => n + (c.parts ? c.parts.length : 0), 0);
   const min = Math.max(1, Math.round(data.cards.length * (data.page.minutesPerCard || 0.75)));
-  const novis = data.cards.flatMap(c => [c, ...(c.parts || [])]).filter(q => !q.visual).map(q => q.id);
-  const kinds = {}; data.cards.flatMap(c => [c, ...(c.parts || [])]).forEach(q => { const k = q.visual ? q.visual.kind : 'none'; kinds[k] = (kinds[k] || 0) + 1; });
+  const novis = data.cards.filter(q => !q.visual).map(q => q.id); // a part shares its card's screen
+  const kinds = {}; data.cards.flatMap(c => [c, ...(c.parts || []).filter(p => p.visual)]).forEach(q => { const k = q.visual ? q.visual.kind : 'none'; kinds[k] = (kinds[k] || 0) + 1; });
   return `${data.cards.length} cards (+${parts} parts), about ${min} min, ${data.cards.filter(c => c.urgent).length} urgent · visuals ${Object.entries(kinds).map(([k, n]) => k + ' ' + n).join(', ')}${novis.length ? ' · no visual: ' + novis.join(', ') : ''}`;
 }
 
