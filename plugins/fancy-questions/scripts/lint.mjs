@@ -50,7 +50,7 @@ export function check(page, cards) {
   if (!page || typeof page !== 'object') { E('page.json', 'missing or not an object'); return { errors, warnings }; }
   if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(page.slug || '')) E('page.json', 'slug must be lowercase letters, digits and dashes (it keys saved answers)');
   str(page.title, 'page.json', 'title');
-  ['eyebrow', 'lead', 'audience', 'heading', 'whyline', 'thanks', 'notePrompt', 'discussWith'].forEach(f => str(page[f], 'page.json', f, false));
+  ['eyebrow', 'lead', 'audience', 'heading', 'whyline', 'thanks', 'notePrompt', 'discussWith', 'author'].forEach(f => str(page[f], 'page.json', f, false));
   if (!Array.isArray(page.sections) || !page.sections.length) E('page.json', 'sections must list at least one {id, label}');
   const secIds = new Set((page.sections || []).map(s => s && s.id));
   (page.sections || []).forEach((s, i) => { if (!s || !ID.test(s.id || '') || !s.label) E('page.json', `sections[${i}] needs id and label`); });
