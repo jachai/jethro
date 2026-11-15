@@ -52,31 +52,32 @@ const V = {
     items.forEach((it,i)=>{ const y=i*rowH+4, w=Math.max(2,it.value*scale);
       s+=`<text class="l" x="${it.indent?12:0}" y="${y+15}" style="font-size:13px">${esc(it.label)}</text>`;
       s+=`<rect class="g" x="${pad}" y="${y}" width="${w}" height="20" rx="4" fill="${TONE[it.tone]||TONE.accent}" style="transition-delay:${i*0.12}s"/>`;
-      s+=`<text x="${pad+w+6}" y="${y+15}" style="font-size:13px">${esc(it.text!=null?it.text:it.value)}</text>`; });
+      s+=`<text class="cu" x="${pad+w+6}" y="${y+15}" style="font-size:13px">${esc(it.text!=null?it.text:it.value)}</text>`; });
     return s+'</svg>';
   },
   split(v){
     const tot=v.parts.reduce((a,p)=>a+p.value,0)||1;
-    return `<div class="qv-split"><div class="qv-split-bar" role="img" aria-label="${esc(v.parts.map(p=>p.label+' '+p.value).join('; '))}">${v.parts.map(p=>`<i style="--w:${(p.value/tot*100).toFixed(1)}%;background:${TONE[p.tone]||TONE.accent}"></i>`).join('')}</div><div class="qv-legend">${v.parts.map(p=>`<span><i style="background:${TONE[p.tone]||TONE.accent}"></i><b class="num">${esc(p.text!=null?p.text:p.value)}</b> ${esc(p.label)}</span>`).join('')}</div></div>`;
+    return `<div class="qv-split"><div class="qv-split-bar" role="img" aria-label="${esc(v.parts.map(p=>p.label+' '+p.value).join('; '))}">${v.parts.map(p=>`<i style="--w:${(p.value/tot*100).toFixed(1)}%;background:${TONE[p.tone]||TONE.accent}"></i>`).join('')}</div><div class="qv-legend">${v.parts.map(p=>`<span><i style="background:${TONE[p.tone]||TONE.accent}"></i><b class="num cu">${esc(p.text!=null?p.text:p.value)}</b> ${esc(p.label)}</span>`).join('')}</div></div>`;
   },
   flow(v){
-    return `<ol class="qv-flow">${v.steps.map(s=>`<li class="t-${esc(s.tone||'accent')}"><b>${esc(s.label)}</b>${s.note?`<span>${esc(s.note)}</span>`:''}</li>`).join('')}</ol>`;
+    return `<ol class="qv-flow">${v.steps.map((s,i)=>`<li class="t-${esc(s.tone||'accent')}" style="--i:${i}"><b>${esc(s.label)}</b>${s.note?`<span>${esc(s.note)}</span>`:''}</li>`).join('')}</ol>`;
   },
   tree(v){
+    let k=0;
     const node = n => typeof n === 'string' || !n.ask
       ? `<div class="qv-leaf t-${esc(n.tone||'accent')}">${esc(n.label||n)}</div>`
-      : `<div class="qv-ask">${esc(n.ask)}</div><ul>${(n.branches||[]).map(b=>`<li><span class="qv-br">${esc(b.when)}</span>${node(b.then)}</li>`).join('')}</ul>`;
+      : `<div class="qv-ask">${esc(n.ask)}</div><ul>${(n.branches||[]).map(b=>`<li style="--i:${++k}"><span class="qv-br">${esc(b.when)}</span>${node(b.then)}</li>`).join('')}</ul>`;
     return `<div class="qv-tree">${node(v.root)}</div>`;
   },
   beforeAfter(v){
-    const col = (c, cls) => `<div class="qv-col ${cls}"><div class="qv-h">${esc(c.label)}</div><ul>${c.lines.map(l=>`<li class="t-${esc(l.tone||'')}">${esc(l.text||l)}</li>`).join('')}</ul></div>`;
+    const col = (c, cls) => `<div class="qv-col ${cls}"><div class="qv-h">${esc(c.label)}</div><ul>${c.lines.map((l,i)=>`<li class="t-${esc(l.tone||'')}" style="--i:${i}">${esc(l.text||l)}</li>`).join('')}</ul></div>`;
     return `<div class="qv-ba">${col(v.before,'before')}<div class="qv-arrow" aria-hidden="true">→</div>${col(v.after,'after')}</div>`;
   },
   steps(v){
-    return `<ol class="qv-steps">${v.items.map(s=>`<li class="t-${esc(s.tone||'accent')}"><span class="num">${esc(s.when||'')}</span><b>${esc(s.label)}</b>${s.note?`<span>${esc(s.note)}</span>`:''}</li>`).join('')}</ol>`;
+    return `<ol class="qv-steps">${v.items.map((s,i)=>`<li class="t-${esc(s.tone||'accent')}" style="--i:${i}"><span class="num">${esc(s.when||'')}</span><b>${esc(s.label)}</b>${s.note?`<span>${esc(s.note)}</span>`:''}</li>`).join('')}</ol>`;
   },
   table(v){
-    return `<div class="qv-table"><table><thead><tr>${v.cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${v.rows.map((r,i)=>`<tr${(v.highlight||[]).includes(i)?' class="hl-row"':''}>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    return `<div class="qv-table"><table><thead><tr>${v.cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${v.rows.map((r,i)=>`<tr style="--i:${i}"${(v.highlight||[]).includes(i)?' class="hl-row"':''}>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   },
   image(v){ return `<img class="qv-img" src="${esc(v.src)}" alt="${esc(v.alt)}" loading="lazy">`; },
   pair(v){ return `<div class="two side">${visual(v.a)}${visual(v.b)}</div>`; },
@@ -88,20 +89,20 @@ const visual = v => v && V[v.kind] ? V[v.kind](v) : '';
 /* ---------- rendering ---------- */
 function render(dir){
   const old=stage.querySelector('.screen:not(.leaving)');
-  if(old){ old.classList.add('leaving'); setTimeout(()=>old.remove(),320); }
+  if(old){ old.classList.add('leaving'); if(dir<0) old.classList.add('back'); setTimeout(()=>old.remove(),320); }
   const el=document.createElement('section'); el.className='screen'+(dir<0?' back':'');
   el.innerHTML = idx===0 ? openingHTML() : idx>TOTAL ? summaryHTML() : questionHTML(Q[idx-1]);
   stage.appendChild(el);
   requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('ready')));
   wire(el); bar.hidden = idx===0; updateBar(); persistLocal();
-  if(idx===0) runCounters(el);
+  countUp(el);
   if(idx>TOTAL) fillSummary(el);
   window.scrollTo({top:0,behavior:'smooth'});
   const h=el.querySelector('h1,h2'); if(h){h.setAttribute('tabindex','-1'); h.focus({preventScroll:true});}
 }
 function updateBar(){
   const pct = idx===0?0: idx>TOTAL?100 : Math.round(answered()/TOTAL*100);
-  fill.style.width=pct+'%';
+  fill.style.transform='scaleX('+(pct/100)+')';
   const cur = idx>=1&&idx<=TOTAL ? Q[idx-1].section : null;
   chips.innerHTML = (SECTIONS.length>1 ? SECTIONS.map(s=>{
     const qs=Q.filter(q=>q.section===s.id); if(!qs.length) return '';
@@ -118,14 +119,14 @@ function openingHTML(){
   const urgent=Q.filter(q=>q.urgent&&!isDone(q)).length;
   const lr=PAGE.lastRound;
   const head = PAGE.heading || `${PAGE.audience?esc(PAGE.audience)+', ':''}${left?plural(left,'question')+(done?' left':''):'all done'}.${left?' About '+plural(minutes(left),'minute')+'.':''}`;
-  const stats=(PAGE.stats||[]).map(s=>`<div class="stat"><span class="big num" data-count="${+s.value}">0</span><span class="what">${esc(s.what)}</span><span class="how">${esc(s.how||'')}</span></div>`).join('');
+  const stats=(PAGE.stats||[]).map(s=>`<div class="stat"><span class="big num cu">${+s.value}</span><span class="what">${esc(s.what)}</span><span class="how">${esc(s.how||'')}</span></div>`).join('');
   const total=lr&&lr.decided?lr.decided+TOTAL:0;
   return `
   <div class="eyebrow"><span class="tick">${esc(PAGE.eyebrow||PAGE.title)}</span>${lr&&lr.url?`<span>·</span>${ext(lr.url, esc(lr.label||'last round'))}`:''}</div>
   <h1>${head}</h1>
   ${PAGE.lead?`<p class="lead">${esc(PAGE.lead)}</p>`:''}
   ${compact?'':`<div class="stats">${stats}
-    <div class="stat you"><span class="big num" data-count="${left}">0</span><span class="what">need your answer</span><span class="how">${done?`<b>${done} done</b>`:''}${done&&urgent?' · ':''}${urgent?plural(urgent,'urgent one'):''}</span></div>
+    <div class="stat you"><span class="big num cu">${left}</span><span class="what">need your answer</span><span class="how">${done?`<b>${done} done</b>`:''}${done&&urgent?' · ':''}${urgent?plural(urgent,'urgent one'):''}</span></div>
   </div>`}
   ${total?`<div class="split" aria-hidden="true"><i class="done" style="--w:${(lr.decided/total*100).toFixed(1)}%"></i><i class="you" style="--w:${(TOTAL/total*100).toFixed(1)}%"></i></div>
   <div class="legend"><span><b>${lr.decided}</b> ${esc(lr.decidedLabel||'decided')}</span><span><b>${TOTAL}</b> for you</span></div>`:''}
@@ -199,11 +200,11 @@ function summaryHTML(){
   const done=answered();
   return `
   <div class="eyebrow"><span class="tick">Summary</span><span>·</span><span id="who">${done} of ${TOTAL} answered</span></div>
-  <h1>${done===TOTAL?`All ${TOTAL} answered. Thank you.`:`${done} of ${TOTAL} answered.`}</h1>
+  <h1>${done===TOTAL?`<span class="donecheck" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M7 12.5l3.2 3.2L17 9"/></svg></span>All ${TOTAL} answered. Thank you.`:`${done} of ${TOTAL} answered.`}</h1>
   <p class="lead">${broken.size?`Your answers are NOT reaching ${esc(AUTHOR)} yet. Copy them below and send them in Slack or email.`:done===TOTAL?esc(PAGE.thanks||'Everything is saved on this page.'):'Tap “answer” on a row to jump back to it. Everything picked so far is already saved.'}</p>
-  <div class="sum">
-    <div><h3>Your answers</h3><table>${rows().map(([q,k,pi,c])=>{ const a=answers[q.id]||{}; const o=optOf(q,a);
-      return `<tr><td>${esc(c.tickets.map(t=>t.label||t.id).join(', ')||c.short)}${pi?` (part ${pi+1})`:''}</td><td>${esc(q.question)}${a.picks&&a.picks.length?`<span class="note">${esc(a.picks.join(', '))}</span>`:''}${a.note?`<span class="note">Note: ${esc(a.note)}</span>`:''}</td><td>${o?`<span class="pill ${esc(o.tone)}">${esc(o.name)}</span>`:`<button class="jump" data-go="${k+1}">answer</button>`}</td></tr>`;}).join('')}</table></div>
+  <div class="sum${done===TOTAL?' all':''}">
+    <div><h3>Your answers</h3><table>${rows().map(([q,k,pi,c],ri)=>{ const a=answers[q.id]||{}; const o=optOf(q,a);
+      return `<tr style="--i:${Math.min(ri,14)}"><td>${esc(c.tickets.map(t=>t.label||t.id).join(', ')||c.short)}${pi?` (part ${pi+1})`:''}</td><td>${esc(q.question)}${a.picks&&a.picks.length?`<span class="note">${esc(a.picks.join(', '))}</span>`:''}${a.note?`<span class="note">Note: ${esc(a.note)}</span>`:''}</td><td>${o?`<span class="pill ${esc(o.tone)}">${esc(o.name)}</span>`:`<button class="jump" data-go="${k+1}">answer</button>`}</td></tr>`;}).join('')}</table></div>
     <div><h3>All my answers, as text</h3><textarea class="copybox" id="copybox" readonly>${esc(answersText())}</textarea></div>
   </div>
   <div class="nav">
@@ -227,14 +228,63 @@ async function fillSummary(el){
   try{ const ps=await user.profiles(ids); const names=ids.map(i=>ps[i]&&ps[i].name).filter(Boolean);
     const who=el.querySelector('#who'); if(who&&names.length) who.textContent += ' · by '+names.join(', '); }catch(e){}
 }
-function runCounters(el){
-  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  el.querySelectorAll('[data-count]').forEach((n,i)=>{
-    const target=+n.dataset.count; if(reduce){n.textContent=target;return;}
-    const t0=performance.now()+250+i*220, dur=900;
-    const step=now=>{const p=Math.min(1,Math.max(0,(now-t0)/dur)); const e=1-Math.pow(1-p,3); n.textContent=Math.round(target*e); if(p<1) requestAnimationFrame(step);};
+/* Numbers count up from 0 to the number already in the text ("$1,250", "38%", "12 of 40"): the
+   text is right without JS and under reduced motion; only the first number in it moves. */
+function countUp(el){
+  if(reduced()) return;
+  [...el.querySelectorAll('.cu')].slice(0,16).forEach((n,i)=>{
+    const txt=n.textContent, m=/-?\d[\d,]*(\.\d+)?/.exec(txt); if(!m) return;
+    const target=parseFloat(m[0].replace(/,/g,'')), dec=(m[1]||'').length-(m[1]?1:0), commas=m[0].includes(',');
+    if(!isFinite(target)||target===0) return;
+    const fmt=v=>{ const s=v.toFixed(dec); return commas?Number(s).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec}):s; };
+    const show=v=>{ n.textContent=txt.slice(0,m.index)+fmt(v)+txt.slice(m.index+m[0].length); };
+    const t0=performance.now()+200+i*120, dur=800; show(0);
+    const step=now=>{ if(!n.isConnected){ return; } const p=Math.min(1,Math.max(0,(now-t0)/dur)); show(p<1?target*(1-Math.pow(1-p,3)):target); if(p<1) requestAnimationFrame(step); else n.textContent=txt; };
     requestAnimationFrame(step);
   });
+}
+
+/* ---------- motion: celebrations and milestones (all off under reduced motion) ---------- */
+function reduced(){ try{ const d=document.documentElement; return (d&&d.dataset&&d.dataset.motion==='reduce') || matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return true; } }
+/* Pure. Only a reader's own pick reaches this: answers restored from storage or the db never do. */
+function celebrateKind(wasDone, nowDone, doneCount, total){ return wasDone||!nowDone ? null : doneCount>=total ? 'final' : 'card'; }
+/* Pure. 'half' when a pick takes the count across half (4+ cards), 'done' at the last one. */
+function milestoneAt(before, after, total){
+  if(!(after>before) || total<1) return null;
+  if(after>=total) return before<total ? 'done' : null;
+  const half=Math.ceil(total/2);
+  return total>=4 && before<half && after>=half ? 'half' : null;
+}
+function milestoneText(kind, n, total){ return kind==='done' ? `${n} of ${total}, all done` : `${n} of ${total}, ${n*2===total?'halfway there':'past halfway'}`; }
+const celebrations=[], seenMs=new Set();
+let msT;
+function afterPick(wasDone, before, card, from){
+  const after=answered(), kind=celebrateKind(wasDone, isDone(card), after, TOTAL), ms=milestoneAt(before, after, TOTAL);
+  if(kind){ celebrations.push(kind); if(!reduced()) confetti(kind==='final'?140:28, kind==='final'?null:from); }
+  if(ms && !seenMs.has(ms)){ seenMs.add(ms); const b=$('milestone'); if(b){ b.textContent=milestoneText(ms, after, TOTAL); b.className='milestone show '+ms; clearTimeout(msT); msT=setTimeout(()=>{ b.className='milestone'; }, ms==='done'?3200:2400); } }
+  const tr=fill.parentNode; if(kind && tr && !reduced()){ tr.classList.remove('bump'); void tr.offsetWidth; tr.classList.add('bump'); }
+}
+/* Small canvas confetti: one fixed canvas, pointer-events none, stops itself (about 1 s, 2 s for the last one). */
+let cv=null, bits=[], raf=0;
+function confetti(n, from){
+  if(!document.body || typeof window.innerWidth!=='number') return;
+  if(!cv){ cv=document.createElement('canvas'); cv.className='confetti'; cv.setAttribute('aria-hidden','true'); document.body.appendChild(cv); }
+  const g=cv.getContext&&cv.getContext('2d'); if(!g) return;
+  const W=window.innerWidth, H=window.innerHeight, dpr=Math.min(2,window.devicePixelRatio||1);
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); }
+  g.setTransform(dpr,0,0,dpr,0,0);
+  const cs=getComputedStyle(document.documentElement), cols=['--yes','--accent','--discuss','--no'].map(v=>cs.getPropertyValue(v).trim()||'#1D5C8A');
+  const r=from&&from.getBoundingClientRect?from.getBoundingClientRect():null, now=performance.now();
+  for(let i=0;i<n;i++){
+    const big=!r, a=big?Math.PI*(1.15+0.7*Math.random()):Math.PI*(1.1+0.8*Math.random()), sp=big?9+Math.random()*9:4+Math.random()*5;
+    const x=big?(i%2?W*0.08:W*0.92):r.right-24, y=big?H*0.95:r.top+20;
+    bits.push({x, y, vx:Math.cos(a)*sp*(big&&i%2?-1:1), vy:Math.sin(a)*sp, w:5+Math.random()*5, h:3+Math.random()*4, rot:Math.random()*6, vr:(Math.random()-.5)*.4, c:cols[i%cols.length], t0:now, life:big?2000:950});
+  }
+  if(!raf){ let last=now; const tick=t=>{ const dt=Math.min(2.5,(t-last)/16.7); last=t; g.clearRect(0,0,W,H);
+      bits=bits.filter(b=>t-b.t0<b.life); bits.forEach(b=>{ b.vy+=0.32*dt; b.vx*=Math.pow(0.985,dt); b.x+=b.vx*dt; b.y+=b.vy*dt; b.rot+=b.vr*dt;
+        g.globalAlpha=Math.max(0,1-Math.pow((t-b.t0)/b.life,3)); g.save(); g.translate(b.x,b.y); g.rotate(b.rot); g.fillStyle=b.c; g.fillRect(-b.w/2,-b.h/2,b.w,b.h); g.restore(); });
+      if(bits.length) raf=requestAnimationFrame(tick); else { raf=0; g.clearRect(0,0,W,H); } };
+    raf=requestAnimationFrame(tick); }
 }
 
 /* ---------- interaction ---------- */
@@ -269,6 +319,7 @@ function setPickMsg(el,i,q){ const d=el.querySelector(`.extra [data-for="${i}"] 
   d.classList.toggle('warn',short); d.textContent= short?`Tick at least ${o.picks.min} to save this answer.`:(o.picks.hint||''); }
 function pick(i,p){
   p=p||0; const q=partQ(p); if(!q) return; const o=q.options[i]; if(!o) return; const el=partEl(p);
+  const card=Q[idx-1], wasDone=isDone(card), before=answered();
   markSel(el,i);
   el.querySelectorAll('.extra [data-for]').forEach(d=>{ const k=+d.dataset.for; d.hidden = !(k===i || (q.options[k].picks||{}).always); });
   el.querySelectorAll('[data-pick]').forEach(c=>{ if(+c.dataset.pick!==i) c.checked=false; });
@@ -280,6 +331,9 @@ function pick(i,p){
   answers[q.id]=Object.assign(base(q,p), {optionId:o.id, choice:o.tone, label:o.name, picks:keep, note:prev.note||'', by:meId||prev.by||'', at:new Date().toISOString()});
   if(o.picks) setPickMsg(el,i,q);
   persistLocal(); updateBar(); refreshNext(); save(q.id);
+  const btn=el.querySelectorAll('.opt')[i];
+  if(btn && !reduced()){ btn.classList.remove('just'); void btn.offsetWidth; btn.classList.add('just'); setTimeout(()=>btn.classList.remove('just'),600); }
+  afterPick(wasDone, before, card, btn);
 }
 function countGroup(d){ const n=d.querySelectorAll('[data-pick]:checked').length, t=d.querySelectorAll('[data-pick]').length, cnt=d.querySelector('.cnt'); if(cnt){ cnt.textContent=(n?n+' on · ':'')+t; cnt.classList.toggle('on',!!n); } }
 function picksChanged(pe,p,i){
@@ -332,6 +386,7 @@ document.addEventListener('keydown',e=>{
 /* ---------- storage: artifact db ---------- */
 async function boot(){
   document.title = PAGE.title;
+  try{ if(/reduce-motion/.test(location.hash)) document.documentElement.dataset.motion='reduce'; }catch(e){}
   render(1);
   try{
     const [d,u]=await Promise.all([claude.use('db'), claude.use('user')]);
@@ -354,6 +409,6 @@ async function boot(){
     }, err=>{ clearTimeout(timer); console.warn('db listener', err); fail('listener',1); });
   }catch(e){ console.warn('boot', e); fail('nodb',1); }
 }
-if(globalThis.__QW_TEST__) globalThis.__QW_TEST__.api={answersText, broken, pick:(i,p)=>pick(i,p), go:n=>go(n), state:()=>({idx, answers})};
+if(globalThis.__QW_TEST__) globalThis.__QW_TEST__.api={answersText, celebrateKind, milestoneAt, milestoneText, celebrations, milestone:()=>{ const b=$('milestone'); return b?b.textContent:''; }, broken, pick:(i,p)=>pick(i,p), go:n=>go(n), state:()=>({idx, answers})};
 boot();
 })();

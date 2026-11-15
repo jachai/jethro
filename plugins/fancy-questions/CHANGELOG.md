@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.0] - 2026-11-15
+- More fun to answer. Answering a question pops the check mark and throws a small burst of confetti from the
+  option; the last question gets a big two-sided burst (plain canvas, no library, stops itself in ~2 s,
+  never blocks a tap).
+- Visuals animate as a card opens: bars grow, split bars sweep in, flow / steps / tree items and table rows
+  appear one by one, before/after columns slide in from each side, numbers count up (bars, split legends,
+  opening stats).
+- Cards slide and tilt between questions (the other way going back), options lift on hover (hover devices
+  only, so no sticky lift on a phone), the progress bar moves with a small overshoot and bumps on each answer.
+- Milestones: a badge at halfway ("3 of 6, halfway there") and at the end ("6 of 6, all done"); the summary
+  rows and an all-done check animate in.
+- No celebration or milestone for answers restored from this browser or arriving from the store; each
+  milestone shows once per visit.
+- Everything is off under `prefers-reduced-motion` (the reduce block now also zeroes transition delays) and
+  with `#reduce-motion` on the URL (test toggle).
+- Fix: the answers summary no longer overflows sideways at 390 px when long option names are answered (the
+  answer column wraps).
+
 ## [0.1.1] - 2026-11-15
 - Page fails loud: when answers cannot reach the author (no db, listener error, store silent 10 s, a refused
   set, or `user.can("data.write") === false`) a red banner names the author and says the answers are NOT

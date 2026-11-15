@@ -1,7 +1,7 @@
 {
   "name": "question-walkthrough",
   "displayName": "Question Walkthrough",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Turn open questions for Ops, a PM or a customer into a one-card-at-a-time claude.ai artifact: recommendation first, a visual per question, answers saved in the artifact's shared db.",
   "author": {
     "name": "Jonathan Achai",
