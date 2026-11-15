@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-11-15
+
+### Fixed
+
+- The upgrade instructions ran `ae doctor` through a version glob (`.../artifact-explorer/*/bin/ae`). With 0.1.x still in the plugin cache the glob expanded to an old version first, so `doctor` reported 0.1.2. The README command now reads the `installPath` of the artifact-explorer entry in `~/.claude/plugins/installed_plugins.json`, and prints a clear error when there is none. It still matches the setup allow rule `Bash(sh */artifact-explorer/*/bin/ae *)`. Skills, hooks and the watcher already used `${CLAUDE_PLUGIN_ROOT}` and are unchanged.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added
