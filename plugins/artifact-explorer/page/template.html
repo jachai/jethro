@@ -228,7 +228,7 @@ function el(tag, cls, text){
  return e;
 }
 function when(t, by){
- if (!t) return el("span", "dim", "");
+ if (!t) return el("span", "dim", "unknown");
  const s = el("span", "", rel(t));
  s.title = new Date(t*1000).toLocaleString() + (by ? " (" + by + ")" : "");
  return s;

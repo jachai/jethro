@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-VERSION = "0.1.4"
+VERSION = "0.1.5"
 
 
 def main(argv=None):
@@ -22,10 +22,15 @@ def main(argv=None):
     s.add_argument("--id")
     s.add_argument("--limit", type=int)
     sub.add_parser("build", help="rebuild explorer.html")
-    s = sub.add_parser("import", help="import an old ~/.claude/artifact-explorer folder (read only)")
-    s.add_argument("--from", dest="src", help="old folder (default ~/.claude/artifact-explorer)")
+    s = sub.add_parser("import", help="import a catalog from the pre-plugin Artifact Explorer (read only)")
+    s.add_argument("--from", dest="src", help="its folder (default: ~/.claude/artifact-explorer, where the pre-plugin version kept it)")
     s.add_argument("--thumbs-only", action="store_true", help="only copy its screenshots into rows without a thumbnail")
-    sub.add_parser("launch-describer", help="start a background describer run when one is due")
+    s = sub.add_parser("launch-describer", help="start a background describer run when one is due")
+    s.add_argument("--test", action="store_true", help="setup's check: start one now for a single row and say what happened")
+    s = sub.add_parser("doctor", help="which plugin version runs, what is installed, the data folder, the permission rule, a page check")
+    s.add_argument("--expect", choices=["fresh", "installed", "any"], default="any",
+                   help="fresh: fail unless the data folder is empty; installed: fail unless the installed version is the marketplace one")
+    s = sub.add_parser("allow-rule", help="say whether the setup permission rule is in ~/.claude/settings.json")
     s = sub.add_parser("ingest-list", help="record Artifact list rows from a JSON file")
     s.add_argument("file")
     s = sub.add_parser("set-desc", help="set a description written by the describer")
@@ -43,6 +48,7 @@ def main(argv=None):
     s.add_argument("--owned-only", action="store_true")
     s.add_argument("--json", action="store_true")
     s.add_argument("--retry-no-source", action="store_true", help="first put title-only and typed-skipped rows back in the queue")
+    s.add_argument("--limit", type=int, help="at most this many rows")
     s = sub.add_parser("window", help="show the recent window rows are described in; --widen N adds N days")
     s.add_argument("--widen", type=int, default=0)
     s = sub.add_parser("rows", help="list artifacts as JSON")
@@ -71,6 +77,13 @@ def main(argv=None):
     s = sub.add_parser("tmpdir", help="print an empty per-row folder in the system temp dir for ArtifactData out_dir (the data folder is refused there)")
     s.add_argument("id")
     a = p.parse_args(argv)
+    if a.cmd == "doctor":  # never creates the data folder: an empty or missing one is what "fresh" means
+        import doctor
+        return doctor.run(a.data or os.environ.get("AE_DATA") or common.default_data_dir(), VERSION, a.expect)
+    if a.cmd == "allow-rule":
+        present = common.allow_rule_present()
+        print(("present: " if present else "missing: ") + common.ALLOW_RULE)
+        return 0 if present else 1
     data = common.data_dir(a.data)
 
     if a.cmd == "tmpdir":
@@ -149,7 +162,7 @@ def main(argv=None):
         return 0
     import describe
     if a.cmd == "launch-describer":
-        return describe.launch(data)
+        return describe.launch(data, test=a.test)
     if a.cmd == "ingest-list":
         return describe.ingest_list(data, a.file)
     if a.cmd == "set-kind":
@@ -165,7 +178,7 @@ def main(argv=None):
         with open(a.file, encoding="utf-8") as f:
             return describe.set_sharing(data, a.id, f.read())
     if a.cmd == "pending":
-        return describe.pending(data, owned_only=a.owned_only, as_json=a.json, retry_no_source=a.retry_no_source)
+        return describe.pending(data, owned_only=a.owned_only, as_json=a.json, retry_no_source=a.retry_no_source, limit=a.limit)
     if a.cmd == "window":
         return describe.widen(data, a.widen)
     if a.cmd == "status":

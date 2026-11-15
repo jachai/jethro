@@ -90,6 +90,37 @@ if [ -n "$NEW" ] && [ -f "$SETTINGS" ]; then
   fi
 fi
 
+# 5. Check what the steps did, from the files themselves (0.1.5: the 0.1.4 test went on after a refused reset).
+echo
+echo "What reset did:"
+FAIL=0
+check() {  # check <status> <message>: status 0 is ok
+  if [ "$1" = 0 ]; then echo "  ok:     $2"; else echo "  FAILED: $2"; FAIL=1; fi
+}
+if [ "$DRY" = 1 ]; then
+  echo "  (dry run: nothing was changed, so nothing to check)"
+else
+  if [ -n "$BACKUP" ]; then [ -d "$BACKUP" ]; check $? "data folder moved to $BACKUP"; fi
+  [ ! -e "$DATA" ]; check $? "no data folder at $DATA (a session that still has the plugin loaded recreates it)"
+  INST="$(python3 -c 'import json,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: d={}
+e=(d.get("plugins") or {}).get("artifact-explorer@artifact-explorer")
+print(", ".join(str(x.get("version")) for x in e) if isinstance(e,list) else "")' "$CONFIG/plugins/installed_plugins.json")"
+  [ -z "$INST" ]; check $? "plugin not in installed_plugins.json${INST:+ (still lists $INST)}"
+  [ ! -d "$CONFIG/plugins/marketplaces/artifact-explorer" ]; check $? "marketplace clone removed"
+  if grep -qF 'Bash(sh */artifact-explorer/*/bin/ae *)' "$SETTINGS" 2>/dev/null; then r=1; else r=0; fi
+  check $r "allow rule not in settings.json"
+  [ -z "$(ae_watchers)" ]; check $? "no watcher running"
+fi
+if [ "$FAIL" = 1 ]; then
+  echo
+  echo "Refusing to go on: the machine is not in the fresh state (see FAILED above). Do not install yet."
+  echo "Close every Claude Code session (\`claude agents\` lists them; /exit or \`claude stop <id>\`), then run this again."
+  echo "Backup so far: ${BACKUP:-none} (undo with scripts/dev/fresh-install-restore.sh ${BACKUP:-<backup dir>})"
+  exit 1
+fi
+
 cat <<EOF
 
 Done$([ "$DRY" = 1 ] && echo ' (dry run)'). Backup: ${BACKUP:-none}
@@ -98,8 +129,9 @@ Undo later with: scripts/dev/fresh-install-restore.sh ${BACKUP:-<backup dir>}
 Fresh install, as a new user would do it:
   1. claude plugin marketplace add jachai/artifact-explorer
   2. claude plugin install artifact-explorer@artifact-explorer
-  3. Open a NEW Claude Code window (plugins, hooks and the watcher load at start).
-  4. Run /artifact-explorer:setup and accept the defaults.
-  5. Publish one test artifact (ask Claude for a small page artifact), then run /artifact-explorer:open
+  3. $HERE/fresh-install-check.sh   (must end RESULT: OK: installed = marketplace version, data fresh)
+  4. Open a NEW Claude Code window (plugins, hooks and the watcher load at start).
+  5. Run /artifact-explorer:setup; its first step prints the version it runs and whether the data is fresh.
+  6. Publish one test artifact (ask Claude for a small page artifact), then run /artifact-explorer:open
      and check that it is on the page.
 EOF

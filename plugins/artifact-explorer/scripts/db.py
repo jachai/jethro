@@ -235,6 +235,18 @@ def window_sql(win):
     return "(%s IS NULL OR %s>=?)" % (win["expr"], win["expr"]), [win["cutoff"]]
 
 
+def backfill(con):
+    """Fill what a row can get from its own events (0.1.5): a row with a publish event is yours (only your own
+    artifacts are published from your sessions), and its last publish is its modified time. Returns the
+    number of rows changed. Rows with no such event stay unknown, and the page says "unknown"."""
+    n = con.execute("UPDATE artifacts SET owned=1 WHERE owned IS NULL AND EXISTS "
+                    "(SELECT 1 FROM events e WHERE e.artifact_id=artifacts.id AND e.kind='publish')").rowcount
+    n += con.execute("UPDATE artifacts SET modified=(SELECT MAX(ts) FROM events e WHERE e.artifact_id=artifacts.id "
+                     "AND e.kind='publish') WHERE modified IS NULL AND EXISTS "
+                     "(SELECT 1 FROM events e WHERE e.artifact_id=artifacts.id AND e.kind='publish')").rowcount
+    return n
+
+
 def state_get(con, key, default=None):
     r = con.execute("SELECT value FROM state WHERE key=?", (key,)).fetchone()
     return json.loads(r[0]) if r else default
