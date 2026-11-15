@@ -18,7 +18,7 @@ class TileTest(unittest.TestCase):
     def run_js(self, body):
         t = tpl()
         code = t[t.index("/*TILE-START*/"):t.index("/*TILE-END*/")] + "\n" + body
-        return json.loads(subprocess.run([NODE, "-e", code], capture_output=True, text=True, check=True).stdout)
+        return json.loads(subprocess.run([NODE], input=code, capture_output=True, encoding="utf-8", check=True).stdout)
 
     def test_initials(self):
         titles = ["Housing Twin plan", "x", "  change-orders  dashboard", "\U0001F680\U0001F680", "!!! ???", "", "日本語の資料",
