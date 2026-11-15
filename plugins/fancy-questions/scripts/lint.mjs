@@ -50,7 +50,7 @@ export function check(page, cards) {
   if (!page || typeof page !== 'object') { E('page.json', 'missing or not an object'); return { errors, warnings }; }
   if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(page.slug || '')) E('page.json', 'slug must be lowercase letters, digits and dashes (it keys saved answers)');
   str(page.title, 'page.json', 'title');
-  ['eyebrow', 'lead', 'audience', 'heading', 'whyline', 'thanks', 'notePrompt', 'discussWith'].forEach(f => str(page[f], 'page.json', f, false));
+  ['eyebrow', 'lead', 'audience', 'heading', 'whyline', 'thanks', 'notePrompt', 'discussWith', 'author'].forEach(f => str(page[f], 'page.json', f, false));
   if (!Array.isArray(page.sections) || !page.sections.length) E('page.json', 'sections must list at least one {id, label}');
   const secIds = new Set((page.sections || []).map(s => s && s.id));
   (page.sections || []).forEach((s, i) => { if (!s || !ID.test(s.id || '') || !s.label) E('page.json', `sections[${i}] needs id and label`); });
@@ -83,7 +83,7 @@ export function check(page, cards) {
     q.facts.forEach((f, i) => { if (!f || !str(f.text, where, `facts[${i}].text`)) return; if (typeof f.verified !== 'boolean') E(where, `facts[${i}].verified must be true or false`); });
     if (q.example && /\$\s?\d|\d{2,}/.test(q.example) && !q.facts.length) E(where, 'example has numbers but no facts[] entry saying where they came from (use verified:false for anything not read from the source)');
     (q.links || []).forEach((l, i) => { if (!l || !l.label) E(where, `links[${i}] needs label`); url(l && l.url, where, `links[${i}].url`); });
-    if (!q.visual) W(where, 'no visual; every approved card had one');
+    if (!q.visual) { if (!isPart) W(where, 'no visual; every approved card had one'); }
     else checkVisual(q.visual, where, E, url);
     // options
     if (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 6) { E(where, 'options must have 2 to 6 entries'); return; }

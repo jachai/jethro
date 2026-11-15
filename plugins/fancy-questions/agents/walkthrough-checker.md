@@ -29,7 +29,8 @@ Checks (stop a check at its first failure and move on):
    collection `answers` shows the doc (id = the question id); delete it with `ArtifactData delete` using that
    doc's version as `if_version`; reload: card 1 shows unanswered (clear `localStorage` keys `qw-<slug>-*` too).
    Delete every record you created; the page must have zero test records when you finish.
-6. **Summary:** the last screen's `#copybox` text names every card and part.
+6. **Summary:** the last screen's `#copybox` text names every card and part, one line each; every card and the
+   summary have a "Copy all my answers" button (`[data-copyall]`). `#nosave` is hidden while saving works.
 7. **Console:** no errors from the page.
 8. Close every tab you opened with `tabs_close_mcp`.
 

@@ -10,14 +10,28 @@ const ALLQ = Q.flatMap(parts);
 const answers = {}, pending = {};
 let idx = 0, mode = '';
 let db = null, user = null, meId = null;
+/* Why answers are not reaching the author (any entry = fail loud). */
+const broken = new Set();
+const AUTHOR = PAGE.author || PAGE.discussWith || 'the person who sent you this page';
 const LS = 'qw-' + PAGE.slug + '-answers-v1', LSPOS = 'qw-' + PAGE.slug + '-pos-v1';
 try{ const raw=localStorage.getItem(LS); if(raw) Object.assign(answers, JSON.parse(raw)); const p=parseInt(localStorage.getItem(LSPOS)||'0',10); if(p>=0&&p<=TOTAL+1) idx=p; }catch(e){}
 function persistLocal(){ try{ localStorage.setItem(LS, JSON.stringify(answers)); localStorage.setItem(LSPOS,String(idx)); }catch(e){} }
 
 const $ = id => document.getElementById(id);
-const stage=$('stage'), bar=$('bar'), fill=$('fill'), chips=$('chips'), saveEl=$('save'), saveTxt=$('savetxt'), toastEl=$('toast');
+const nosave=$('nosave'), nosaveTxt=$('nosavetxt'), stage=$('stage'), bar=$('bar'), fill=$('fill'), chips=$('chips'), saveEl=$('save'), saveTxt=$('savetxt'), toastEl=$('toast');
 let toastT; function toast(msg){ toastEl.textContent=msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove('show'),2200); }
 function setSave(state,text){ saveEl.className='save '+state; saveTxt.textContent=text; }
+const WHY = {nodb:'this page could not open its answer store', listener:'this page could not reach its answer store', slow:'the answer store is not answering', write:'the last save was refused', perm:'your access to this page only lets you view it'};
+function fail(why,quiet){ broken.add(why); paintBroken(!quiet); }
+function heal(...whys){ whys.forEach(w=>broken.delete(w)); paintBroken(false); }
+function paintBroken(loud){
+  const on=broken.size>0; nosave.hidden=!on;
+  if(!on) return;
+  const why=[...broken].map(w=>WHY[w]||w).join('; ');
+  nosaveTxt.innerHTML=`<b>Your answers are NOT reaching ${esc(AUTHOR)}.</b> They are only kept in this browser (${esc(why)}). Tap “Copy all my answers” and paste the text to ${esc(AUTHOR)} in Slack or email.`;
+  setSave('local','NOT sent to '+AUTHOR);
+  if(loud) toast('Not sent to '+AUTHOR+'. Copy all your answers.');
+}
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
 const done1 = x => !!(answers[x.id] && answers[x.id].optionId);
@@ -120,8 +134,10 @@ function openingHTML(){
   </ol>`}
   <p class="whyline">${esc(PAGE.whyline||'The recommended answer is marked on each screen. “Let’s discuss” parks a question for a call. The text box under each question is always there for your own words.')}</p>
   <div class="nav"><span class="hint" style="margin:0"><kbd>1</kbd>–<kbd>4</kbd> pick · <kbd>→</kbd> next · <kbd>←</kbd> back</span>
-    <span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">${urgent&&TOTAL>8?`<button class="btn" id="urgent">Urgent first (${urgent}) →</button>`:''}<button class="btn primary" data-go="${done&&left?Q.findIndex(q=>!isDone(q))+1:1}">${done?'Continue':'Start'} →</button></span></div>`;
+    <span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">${urgent&&TOTAL>8?`<button class="btn" id="urgent">Urgent first (${urgent}) →</button>`:''}<button class="btn primary" data-go="${done&&left?Q.findIndex(q=>!isDone(q))+1:1}">${done?'Continue':'Start'} →</button></span></div>
+  ${done?COPYROW:''}`;
 }
+const COPYROW = '<p class="copyrow"><button type="button" class="linkbtn" data-copyall>Copy all my answers</button></p>';
 function nextLabel(q){
   if(isDone(q)) return idx===TOTAL?'See summary →':'Next →';
   if(anyDone(q)) return 'Part '+(parts(q).findIndex(x=>!done1(x))+1)+' still open ↓';
@@ -137,7 +153,8 @@ function questionHTML(q){
     <button class="btn ghost" data-go="${idx-1}">← Back</button>
     <button class="btn ${isDone(q)?'primary':''}" id="next">${nextLabel(q)}</button>
   </div>
-  <p class="hint"><kbd>1</kbd>–<kbd>${Math.min(9,q.options.length)}</kbd> pick${ps.length>1?' (keys set part 1)':''} · <kbd>→</kbd> next · <kbd>←</kbd> back · <kbd>Esc</kbd> overview</p>`;
+  <p class="hint"><kbd>1</kbd>–<kbd>${Math.min(9,q.options.length)}</kbd> pick${ps.length>1?' (keys set part 1)':''} · <kbd>→</kbd> next · <kbd>←</kbd> back · <kbd>Esc</kbd> overview</p>
+  ${COPYROW}`;
 }
 function picksHTML(q,o,i,a,p){
   const pk=o.picks, sel=(a.optionId===o.id||pending[q.id]===i), on=sel?(a.picks||[]):[];
@@ -160,7 +177,7 @@ function blockHTML(q,p){
   <p class="recline"><b>We recommend:</b> ${esc(q.recommend)}</p>
   ${q.today?`<p class="today"><span class="lbl">${esc(q.today.label||'Today')}</span>${esc(q.today.text)}</p>`:''}
   ${q.after?`<p class="today"><span class="lbl">${esc(q.after.label||'After')}</span>${esc(q.after.text)}</p>`:''}
-  <figure class="figure">${visual(q.visual)}<figcaption>${q.example?`<span class="lbl">Worked example</span>${esc(q.example)}`:''}${facts.map(f=>`<span class="ex ph">${esc(f.text)}</span>`).join('')}${q.links&&q.links.length?`<span class="links">${q.links.map(l=>`<a class="hub" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} <span aria-hidden="true">↗</span></a>`).join('')}</span>`:''}</figcaption></figure>
+  ${q.visual||q.example||facts.length||(q.links&&q.links.length)?`<figure class="figure">${visual(q.visual)}<figcaption>${q.example?`<span class="lbl">Worked example</span>${esc(q.example)}`:''}${facts.map(f=>`<span class="ex ph">${esc(f.text)}</span>`).join('')}${q.links&&q.links.length?`<span class="links">${q.links.map(l=>`<a class="hub" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)} <span aria-hidden="true">↗</span></a>`).join('')}</span>`:''}</figcaption></figure>`:''}
   <div class="ask">Your call</div>
   <div class="opts n${q.options.length}" role="radiogroup" aria-label="Decision">
     ${q.options.map((o,i)=>{ const sel=a.optionId===o.id||pending[q.id]===i;
@@ -183,21 +200,24 @@ function summaryHTML(){
   return `
   <div class="eyebrow"><span class="tick">Summary</span><span>·</span><span id="who">${done} of ${TOTAL} answered</span></div>
   <h1>${done===TOTAL?`All ${TOTAL} answered. Thank you.`:`${done} of ${TOTAL} answered.`}</h1>
-  <p class="lead">${done===TOTAL?esc(PAGE.thanks||'Everything is saved on this page.'):'Tap “answer” on a row to jump back to it. Everything picked so far is already saved.'}</p>
+  <p class="lead">${broken.size?`Your answers are NOT reaching ${esc(AUTHOR)} yet. Copy them below and send them in Slack or email.`:done===TOTAL?esc(PAGE.thanks||'Everything is saved on this page.'):'Tap “answer” on a row to jump back to it. Everything picked so far is already saved.'}</p>
   <div class="sum">
     <div><h3>Your answers</h3><table>${rows().map(([q,k,pi,c])=>{ const a=answers[q.id]||{}; const o=optOf(q,a);
       return `<tr><td>${esc(c.tickets.map(t=>t.label||t.id).join(', ')||c.short)}${pi?` (part ${pi+1})`:''}</td><td>${esc(q.question)}${a.picks&&a.picks.length?`<span class="note">${esc(a.picks.join(', '))}</span>`:''}${a.note?`<span class="note">Note: ${esc(a.note)}</span>`:''}</td><td>${o?`<span class="pill ${esc(o.tone)}">${esc(o.name)}</span>`:`<button class="jump" data-go="${k+1}">answer</button>`}</td></tr>`;}).join('')}</table></div>
-    <div><h3>Copy answers</h3><textarea class="copybox" id="copybox" readonly>${esc(answersText())}</textarea></div>
+    <div><h3>All my answers, as text</h3><textarea class="copybox" id="copybox" readonly>${esc(answersText())}</textarea></div>
   </div>
   <div class="nav">
     <button class="btn ghost" data-go="${TOTAL}">← Back</button>
-    <span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn" data-go="0">Overview</button><button class="btn primary" id="copy">Copy answers</button></span>
+    <span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn" data-go="0">Overview</button><button class="btn primary" data-copyall>Copy all my answers</button></span>
   </div>`;
 }
+/* Plain text, one line per question (and part), ready to paste in Slack or email. */
 function answersText(){
-  const lines=[PAGE.title+'. Answers as of '+new Date().toLocaleString(),''];
-  rows().forEach(([q,k,pi,c])=>{const a=answers[q.id]||{}; const o=optOf(q,a);
-    lines.push(`${c.tickets.map(t=>t.id).join(', ')||'-'} | ${c.short}${pi?` (part ${pi+1})`:''} | ${o?o.name:'(unanswered)'}${a.picks&&a.picks.length?' | '+a.picks.join(', '):''}${a.note?' | note: '+a.note:''}`);});
+  const flat=s=>String(s||'').replace(/\s+/g,' ').trim();
+  const lines=[`${PAGE.title}: my answers (${answered()} of ${TOTAL} answered, ${new Date().toLocaleString()})`];
+  rows().forEach(([q,k,pi,c])=>{const a=answers[q.id]||{}; const o=optOf(q,a); const t=c.tickets.map(x=>x.id).join(', ');
+    lines.push(`${k+1}${pi?String.fromCharCode(97+pi):''}. ${flat(c.short)}${pi?` (part ${pi+1})`:''}${t?` [${t}]`:''}: ${o?flat(o.name):'not answered'}${a.picks&&a.picks.length?'. Ticked: '+a.picks.map(flat).join(', '):''}${a.note?'. Note: '+flat(a.note):''}`);});
+  lines.push(`Page: ${PAGE.slug}`);
   return lines.join('\n');
 }
 async function fillSummary(el){
@@ -227,7 +247,6 @@ function wire(el){
     pe.querySelectorAll('[data-pick]').forEach(c=>c.addEventListener('change',()=>picksChanged(pe,p,+c.dataset.pick))); });
   const nx=el.querySelector('#next'); if(nx) nx.addEventListener('click',next);
   const ur=el.querySelector('#urgent'); if(ur) ur.addEventListener('click',()=>{ mode='urgent'; go(Q.findIndex(q=>q.urgent&&!isDone(q))+1); });
-  const cp=el.querySelector('#copy'); if(cp) cp.addEventListener('click',copyAnswers);
 }
 function debounce(fn,ms){let t;return()=>{clearTimeout(t);t=setTimeout(fn,ms);};}
 function go(n){ if(n<0||n>TOTAL+1) return; const dir=n<idx?-1:1; idx=n; render(dir); }
@@ -289,18 +308,19 @@ async function unpick(q,p,keepSel){
 function saveField(field,val,p){ const q=partQ(p); if(!q) return; const a=answers[q.id]||base(q,p); if(a[field]===val) return; a[field]=val; a.at=new Date().toISOString(); a.by=meId||a.by||''; answers[q.id]=a; persistLocal(); save(q.id); }
 const writing={}, queued={};
 async function save(qid){
-  if(!db){ setSave('local','Saved on this device only'); return; }
+  if(!db){ fail(broken.size?[...broken][0]:'nodb'); return; }
   if(writing[qid]){ queued[qid]=true; return; }
   writing[qid]=true; setSave('busy','Saving…');
-  try{ const r=Object.assign({},answers[qid]); delete r.synced; await db.doc('answers/'+qid).set(r); setSave('ok','Saved '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})); }
-  catch(e){ console.warn('save failed', e); setSave('local', e&&e.code==='invalid_argument' ? 'Saved on this device only: you need Contributor access to save here' : 'Saved on this device only (store unreachable)'); }
+  try{ const r=Object.assign({},answers[qid]); delete r.synced; await db.doc('answers/'+qid).set(r); heal('write','slow'); if(!broken.size) setSave('ok','Saved '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})); }
+  catch(e){ console.warn('save failed', e); fail(e&&e.code==='invalid_argument' ? 'perm' : 'write'); }
   writing[qid]=false; if(queued[qid]){ queued[qid]=false; if(answers[qid]) save(qid); }
 }
 async function copyAnswers(){
   const txt=answersText(); const box=$('copybox'); if(box) box.value=txt;
-  try{ await navigator.clipboard.writeText(txt); toast('Answers copied'); }
-  catch(e){ if(box){box.focus();box.select();} toast('Select the text above and copy it'); }
+  try{ await navigator.clipboard.writeText(txt); toast('Copied. Paste it to '+AUTHOR+'.'); }
+  catch(e){ if(box){box.focus();box.select();toast('Select the text and copy it');} else { idx=TOTAL+1; render(1); const b2=$('copybox'); if(b2){ b2.focus(); b2.select(); } toast('Select the text in the box and copy it'); } }
 }
+document.addEventListener('click',e=>{ const b=e.target&&e.target.closest&&e.target.closest('[data-copyall]'); if(b){ e.preventDefault(); copyAnswers(); } });
 document.addEventListener('keydown',e=>{
   if(e.target.matches('input,textarea')) return;
   if(e.key==='ArrowRight'||e.key==='Enter'&&!e.target.matches('button,a,li')){ if(idx>=1&&idx<=TOTAL) next(); else go(idx+1); }
@@ -316,11 +336,11 @@ async function boot(){
   try{
     const [d,u]=await Promise.all([claude.use('db'), claude.use('user')]);
     db=d; user=u;
-    if(u){ try{ meId=await u.id(); }catch(e){} }
-    if(!db){ setSave('local','Saved on this device only'); return; }
-    let first=true; const timer=setTimeout(()=>{ if(first) setSave('local','Store slow to answer; picks are kept on this device'); },10000);
+    if(u){ try{ meId=await u.id(); }catch(e){} try{ if(await u.can('data.write')===false) fail('perm',1); }catch(e){} }
+    if(!db){ fail('nodb',1); return; }
+    let first=true; const timer=setTimeout(()=>{ if(first) fail('slow',1); },10000);
     db.collection('answers').onSnapshot(snap=>{
-      clearTimeout(timer); let changed=false;
+      clearTimeout(timer); if(first) heal('slow','listener'); let changed=false;
       snap.docs.forEach(d=>{ const r=d.data(); if(!r||!r.qid) return; const cur=answers[r.qid];
         if(!cur || (r.at||'')>(cur.at||'')){ answers[r.qid]=r; changed=true; } });
       const ids=new Set(snap.docs.map(d=>d.id));
@@ -330,9 +350,10 @@ async function boot(){
       if(changed){ persistLocal(); updateBar(); const el=stage.querySelector('.screen:not(.leaving)');
         const busy=document.activeElement&&document.activeElement.matches('textarea,input');
         if(!busy){ if(idx>TOTAL||idx===0) render(1); else if(el){ const y=window.scrollY; el.innerHTML=questionHTML(Q[idx-1]); el.classList.add('ready'); wire(el); window.scrollTo(0,y);} } }
-      if(!snap.metadata.fromCache) setSave('ok', Object.keys(answers).length? 'Saved to this page' : 'Ready to save');
-    }, err=>{ console.warn('db listener', err); setSave('local','Saved on this device only'); });
-  }catch(e){ console.warn('boot', e); setSave('local','Saved on this device only'); }
+      if(!snap.metadata.fromCache && !broken.size) setSave('ok', Object.keys(answers).length? 'Saved to this page' : 'Ready to save');
+    }, err=>{ clearTimeout(timer); console.warn('db listener', err); fail('listener',1); });
+  }catch(e){ console.warn('boot', e); fail('nodb',1); }
 }
+if(globalThis.__QW_TEST__) globalThis.__QW_TEST__.api={answersText, broken, pick:(i,p)=>pick(i,p), go:n=>go(n), state:()=>({idx, answers})};
 boot();
 })();

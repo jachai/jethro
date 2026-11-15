@@ -29,3 +29,22 @@ test('golden ops-11-10 and synthetic-30 build clean under 150 KB', () => {
     assert.ok(Buffer.byteLength(r.html) < 150 * 1024, d);
   }
 });
+const skill = n => readFileSync(join(root, 'skills', n, 'SKILL.md'), 'utf8');
+test('build skill: pre-share check writes at as_level interact, then deletes', () => {
+  const s = skill('build');
+  const step = s.slice(s.indexOf('Pre-share check'), s.indexOf('Check before done'));
+  assert.match(step, /action:"set"[^\n]*collection:"answers"[^\n]*as_level:"interact"/);
+  assert.match(step, /action:"delete"[^\n]*doc_id:"qw-preshare-check"[^\n]*if_version/);
+});
+test('build skill: share at Contributor, using only the share menu level names', () => {
+  const s = skill('build');
+  assert.match(s, /\*\*How to share:\*\*.*\*\*Contributor\*\* \(not Viewer or Commenter\)/);
+  const named = new Set([...s.matchAll(/\b(Owner|Editor|Contributor|Commenter|Viewer|Member|Collaborator|Participant|Reader|Writer)s?\b/g)].map(m => m[1]));
+  assert.deepEqual([...named].filter(n => !['Owner', 'Editor', 'Contributor', 'Commenter', 'Viewer'].includes(n)), []);
+});
+test('collect skill: zero answers after sharing asks for the Copy all my answers text', () => {
+  const s = skill('collect');
+  assert.match(s, /\*\*Zero answers:\*\*[\s\S]*hours after sharing[\s\S]*Copy all my answers/);
+  assert.match(s, /qw-preshare-check/);
+  assert.match(s, /Never write pasted answers into\s+the artifact's db/);
+});
