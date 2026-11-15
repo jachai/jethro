@@ -14,6 +14,7 @@ All notable changes to this project are documented here. The format is based on
 - Shared artifacts show an access badge (view, comment or edit). A row that was in an earlier shared list and is missing from the latest complete one shows "No longer shared".
 - Local copies: each time a refresh reads an artifact someone else made, its page is kept in `copies/` in the data folder (never your own artifacts, never published). A "No longer shared" row with a copy gets "Save local copy".
 - Clicking a card or a table row opens the artifact; Cmd/Ctrl-click and middle-click open a new tab; rows and cards take the keyboard.
+- Cards show both dates, labelled: "Created" and "Modified" (hover either for the full date). The title column is always shown, since it carries the row link.
 - An artifact with no thumbnail gets a tile with its initials on a gradient that stays the same for that artifact.
 - The header shows the exact build time and a live "N min ago", and the version that built the page.
 - Update check: at most once a day the build asks GitHub for the latest release, caches the answer in `update.json`, and shows "update vX available" with the update commands. Offline or rate-limited shows nothing. Turn it off with `update_check = false` under `[page]`.
