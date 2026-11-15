@@ -17,6 +17,7 @@ merged in file-name order.
 | `lead` | | One or two sentences under the heading. |
 | `whyline`, `thanks`, `notePrompt` | | Override the default help line, the all-done line, and the note placeholder. |
 | `discussWith` | | Name used by the standard discuss option: "Park it for a call with Sam." |
+| `author` | | Who the answers go to (a first name). The page names them when saving fails: "Your answers are NOT reaching Sam". Defaults to `discussWith`. |
 | `lastRound` | | `{url, label, decided, decidedLabel}`: link to the last page and a "5 built · 6 for you" legend. `decided` is a whole number. |
 | `stats` | | `[{value, what, how}]`: counters on the opening screen (`value` is a number). |
 | `minutesPerCard` | | Default 0.75; 0-10. Drives "About N minutes". |
