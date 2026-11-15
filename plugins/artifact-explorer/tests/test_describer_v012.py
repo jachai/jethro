@@ -172,7 +172,7 @@ class NeverWaits(Base):
         self.assertNotIn("--bg", argv)
         self.assertEqual(argv[argv.index("--permission-mode") + 1], "dontAsk")
         tools, _ = self.skill_tools()
-        self.assertEqual(argv[argv.index("--allowedTools") + 1], tools)
+        self.assertEqual(argv[argv.index("--allowedTools") + 1], tools + ", " + describe.AE_TOOL)  # 0.1.5
         self.assertEqual(argv[argv.index("--output-format") + 1], "json")
         self.assertLess(float(argv[argv.index("--max-budget-usd") + 1]), describe.RUN_BUDGET)
         self.assertEqual(kw["out"], os.path.join(self.d, "describer.out"))
@@ -219,12 +219,16 @@ class Cap(Base):
         self.assertAlmostEqual(db.spend_today(self.con()), 1.0 - describe.RUN_BUDGET + 0.05)
         self.assertEqual(self.det.call_count, 1)
 
-    def test_unreadable_result_keeps_worst_case(self):
+    def test_unreadable_result_releases_booking(self):
+        """0.1.5: a run that ends without a cost report gives its booking back (0.1.4 kept it: runs that never
+        reported ate the $1.00 cap); the next run is booked as usual."""
         describe.launch(self.d)
         self.alive.return_value = False
         self.next_tick()
         describe.launch(self.d)
-        self.assertAlmostEqual(db.spend_today(self.con()), 2 * describe.RUN_BUDGET)
+        self.assertEqual(self.det.call_count, 2)
+        self.assertAlmostEqual(db.spend_today(self.con()), describe.RUN_BUDGET)
+        self.assertIn("released the $0.25 booked", self.log())
 
 
 if __name__ == "__main__":

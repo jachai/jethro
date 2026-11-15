@@ -75,7 +75,7 @@ def collect(data, cfg):
         created, modified = r["first_pub"] or r["created"], r["last_pub"] or r["modified"]
         thumb = r["thumb"] if r["thumb"] and os.path.exists(os.path.join(data, r["thumb"])) else ""
         rows.append({
-            "id": r["id"], "title": r["title"] or r["id"], "kind": r["kind"] or "", "url": r["url"] or "",
+            "id": r["id"], "title": (r["title"] or "").strip() or "Untitled", "kind": r["kind"] or "", "url": r["url"] or "",
             "category": o.get("category") or categorise(rules, r["title"], desc, r["kind"]),
             "created_by": created_by(r), "sharing": sharing_label(r["sharing"]) or ("Shared with me" if r["owned"] == 0 else ""),
             "created": created, "modified": modified,

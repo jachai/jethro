@@ -31,7 +31,7 @@ WATCHERS="$(ae_watchers | sort -u -k1,1)"
 if [ -n "$WATCHERS" ]; then
   echo
   echo "Refusing: an Artifact Explorer watcher is running on $DATA."
-  echo "$WATCHERS" | while read -r pid ppid cmd; do
+  while read -r pid ppid cmd; do
     # walk up to the claude session that started it
     p="$ppid"; owner=""
     while [ -n "$p" ] && [ "$p" -gt 1 ]; do
@@ -41,9 +41,10 @@ if [ -n "$WATCHERS" ]; then
       p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ' || true)"
     done
     echo "  watcher pid $pid, session process ${owner:-unknown}"
-  done
+  done <<< "$WATCHERS"
   echo "Close those sessions first: type /exit in each window, or \`claude stop <id>\` for a background session"
   echo "(\`claude agents\` lists them). Then run this again."
+  # no kill hint: a claimed bg-spare keeps its `bg-spare` command line, so it may be a live session
   [ "$DRY" = 1 ] || exit 1
   echo "  (dry run: continuing to show the remaining steps)"
 fi
@@ -90,6 +91,39 @@ if [ -n "$NEW" ] && [ -f "$SETTINGS" ]; then
   fi
 fi
 
+# 5. Check what the steps did, from the files themselves (0.1.5: the 0.1.4 test went on after a refused reset).
+echo
+echo "What reset did:"
+FAIL=0
+check() {  # check <status> <message>: status 0 is ok
+  if [ "$1" = 0 ]; then echo "  ok:     $2"; else echo "  FAILED: $2"; FAIL=1; fi
+}
+if [ "$DRY" = 1 ]; then
+  echo "  (dry run: nothing was changed, so nothing to check)"
+else
+  if [ -n "$BACKUP" ]; then
+    if [ -d "$BACKUP" ]; then r=0; else r=1; fi; check $r "data folder moved to $BACKUP"
+  fi
+  if [ ! -e "$DATA" ]; then r=0; else r=1; fi; check $r "no data folder at $DATA (a session that still has the plugin loaded recreates it)"
+  INST="$(python3 -c 'import json,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: d={}
+e=(d.get("plugins") or {}).get("artifact-explorer@artifact-explorer")
+print(", ".join(str(x.get("version")) for x in e) if isinstance(e,list) else "")' "$CONFIG/plugins/installed_plugins.json")"
+  if [ -z "$INST" ]; then r=0; else r=1; fi; check $r "plugin not in installed_plugins.json${INST:+ (still lists $INST)}"
+  if [ ! -d "$CONFIG/plugins/marketplaces/artifact-explorer" ]; then r=0; else r=1; fi; check $r "marketplace clone removed"
+  if grep -qF 'Bash(sh */artifact-explorer/*/bin/ae *)' "$SETTINGS" 2>/dev/null; then r=1; else r=0; fi
+  check $r "allow rule not in settings.json"  # (a failing command outside an if would end the script: set -e)
+  if [ -z "$(ae_watchers)" ]; then r=0; else r=1; fi; check $r "no watcher running"
+fi
+if [ "$FAIL" = 1 ]; then
+  echo
+  echo "Refusing to go on: the machine is not in the fresh state (see FAILED above). Do not install yet."
+  echo "Close every Claude Code session (\`claude agents\` lists them; /exit or \`claude stop <id>\`), then run this again."
+  echo "Backup so far: ${BACKUP:-none} (undo with scripts/dev/fresh-install-restore.sh ${BACKUP:-<backup dir>})"
+  exit 1
+fi
+
 cat <<EOF
 
 Done$([ "$DRY" = 1 ] && echo ' (dry run)'). Backup: ${BACKUP:-none}
@@ -98,8 +132,9 @@ Undo later with: scripts/dev/fresh-install-restore.sh ${BACKUP:-<backup dir>}
 Fresh install, as a new user would do it:
   1. claude plugin marketplace add jachai/artifact-explorer
   2. claude plugin install artifact-explorer@artifact-explorer
-  3. Open a NEW Claude Code window (plugins, hooks and the watcher load at start).
-  4. Run /artifact-explorer:setup and accept the defaults.
-  5. Publish one test artifact (ask Claude for a small page artifact), then run /artifact-explorer:open
+  3. $HERE/fresh-install-check.sh   (must end RESULT: OK: installed = marketplace version, data fresh)
+  4. Open a NEW Claude Code window (plugins, hooks and the watcher load at start).
+  5. Run /artifact-explorer:setup; its first step prints the version it runs and whether the data is fresh.
+  6. Publish one test artifact (ask Claude for a small page artifact), then run /artifact-explorer:open
      and check that it is on the page.
 EOF

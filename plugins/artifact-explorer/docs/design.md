@@ -36,7 +36,8 @@ SQLite db + `config.toml` + a static `explorer.html`. Python 3.9+ standard libra
 | `transcripts.py` | incremental transcript scan |
 | `thumbs.py` | headless thumbnails (`ae thumbs [--id ID] [--limit N]`) |
 | `build.py` | `ae build` → DATA/explorer.html |
-| `importer.py` | `ae import [--from ~/.claude/artifact-explorer]` (reads only) |
+| `importer.py` | `ae import [--from DIR]`: a pre-plugin catalog, default `~/.claude/artifact-explorer` (reads only) |
+| `doctor.py` | `ae doctor [--expect fresh\|installed]`: running vs installed vs marketplace version, data folder, rule, page check (writes nothing) |
 | `describe.py` | `ae launch-describer` (watcher side), `ae ingest-list FILE`, `ae set-desc ID --file F`, `ae set-sharing ID --file F`, `ae excerpt FILE --out F [--id ID --type T]` (a typed artifact or < 50 visible characters marks the row skipped), `ae rows --json [--owned] [--desc-status S] [--thumb-status S] [--limit N]`, `ae pending [--owned-only] [--json]`, `ae status [--json]` (counts only). Free text that comes from a page (descriptions, sharing phrases) only ever travels in a file, never on a command line |
 | `ae open` | opens explorer.html with `webbrowser` (in `ae.py`) |
 

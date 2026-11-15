@@ -1,5 +1,6 @@
 """Description queue: ingest Artifact-list rows, set descriptions, launch the background describer, status."""
 import json
+import re
 from html.parser import HTMLParser
 import os
 import shutil
@@ -266,11 +267,13 @@ def data_window(data, con):
     return db.window(con, common.load_config(data))
 
 
-def pending(data, owned_only=False, as_json=False, retry_no_source=False):
+def pending(data, owned_only=False, as_json=False, retry_no_source=False, limit=None):
     con = db.connect(data)
     if retry_no_source:
         requeue_no_source(con, data_window(data, con))
     rs = pending_rows(con, owned_only, data_window(data, con))
+    if limit is not None:
+        rs = rs[:max(0, limit)]
     if as_json:
         print(json.dumps(rs))
     else:
@@ -281,8 +284,14 @@ def pending(data, owned_only=False, as_json=False, retry_no_source=False):
 
 RUN_BUDGET = 0.25  # one background run's worst case: booked at launch, checked against the daily cap
 RUN_LIMIT = 0.20  # passed as --max-budget-usd; claude checks it between turns, so the last turn may go a little over
-MAX_AGE = 30 * 60  # a describer record older than this is not trusted, even if its pid is alive (pid reuse)
+MAX_AGE = 30 * 60  # past this a live pid is trusted only when its command line is still our describer run
+HARD_AGE = 2 * 3600  # a run of ours still alive past this is stopped (it is stuck) and treated as ended
+MAX_UNREPORTED = 2  # runs a day that may end without a cost report; then no more launches that day
 RUN_FILE, OUT_FILE = "describer.json", "describer.out"
+RUN_MARK = "/artifact-explorer:refresh describe-only"
+# 0.1.5: the background run's own `ae` calls, named outright. The skill's `Bash(sh *bin/ae *)` alone let an
+# 11-14 headless run refuse `ae pending`; this is the pattern the setup allow rule uses, without the folder.
+AE_TOOL = "Bash(sh */bin/ae *)"
 
 
 def _skill_tools():
@@ -294,9 +303,36 @@ def _skill_tools():
     raise RuntimeError("refresh skill has no allowed-tools")
 
 
+def allowed_tools():
+    """--allowedTools for the background run: the skill's tools plus AE_TOOL, one comma-separated value as the skill writes it."""
+    tools = [t.strip() for t in re.split(r",(?![^()]*\))", _skill_tools()) if t.strip()]
+    if AE_TOOL not in tools:
+        tools.append(AE_TOOL)
+    return ", ".join(tools)
+
+
+def _result(data):
+    """(cost, result text, refused tools) from the run's JSON output, or None when it has none."""
+    try:
+        with open(os.path.join(data, OUT_FILE), encoding="utf-8") as f:
+            res = json.load(f)
+        cost = float(res["total_cost_usd"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    denied = sorted({str(d.get("tool_name")) for d in res.get("permission_denials") or [] if isinstance(d, dict)})
+    return cost, " ".join(str(res.get("result", "")).split())[:200], denied
+
+
+def _ours(pid):
+    """True when pid's command line is a describer run (so a live pid past MAX_AGE is not a reused one)."""
+    return RUN_MARK in (common.pid_cmdline(pid) or "")
+
+
 def _running(data, con):
     """True while the last launched describer still runs. When it has ended: log its result, correct the
-    worst-case booking to the real cost (kept when the result can't be read), drop the record."""
+    worst-case booking to the real cost, drop the record. A run that ends without a cost report (killed,
+    stuck, crashed) releases its booking instead, so runs that never report cannot eat the daily cap; at
+    most MAX_UNREPORTED of those a day, then the describer waits for the next day."""
     path = os.path.join(data, RUN_FILE)
     try:
         with open(path, encoding="utf-8") as f:
@@ -309,24 +345,35 @@ def _running(data, con):
             os.waitpid(pid, os.WNOHANG)
         except (ChildProcessError, OSError):
             pass
+    booked = float(rec.get("booked", RUN_BUDGET))
+    age = time.time() - t
     if common._pid_alive(pid):
-        if time.time() - t < MAX_AGE:
+        if age < MAX_AGE:
             common.log(data, "describer still running (pid %d), not launching another" % pid)
             return True
-        # past the max age the pid may belong to another process now; the run's worst case stays booked
-        common.log(data, "describer pid %d is older than %d min; not waiting on it (kept the $%.2f booked)"
-                   % (pid, MAX_AGE // 60, float(rec.get("booked", RUN_BUDGET))))
+        if _ours(pid):
+            if age < HARD_AGE:
+                common.log(data, "describer pid %d has run %d min; still ours, waiting" % (pid, age // 60))
+                return True
+            common.stop_pid(pid)
+            common.log(data, "describer pid %d ran over %d min; stopped it" % (pid, HARD_AGE // 60))
+        else:
+            common.log(data, "describer pid %d is older than %d min and is no longer our run; not waiting on it"
+                       % (pid, MAX_AGE // 60))
+    res = _result(data)
+    if res:
+        cost, text, denied = res
+        db.add_spend(con, cost - booked, day=rec.get("day"), runs=0)
+        line = "finished: %s ($%.2f)%s" % (text, cost, "; refused: " + ", ".join(denied) if denied else "")
     else:
-        try:
-            with open(os.path.join(data, OUT_FILE), encoding="utf-8") as f:
-                res = json.load(f)
-            cost = float(res["total_cost_usd"])
-            db.add_spend(con, cost - float(rec.get("booked", RUN_BUDGET)), day=rec.get("day"), runs=0)
-            denied = sorted({str(d.get("tool_name")) for d in res.get("permission_denials") or [] if isinstance(d, dict)})
-            common.log(data, "describer finished: %s ($%.2f)%s" % (
-                " ".join(str(res.get("result", "")).split())[:200], cost, "; refused: " + ", ".join(denied) if denied else ""))
-        except (OSError, ValueError, KeyError, TypeError):
-            common.log(data, "describer ended without a readable result; kept the $%.2f worst case" % RUN_BUDGET)
+        day = rec.get("day") or db.today()
+        n = int(db.state_get(con, "unreported_" + day, 0)) + 1
+        db.state_set(con, "unreported_" + day, n)
+        db.add_spend(con, -booked, day=day, runs=0)
+        line = ("ended without a cost report; released the $%.2f booked (%d of %d such runs allowed today)"
+                % (booked, n, MAX_UNREPORTED))
+    common.log(data, "describer " + line)
+    db.state_set(con, "describer_result", {"t": time.time(), "pid": pid, "line": line})
     con.commit()
     try:
         os.remove(path)
@@ -335,30 +382,49 @@ def _running(data, con):
     return False
 
 
-def launch(data):
-    """One launch decision at a time, also when `ae launch-describer` runs outside a watcher pass."""
+def launch(data, test=False):
+    """One launch decision at a time, also when `ae launch-describer` runs outside a watcher pass.
+    test=True (setup's check): launch now for one row, whatever the interval, and print what happened."""
     with common.Lock(os.path.join(data, "describer.lock"), 120) as ok:
-        return _launch(data) if ok else 0
+        if not ok:
+            if test:
+                print("describer test: another launch decision is in progress; try again in a minute")
+            return 0
+        return _launch(data, test)
 
 
-def _launch(data):
+def _launch(data, test=False):
     """Start one background describer run when it is due and none is running. Prints nothing.
     The run is `claude -p`: it exits when done, has stdin closed, may only use the refresh skill's tools
     (dontAsk: anything else is refused, never asked) and is capped at RUN_BUDGET."""
+    say = print if test else (lambda *a: None)
     opts = common.options()
     con = db.connect(data)
     if _running(data, con):
+        say("describer test: a describer run is already going (see `ae status`); not starting another")
         return 0
     rows = pending_rows(con, owned_only=True, win=data_window(data, con))
     if not rows:
+        say("describer test: nothing of yours is waiting for a description, so there is nothing to test on")
         return 0
     now = time.time()
     claude = shutil.which("claude")
-    if now - db.state_get(con, "describer_last", 0) < opts["watch_interval"] * 60 or not claude:
+    if not claude:
+        say("describer test: no `claude` command on PATH; the background describer cannot start")
+        return 0
+    if not test and now - db.state_get(con, "describer_last", 0) < opts["watch_interval"] * 60:
         return 0
     if not common.allow_rule_present():
         # without the setup allow rule every `ae` call in the unattended run would wait for approval;
         # the in-session refresh (SessionStart reminder) describes these rows instead
+        say("describer test: the permission rule is not in settings.json, so the describer stays off")
+        return 0
+    if int(db.state_get(con, "unreported_" + db.today(), 0)) >= MAX_UNREPORTED:
+        if db.state_get(con, "unreported_logged") != db.today():
+            common.log(data, "describer not launched: %d runs ended today without a cost report" % MAX_UNREPORTED)
+            db.state_set(con, "unreported_logged", db.today())
+            con.commit()
+        say("describer test: %d runs ended today without a cost report; it waits for tomorrow" % MAX_UNREPORTED)
         return 0
     if db.spend_today(con) + RUN_BUDGET > opts["describe_daily_cap"] + 1e-9:
         if db.state_get(con, "cap_logged") != db.today():
@@ -366,14 +432,20 @@ def _launch(data):
                        % (db.spend_today(con), RUN_BUDGET, opts["describe_daily_cap"]))
             db.state_set(con, "cap_logged", db.today())
             con.commit()
+        say("describer test: $%.2f spent today + $%.2f for one run is over the $%.2f cap"
+            % (db.spend_today(con), RUN_BUDGET, opts["describe_daily_cap"]))
         return 0
     argv = [claude, "-p", "--model", opts["describe_model"], "--output-format", "json",
-            "--permission-mode", "dontAsk", "--allowedTools", _skill_tools(),
+            "--permission-mode", "dontAsk", "--allowedTools", allowed_tools(),
             "--max-budget-usd", "%.2f" % RUN_LIMIT]
     if os.path.basename(os.path.normpath(data)).endswith("-inline"):
         # loaded with --plugin-dir (development): the new session must load it the same way
         argv += ["--plugin-dir", common.ROOT]
-    argv.append("/artifact-explorer:refresh describe-only")
+    argv.append(RUN_MARK + (" 1" if test else ""))
+    try:
+        os.remove(os.path.join(data, OUT_FILE))  # an older run's report must never be read as this run's
+    except OSError:
+        pass
     pid = common.detach(argv, cwd=data, out=os.path.join(data, OUT_FILE))
     if pid:
         day = db.today()
@@ -388,9 +460,12 @@ def _launch(data):
         except OSError:
             common.log(data, "describer launched (pid %d) but its record could not be written" % pid)
             return 0
-        common.log(data, "describer launched (pid %d) for %d pending rows" % (pid, len(rows)))
+        common.log(data, "describer launched (pid %d) for %d pending rows%s" % (pid, len(rows), " (test: 1 row)" if test else ""))
+        say("describer test: launched (pid %d) for 1 row, $%.2f booked; `ae status` shows its result in a few minutes"
+            % (pid, RUN_BUDGET))
     else:
         common.log(data, "describer launch failed")
+        say("describer test: launch failed (see watch.log)")
     return 0
 
 
@@ -440,7 +515,8 @@ def status(data, as_json=False):
         "thumbs_importable": importer.thumbs_available(con),
         "last_pass": db.state_get(con, "last_pass"),
         "spend_today": round(db.spend_today(con), 2),
-        "spend_cap": common.options()["describe_daily_cap"]}
+        "spend_cap": common.options()["describe_daily_cap"],
+        "describer_last_result": db.state_get(con, "describer_result")}
     if as_json:
         print(json.dumps(out))
         return 0
@@ -460,4 +536,9 @@ def status(data, as_json=False):
         print("older catalog: %(thumbs_importable)d thumbnails can be copied with `ae import --thumbs-only`" % out)
     print("last pass: %s" % (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(lp)) if lp else "never"))
     print("describer spend today: $%(spend_today).2f of $%(spend_cap).2f" % out)
+    res = out["describer_last_result"]
+    if isinstance(res, dict) and res.get("line"):
+        print("last describer run: %s (%s)" % (res["line"], time.strftime("%Y-%m-%d %H:%M", time.localtime(res.get("t") or 0))))
+    elif os.path.exists(os.path.join(data, RUN_FILE)):
+        print("last describer run: still running")
     return 0
