@@ -22,7 +22,7 @@ const nosave=$('nosave'), nosaveTxt=$('nosavetxt'), stage=$('stage'), bar=$('bar
 let toastT; function toast(msg){ toastEl.textContent=msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove('show'),2200); }
 function setSave(state,text){ saveEl.className='save '+state; saveTxt.textContent=text; }
 const WHY = {nodb:'this page could not open its answer store', listener:'this page could not reach its answer store', slow:'the answer store is not answering', write:'the last save was refused', perm:'your access to this page only lets you view it'};
-function fail(why){ broken.add(why); paintBroken(true); }
+function fail(why,quiet){ broken.add(why); paintBroken(!quiet); }
 function heal(...whys){ whys.forEach(w=>broken.delete(w)); paintBroken(false); }
 function paintBroken(loud){
   const on=broken.size>0; nosave.hidden=!on;
@@ -336,9 +336,9 @@ async function boot(){
   try{
     const [d,u]=await Promise.all([claude.use('db'), claude.use('user')]);
     db=d; user=u;
-    if(u){ try{ meId=await u.id(); }catch(e){} try{ if(await u.can('data.write')===false) fail('perm'); }catch(e){} }
-    if(!db){ fail('nodb'); return; }
-    let first=true; const timer=setTimeout(()=>{ if(first) fail('slow'); },10000);
+    if(u){ try{ meId=await u.id(); }catch(e){} try{ if(await u.can('data.write')===false) fail('perm',1); }catch(e){} }
+    if(!db){ fail('nodb',1); return; }
+    let first=true; const timer=setTimeout(()=>{ if(first) fail('slow',1); },10000);
     db.collection('answers').onSnapshot(snap=>{
       clearTimeout(timer); if(first) heal('slow','listener'); let changed=false;
       snap.docs.forEach(d=>{ const r=d.data(); if(!r||!r.qid) return; const cur=answers[r.qid];
@@ -351,8 +351,8 @@ async function boot(){
         const busy=document.activeElement&&document.activeElement.matches('textarea,input');
         if(!busy){ if(idx>TOTAL||idx===0) render(1); else if(el){ const y=window.scrollY; el.innerHTML=questionHTML(Q[idx-1]); el.classList.add('ready'); wire(el); window.scrollTo(0,y);} } }
       if(!snap.metadata.fromCache && !broken.size) setSave('ok', Object.keys(answers).length? 'Saved to this page' : 'Ready to save');
-    }, err=>{ clearTimeout(timer); console.warn('db listener', err); fail('listener'); });
-  }catch(e){ console.warn('boot', e); fail('nodb'); }
+    }, err=>{ clearTimeout(timer); console.warn('db listener', err); fail('listener',1); });
+  }catch(e){ console.warn('boot', e); fail('nodb',1); }
 }
 if(globalThis.__QW_TEST__) globalThis.__QW_TEST__.api={answersText, broken, pick:(i,p)=>pick(i,p), go:n=>go(n), state:()=>({idx, answers})};
 boot();

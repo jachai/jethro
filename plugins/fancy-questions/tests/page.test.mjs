@@ -63,6 +63,7 @@ test('no db: the banner is up before any answer, names the author, and every sav
   assert.equal(p.banner(), true);
   assert.match(p.text(), /NOT reaching Sam/);
   assert.match(p.save(), /NOT sent to Sam/);
+  assert.equal(p.toast(), '', 'no toast before the reader does anything');
   await pickFirst(p);
   assert.match(p.toast(), /Not sent to Sam/);
 });
