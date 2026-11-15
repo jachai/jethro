@@ -28,7 +28,7 @@ class InstallPath(unittest.TestCase):
         return h
 
     def run_cmd(self, h, cmd):
-        env = dict(os.environ, HOME=h)
+        env = dict(os.environ, HOME=h, USERPROFILE=h)  # expanduser reads USERPROFILE on Windows
         return subprocess.run(["sh", "-c", cmd], env=env, capture_output=True, text=True)
 
     def test_no_version_glob_anywhere_in_the_repo_docs_and_skills(self):
