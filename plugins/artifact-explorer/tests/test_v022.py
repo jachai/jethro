@@ -45,6 +45,7 @@ class Template(unittest.TestCase):
         t = tpl()
         for s in ("from " + "<", 'el("span", "fm"', "fromNode", "r.from"):
             self.assertNotIn(s, t)
+        self.assertNotIn("other org", t)  # no organization text either
         self.assertIn(".card.mine{border-left-color:var(--mine)}", t)
         self.assertIn("tbody tr.mine>td:first-child", t)
         self.assertIn("--other:#7b8da3", t)  # light
