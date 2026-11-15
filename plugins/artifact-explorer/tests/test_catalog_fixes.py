@@ -227,12 +227,12 @@ class CardsAndCreatorTest(Base):
         db.upsert_artifact(self.con, "aaaaaaaaaa", title="x")
         self.assertEqual(self.rows()["aaaaaaaaaa"]["from"], "")
 
-    def test_shared_rows_without_a_harvested_label_say_so(self):  # B4
+    def test_shared_rows_without_a_harvested_label_say_nothing(self):  # B4
         db.upsert_artifact(self.con, "aaaaaaaaaa", title="x", owned=0)
         db.upsert_artifact(self.con, "bbbbbbbbbb", title="y", owned=1)
         r = self.rows()
         self.assertEqual((r["aaaaaaaaaa"]["sharing"], r["bbbbbbbbbb"]["sharing"]), ("", ""))
-        self.assertEqual((r["aaaaaaaaaa"]["from"], r["bbbbbbbbbb"]["from"]), ("your organization", ""))
+        self.assertEqual((r["aaaaaaaaaa"]["from"], r["bbbbbbbbbb"]["from"]), ("", ""))
 
     def test_cards_show_creator_and_sharing(self):  # B4
         tpl = open(TPL, encoding="utf-8").read()

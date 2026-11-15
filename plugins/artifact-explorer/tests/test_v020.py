@@ -76,8 +76,8 @@ class TopicsTest(Base):
 
     def test_stored_list_wins_and_is_filtered(self):
         t = build.tag_topics(self.TR, "Housing Twin", ["monitors", "Gone"], json.dumps(["New One"]))
-        self.assertEqual(t, (["Monitors"], ["New One"]))
-        self.assertEqual(build.tag_topics(self.TR, "Housing Twin", [], None), ([], []))  # tagged, none fit: no keyword fallback
+        self.assertEqual(t, (["Monitors", "Housing Twin"], ["New One"]))  # plus the title keyword match
+        self.assertEqual(build.tag_topics(self.TR, "Housing Twin", [], None)[1], [])
 
     def test_suggestion_becomes_topic_once_configured(self):
         self.assertEqual(build.tag_topics(self.TR, "x", [], ["monitors"]), (["Monitors"], []))
@@ -99,7 +99,8 @@ class BatchTest(Base):
     def test_start_numbers_folders(self):
         a, b = self.folder(), self.folder()
         self.assertEqual((os.path.basename(a), os.path.basename(b)), ("1", "2"))
-        self.assertTrue(os.path.isdir(a))
+        self.assertTrue(os.path.isdir(b))
+        self.assertFalse(os.path.exists(a))  # a new batch removes the older folders
 
     def test_manifest_lists_nonempty_files_only(self):
         f = self.folder()
@@ -127,13 +128,13 @@ class BatchTest(Base):
             fh.write(json.dumps({"id": "zzzzzzzzzz", "description": "x", "category": "Plans"}) + "\n")
             fh.write(json.dumps({"id": "bbbbbbbbbb", "category": "Made Up", "topics": ["Nope"]}) + "\n```\n")
         rc, out = self.ae("batch", "save", res)
-        self.assertIn("saved 2, skipped 2, suggested 1", out)
+        self.assertIn("saved 1, skipped 3, suggested 1", out)
         a, b = db.get(self.con, "aaaaaaaaaa"), db.get(self.con, "bbbbbbbbbb")
         self.assertEqual((a["description"], a["desc_source"], a["category"], a["cat_source"]),
                          ("A report on things.", "describer", "Reports", "describer"))
         self.assertEqual(json.loads(a["topics"]), ["Monitors", "Housing Twin"])
         self.assertEqual(json.loads(a["topic_suggest"]), ["Cost Tools"])
-        self.assertEqual((b["category"], b["topics"], b["description"]), (None, "[]", "old"))  # unknown category dropped, [] stored
+        self.assertEqual((b["category"], b["topics"], b["description"]), (None, None, "old"))  # unknown category dropped, no topics stays NULL
 
     def test_new_topic_not_a_configured_one(self):
         f = self.folder()

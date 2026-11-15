@@ -92,19 +92,19 @@ def _names(v):
 
 
 def tag_topics(trules, title, stored, suggest):
-    """(topics, suggested) for a row. stored (the describer's list, None = never tagged) is cut to configured
-    names plus any suggestion that is configured by now; None means title keywords decide. suggested = the
-    suggested names that are not configured."""
+    """(topics, suggested) for a row. topics = the describer's stored list (None = never tagged; cut to configured
+    names plus any suggestion configured by now) plus configured topics whose keywords match the title.
+    suggested = the suggested names that are not configured."""
     canon = {n.lower(): n for n, _ in trules}
     sug = _names(suggest)
-    if stored is None:
-        topics = [n for n, pats in trules if any(p.search(title or "") for p in pats)]
-    else:
-        topics = []
-        for n in _names(stored) + sug:
-            c = canon.get(n.strip().lower())
-            if c and c not in topics:
-                topics.append(c)
+    topics = []
+    for n in (_names(stored) if stored is not None else []) + (sug if stored is not None else []):
+        c = canon.get(n.strip().lower())
+        if c and c not in topics:
+            topics.append(c)
+    for n, pats in trules:  # title keywords always add to the describer's list
+        if n not in topics and any(p.search(title or "") for p in pats):
+            topics.append(n)
     suggested = []
     for n in sug:
         if n.strip().lower() not in canon and n not in suggested:
@@ -143,6 +143,17 @@ def _stored(v):
     return _names(v)
 
 
+def _from(r):
+    """Who made someone else's artifact: the creator, else the organization only when it is known."""
+    if r["creator"]:
+        return r["creator"]
+    if r["other_org"] == 1:
+        return "another organization"
+    if r["other_org"] == 0:
+        return "your organization"
+    return ""
+
+
 def collect(data, cfg):
     flt, over = cfg.get("filter", {}), cfg.get("overrides", {})
     rules = compile_rules(data, cfg.get("categories", []))
@@ -170,7 +181,7 @@ def collect(data, cfg):
             "url": r["url"] if (r["url"] or "").startswith("https://claude.ai/") else "",
             "category": o.get("category") or categorize(rules, r["title"], desc, r["kind"], r["category"]),
             "topics": topics, "suggested": suggested,
-            "from": (r["creator"] or ("another organization" if r["other_org"] else "your organization")) if others else "",
+            "from": _from(r) if others else "",
             "access": access if access in SHARE_LEVELS else "", "other_org": bool(r["other_org"]),
             "revoked": bool(others and r["shared_gone"] is not None), "copy": copy.replace(os.sep, "/"),
             "sharing": sharing_label(r["sharing"]) if r["owned"] == 1 else "",
@@ -276,9 +287,12 @@ def write_favicon(data, accent):
     except OSError:
         pass
     tmp = path + ".tmp"
-    with open(tmp, "wb") as f:
-        f.write(blob)
-    os.replace(tmp, path)
+    try:
+        with open(tmp, "wb") as f:
+            f.write(blob)
+        os.replace(tmp, path)
+    except OSError as e:  # the page is still written without it
+        common.log(data, "build: favicon not written: %s" % e)
 
 
 def build(data, max_age=None, update_check=True):

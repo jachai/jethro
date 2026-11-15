@@ -235,15 +235,20 @@ def set_desc(data, aid, text):
     return 0
 
 
-def set_no_source(data, aid):
+def set_no_source(data, aid, con=None):
     """No readable source for this artifact (connector absent, read refused): its title stands in, ranked
-    below any real description, so a later describer sentence still wins."""
-    con = db.connect(data)
+    below any real description, so a later describer sentence still wins. With `con` the write goes on that
+    connection and the caller commits (a second connection would hit the caller's write lock)."""
+    own = con is None
+    if own:
+        con = db.connect(data)
     r = db.get(con, aid)
     if r is not None and not r["description"]:
         db.upsert_artifact(con, aid, description=(r["title"] or aid)[:200], desc_source="title", desc_status="no-source")
-        con.commit()
-    con.close()
+        if own:
+            con.commit()
+    if own:
+        con.close()
     return 0
 
 
@@ -296,6 +301,8 @@ def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None,
         args.append(thumb_status)
     if need_desc:
         where.append("(description IS NULL OR description='')")
+    if desc_status == "pending" and need_desc:
+        where.append("(owned=1 OR shared_gone IS NULL)")
     sql = "SELECT %s FROM artifacts%s ORDER BY owned DESC, modified DESC, id" % (
         COLS, " WHERE " + " AND ".join(where) if where else "")
     if limit is not None:
@@ -564,7 +571,8 @@ def status(data, as_json=False):
         "thumbs_importable": importer.thumbs_available(con),
         "described": one("SELECT COUNT(*) FROM artifacts WHERE NOT " + nodesc + " AND coalesce(desc_source,'')<>'title'"),
         "categorized": one("SELECT COUNT(*) FROM artifacts WHERE NOT " + nodesc +
-                           " AND coalesce(desc_source,'')<>'title' AND category IS NOT NULL"),
+                           " AND coalesce(desc_source,'')<>'title' AND category IS NOT NULL "
+                           "AND coalesce(cat_source,'')<>'none'"),
         "last_pass": db.state_get(con, "last_pass"),
         "spend_today": round(db.spend_today(con), 2),
         "spend_cap": common.options()["describe_daily_cap"],
@@ -609,9 +617,25 @@ def batch_start(data):
     os.makedirs(root, exist_ok=True)
     used = [int(x) for x in os.listdir(root) if x.isdigit()]
     path = os.path.join(root, str(max(used, default=0) + 1))
+    _clear_old(root)
     os.makedirs(path)
     print(path)
     return 0
+
+
+def _clear_old(root):
+    """Remove the older numbered batch folders (they are scratch; a new batch starts clean)."""
+    for x in os.listdir(root):
+        if x.isdigit() and os.path.isdir(os.path.join(root, x)):
+            shutil.rmtree(os.path.join(root, x), ignore_errors=True)
+
+
+def _json_list(v):
+    try:
+        c = json.loads(v) if v else []
+    except (ValueError, TypeError):
+        return []
+    return [x for x in c if isinstance(x, str)] if isinstance(c, list) else []
 
 
 def _one_line(s):
@@ -655,10 +679,14 @@ def batch_recat(data, limit=40):
                      "AND coalesce(desc_source,'')<>'title' AND cat_source IS NULL "
                      "ORDER BY owned DESC, modified DESC, id LIMIT ?", (max(0, limit),)).fetchall()
     con.close()
+    if not rs:
+        print("items: 0")
+        return 0
     root = batch_root(data)
     os.makedirs(root, exist_ok=True)
     used = [int(x) for x in os.listdir(root) if x.isdigit()]
     folder = os.path.join(root, str(max(used, default=0) + 1))
+    _clear_old(root)
     os.makedirs(folder)
     items = [(r["id"], "text", "%s \u2014 %s" % (_one_line(r["title"]) or r["id"], _one_line(r["description"]))) for r in rs]
     return _report(folder, write_manifest(data, folder, items))
@@ -681,6 +709,50 @@ def _text_items(folder):
     return out
 
 
+def _save_line(con, line, cats, tops, texts, done):
+    """Store one reply line on `con`. Returns the number of new suggestions, or None when nothing was saved."""
+    try:
+        o = json.loads(line)
+    except ValueError:
+        return None
+    aid = db.resolve(con, o.get("id")) if isinstance(o, dict) and isinstance(o.get("id"), str) else None
+    if not aid or db.get(con, aid) is None:
+        return None
+    is_text = aid in texts
+    fields = {}
+    d = o.get("description")
+    if not is_text and isinstance(d, str):
+        d = " ".join(d.split())[:200]
+        if d.lower().strip(". ") in ("", "unreadable"):
+            set_no_source(None, aid, con)
+        else:
+            fields.update(description=d, desc_source="describer", desc_status="ok")
+    cat = cats.get(str(o.get("category") or "").strip().lower())
+    if cat:
+        fields.update(category=cat, cat_source="recat" if is_text else "describer")
+        done.add(aid)
+    tl = o.get("topics")
+    if isinstance(tl, list):
+        keep = []
+        for t in tl:
+            c = tops.get(str(t).strip().lower()) if isinstance(t, (str, int)) else None
+            if c and c not in keep:
+                keep.append(c)
+        if keep:  # none picked stays NULL, so the title keywords still decide
+            fields["topics"] = json.dumps(keep[:3])
+    sug = 0
+    nt = " ".join(str(o.get("new_topic") or "").split())
+    if nt and len(nt) <= 40 and nt.lower() not in tops:
+        cur = _json_list(db.get(con, aid)["topic_suggest"])
+        if nt.lower() not in [x.lower() for x in cur]:
+            fields["topic_suggest"] = json.dumps(cur + [nt])
+            sug = 1
+    if not fields:
+        return None
+    db.upsert_artifact(con, aid, **fields)
+    return sug
+
+
 def batch_save(data, file):
     """Parse the describer's reply (one JSON object per line; anything else is ignored) and store it."""
     cfg = common.load_config(data)
@@ -691,52 +763,26 @@ def batch_save(data, file):
         lines = f.read().splitlines()
     con = db.connect(data)
     saved = skipped = sug = 0
+    done = set()
     for line in lines:
         line = line.strip()
         if not line.startswith("{"):
             continue
         try:
-            o = json.loads(line)
-        except ValueError:
+            r = _save_line(con, line, cats, tops, texts, done)
+        except Exception as e:  # one bad line must not lose the others
+            common.log(data, "batch save: skipped a line: %s" % e)
+            r = None
+        if r is None:
             skipped += 1
-            continue
-        aid = db.resolve(con, o.get("id")) if isinstance(o, dict) and isinstance(o.get("id"), str) else None
-        if not aid or db.get(con, aid) is None:
-            skipped += 1
-            continue
-        is_text = aid in texts
-        fields = {}
-        d = o.get("description")
-        if not is_text and isinstance(d, str):
-            d = " ".join(d.split())[:200]
-            if d.lower().strip(". ") in ("", "unreadable"):
-                d = None
-                set_no_source(data, aid)
-            else:
-                fields.update(description=d, desc_source="describer", desc_status="ok")
-        cat = cats.get(str(o.get("category") or "").strip().lower())
-        if cat:
-            fields.update(category=cat, cat_source="recat" if is_text else "describer")
-        tl = o.get("topics")
-        if isinstance(tl, list):
-            keep = []
-            for t in tl:
-                c = tops.get(str(t).strip().lower()) if isinstance(t, (str, int)) else None
-                if c and c not in keep:
-                    keep.append(c)
-            fields["topics"] = json.dumps(keep[:3])
-        nt = " ".join(str(o.get("new_topic") or "").split())
-        if nt and len(nt) <= 40 and nt.lower() not in tops:
-            old = db.get(con, aid)["topic_suggest"]
-            cur = json.loads(old) if old else []
-            if nt.lower() not in [x.lower() for x in cur]:
-                fields["topic_suggest"] = json.dumps(cur + [nt])
-                sug += 1
-        if fields:
-            db.upsert_artifact(con, aid, **fields)
-            saved += 1
         else:
-            skipped += 1
+            saved += 1
+            sug += r
+    for aid in texts - done:  # asked for a category and got none: do not ask again
+        try:
+            con.execute("UPDATE artifacts SET cat_source='none' WHERE id=? AND cat_source IS NULL", (aid,))
+        except Exception:
+            pass
     con.commit()
     con.close()
     print("saved %d, skipped %d, suggested %d" % (saved, skipped, sug))
@@ -764,7 +810,7 @@ def topics_cmd(data, accept=None, reject=None):
     if reject is not None:
         n = 0
         for r in con.execute("SELECT id, topic_suggest FROM artifacts WHERE topic_suggest IS NOT NULL").fetchall():
-            cur = json.loads(r["topic_suggest"] or "[]")
+            cur = _json_list(r["topic_suggest"])
             new = [x for x in cur if x.lower() != reject.strip().lower()]
             if new != cur:
                 con.execute("UPDATE artifacts SET topic_suggest=? WHERE id=?", (json.dumps(new) if new else None, r["id"]))
@@ -774,9 +820,9 @@ def topics_cmd(data, accept=None, reject=None):
         return 0
     count, sugg = {}, {}
     for r in con.execute("SELECT topics, topic_suggest FROM artifacts").fetchall():
-        for t in json.loads(r["topics"] or "[]"):
+        for t in _json_list(r["topics"]):
             count[t.lower()] = count.get(t.lower(), 0) + 1
-        for t in json.loads(r["topic_suggest"] or "[]"):
+        for t in _json_list(r["topic_suggest"]):
             sugg[t] = sugg.get(t, 0) + 1
     print("topics:")
     for n in names:
