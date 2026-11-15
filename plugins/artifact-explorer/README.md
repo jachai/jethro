@@ -21,7 +21,16 @@ claude plugin marketplace update artifact-explorer
 claude plugin update artifact-explorer@artifact-explorer
 ```
 
-Then open a new Claude Code window: a running session keeps the version it started with. Updating the marketplace alone does not move the installed plugin. `sh ~/.claude/plugins/cache/artifact-explorer/artifact-explorer/*/bin/ae doctor` (or the first step of `/artifact-explorer:setup`) prints the version this window runs, the installed version and the marketplace version, and says MISMATCH when they differ.
+Then open a new Claude Code window: a running session keeps the version it started with. Updating the marketplace alone does not move the installed plugin. the command below (or the first step of `/artifact-explorer:setup`) prints the version this window runs, the installed version and the marketplace version, and says MISMATCH when they differ.
+
+```sh
+sh ~/.claude/plugins/cache/artifact-explorer/artifact-explorer/"$(python3 -c 'import json,os,sys
+p=os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+try: print(os.path.basename(json.load(open(p))["plugins"]["artifact-explorer@artifact-explorer"][0]["installPath"]))
+except Exception: sys.exit("artifact-explorer is not listed in "+p+"; run: claude plugin install artifact-explorer@artifact-explorer")')"/bin/ae doctor
+```
+
+Do not use a `*` version glob there: old versions stay in the cache, and the glob expands to the oldest one first (0.1.2 on one machine). The command above takes the version folder from the `installPath` of the `artifact-explorer@artifact-explorer` entry in `~/.claude/plugins/installed_plugins.json` and prints an error if there is no such entry. It still matches the setup allow rule `Bash(sh */artifact-explorer/*/bin/ae *)`: the literal cache path supplies `/artifact-explorer/`, the resolved version folder fills the middle `*`, and `/bin/ae ` follows with a space.
 
 ## The page
 
