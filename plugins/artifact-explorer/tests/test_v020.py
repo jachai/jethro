@@ -231,8 +231,8 @@ class RevokedTest(Base):
     def test_payload_from_access(self):
         self.ingest([self.sh("a", access="can comment", other_org=True, creator="Sam"), self.sh("b", other_org=False)])
         r = self.rows()
-        self.assertEqual((r["a" * 10]["from"], r["a" * 10]["access"], r["a" * 10]["other_org"]), ("Sam", "comment", True))
-        self.assertEqual((r["b" * 10]["from"], r["b" * 10]["access"]), ("your organization", ""))
+        self.assertEqual((r["a" * 10]["mine"], r["a" * 10]["access"], r["a" * 10]["other_org"]), (False, "comment", True))
+        self.assertEqual((r["b" * 10]["mine"], r["b" * 10]["access"]), (False, ""))
 
 
 class LocalCopyTest(Base):
@@ -308,7 +308,7 @@ class UpdateCheckTest(Base):
             off = open(build.build(self.d, max_age=0, update_check=False), encoding="utf-8").read()
         self.assertIn('"latest": "v9.0.0"', html)
         self.assertNotIn("v9.0.0", off)
-        self.assertIn('"version": "0.2.1"', html)
+        self.assertIn('"version": "0.2.2"', html)
 
 
 class FaviconTest(Base):
@@ -375,7 +375,7 @@ class ColorsTest(Base):
         self.assertEqual([c["name"] for c in p["categories"]][:3], ["Reports", "Plans", "Dashboards"])
         self.assertEqual(p["categories"][0]["color"], "#2a78d6")
         self.assertEqual(p["categories"][-1]["name"], "Uncategorized")
-        self.assertEqual((p["topics"], p["version"], p["accent"]), (["T1"], "0.2.1", "#0f6b5c"))
+        self.assertEqual((p["topics"], p["version"], p["accent"]), (["T1"], "0.2.2", "#0f6b5c"))
 
 
 if __name__ == "__main__":

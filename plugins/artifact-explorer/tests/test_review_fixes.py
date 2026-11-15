@@ -103,7 +103,8 @@ class FromLabel(Base):
         db.upsert_artifact(self.con, "d", title="D", owned=0, creator="Sam")
         self.con.commit()
         rows = {r["id"]: r for r in build.collect(self.d, common.load_config(self.d))[0]}
-        self.assertEqual([rows[k]["from"] for k in "abcd"], ["another organization", "your organization", "", "Sam"])
+        self.assertEqual([rows[k]["mine"] for k in "abcd"], [False] * 4)
+        self.assertTrue(all("from" not in rows[k] for k in "abcd"))
 
 
 class Recat(Base):
