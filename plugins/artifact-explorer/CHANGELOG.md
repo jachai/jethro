@@ -3,6 +3,39 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-11-15
+
+### Added
+
+- Categories have colors. The pill shows on every card and row. A default palette (light and dark) is assigned by position in the category list; set `color` and `color_dark` on a `[[categories]]` entry to change one. "Uncategorised" is now "Uncategorized".
+- The describer picks one category for each artifact in the same call as its sentence, so categories cost nothing extra. Rows with no description fall back to their kind, then to keywords.
+- Topics: `[[topics]]` entries in your `config.toml` (`name`, optional `keywords` matched on the title). The describer tags up to three and may suggest a new one; the page shows suggestions apart from accepted topics, and topic pills filter the page. `ae topics` lists topics and suggestions with counts, `ae topics --accept NAME` adds one to your config, `--reject NAME` drops it. Setup mentions it after the first refresh.
+- Someone else's artifacts show "from <name>" (or "from another organization"). Your own show nothing.
+- Shared artifacts show an access badge (view, comment or edit). A row that was in an earlier shared list and is missing from the latest complete one shows "No longer shared".
+- Local copies: each time a refresh reads an artifact someone else made, its page is kept in `copies/` in the data folder (never your own artifacts, never published). A "No longer shared" row with a copy gets "Save local copy".
+- Clicking a card or a table row opens the artifact; Cmd/Ctrl-click and middle-click open a new tab; rows and cards take the keyboard.
+- An artifact with no thumbnail gets a tile with its initials on a gradient that stays the same for that artifact.
+- The header shows the exact build time and a live "N min ago", and the version that built the page.
+- Update check: at most once a day the build asks GitHub for the latest release, caches the answer in `update.json`, and shows "update vX available" with the update commands. Offline or rate-limited shows nothing. Turn it off with `update_check = false` under `[page]`.
+- Favicon: a four-card grid in the accent color, inline in the page and as `favicon.ico` next to `explorer.html`.
+- A one-off pass categorizes artifacts that were described before 0.2.0 (`ae batch recat`, run by the full refresh, at most 40 rows a run) from their title and description, with no re-describe.
+- Database: new columns for category, topics, suggestions, access, other organization, shared seen/gone and local copy. They are added automatically the first time the database is opened.
+
+### Changed
+
+- Describing works in batches: up to 8 artifacts per describer call from one manifest file, and up to 3 batches in flight in one message. Describing five rows used to take five turns and about 40k tokens of context. New commands: `ae batch start|manifest|recat|save`.
+- The describer agent takes a manifest path and answers one JSON line per artifact (sentence, category, topics, new topic).
+- `ae ingest-list` reads `access` and `other_org`, and with `--shared-complete` marks shared rows that dropped out of a complete list.
+
+### Fixed
+
+- The refresh skill told the describer call to use `run_in_background: false`, which this Claude Code does not have, so every call ran async, one row at a time. The skill no longer sets it.
+- `AE` stored in a shell variable failed under zsh (`$AE pending`: no word splitting). The skills now say to write each command out in full.
+
+### Removed
+
+- The Open column and button. Click the card or row instead.
+
 ## [0.1.5] - 2026-11-15
 
 ### Fixed

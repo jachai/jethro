@@ -6,7 +6,7 @@ allowed-tools: Bash(sh *bin/ae *), Read, mcp__claude-in-chrome__*
 
 # Screenshots
 
-Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DATA}"`.
+Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DATA}"`. Write each `AE` command out in full in every Bash call; never store it in a shell variable (zsh does not split `$AE` into words, so `$AE pending` fails).
 
 1. Check the option. It is `chrome_screenshots` in `/config` (plugins). If it is off, say so and stop. Do not turn it on yourself.
 2. Run `AE rows --json --thumb-status none` and `AE rows --json --thumb-status failed`. Together these are the rows without a thumbnail. If there are none, say so and stop. Take at most 10.

@@ -68,7 +68,7 @@ def data_state(data):
 
 def page_check():
     """Build a page in an empty temp folder with one row and no thumbnail; return [(check, ok)] for the 0.1.4
-    page parts a fresh install shows first: status line, stale banner, placeholder thumbnail."""
+    page parts a fresh install shows first: status line, stale banner, initials tile."""
     import build
     import db
     tmp = tempfile.mkdtemp(prefix="ae-doctor-")
@@ -77,12 +77,12 @@ def page_check():
         db.upsert_artifact(con, "doctorcheck0001", title="Doctor check", owned=1, desc_status="pending")
         con.commit()
         con.close()
-        html = open(build.build(tmp, max_age=0), encoding="utf-8").read()
+        html = open(build.build(tmp, max_age=0, update_check=False), encoding="utf-8").read()
         payload = build.collect(tmp, {})[0]
         st = build.status(tmp, time.time())
         return [("status line", 'id="status"' in html and "stale_after" in st),
                 ("stale banner", "Page may be stale" in html),
-                ("placeholder thumbnails", "placeholderSVG(" in html and payload and payload[0]["thumb"] == "")]
+                ("initials tiles", "initialsTile(" in html and payload and payload[0]["thumb"] == "")]
     except Exception as e:  # a page that can't be built is a failed check, reported, not a crash
         return [("page build (%s)" % type(e).__name__, False)]
     finally:

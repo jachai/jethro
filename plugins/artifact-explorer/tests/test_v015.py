@@ -89,7 +89,7 @@ class Doctor(Env):
         self.assertEqual(rc, 0, out)
         self.assertIn("(none yet: fresh)", out)
         self.assertIn("permission rule: present", out)
-        self.assertIn("page check: status line ok, stale banner ok, placeholder thumbnails ok", out)
+        self.assertIn("page check: status line ok, stale banner ok, initials tiles ok", out)
         self.assertIn("RESULT: OK", out)
 
     def test_rows_are_not_fresh(self):
@@ -299,7 +299,7 @@ class Unknowns(unittest.TestCase):
         con.commit()
         con.close()
         rows = build.collect(d, {})[0]
-        self.assertEqual((rows[0]["title"], rows[0]["created_by"], rows[0]["modified"]), ("Untitled", "unknown", None))
+        self.assertEqual((rows[0]["title"], rows[0]["from"], rows[0]["modified"]), ("Untitled", "", None))
         tpl = open(os.path.join(ROOT, "page", "template.html"), encoding="utf-8").read()
         self.assertIn('if (!t) return el("span", "dim", "unknown");', tpl)
 

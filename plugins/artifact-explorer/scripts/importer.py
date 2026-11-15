@@ -42,7 +42,7 @@ def write_config(data, cats, order, overrides):
     have = common.load_toml(path) if os.path.exists(path) else {}
     known = {c.get("name") for c in have.get("categories", [])}
     names = [n for n in order if n in cats] + sorted(cats - set(order))
-    out = ["[[categories]]\nname = %s\n" % toml_str(n) for n in names if n not in known and n != "Uncategorised"]
+    out = ["[[categories]]\nname = %s\n" % toml_str(n) for n in names if n not in known and n not in ("Uncategorised", "Uncategorized")]
     for aid, o in sorted(overrides.items()):
         if aid not in have.get("overrides", {}):
             out.append("[overrides.%s]\n%s\n" % (toml_str(aid), "\n".join("%s = %s" % (k, toml_str(v)) for k, v in o.items())))

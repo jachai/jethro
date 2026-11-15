@@ -6,7 +6,7 @@ allowed-tools: Artifact, Agent, Read, Write, Bash(sh *bin/ae *), Bash(test *), B
 
 # Setup
 
-Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DATA}"`. Go in order. Keep each message short.
+Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DATA}"`. Write each `AE` command out in full in every Bash call; never store it in a shell variable (zsh does not split `$AE` into words, so `$AE pending` fails). Go in order. Keep each message short.
 
 0. Check. Run `AE doctor` and show its output to the user as it is, in a code block. Then say in one line which version this window runs (the `running:` line).
    - If it prints `MISMATCH` or `NOTE`, stop setup here: tell the user to run the command it names (or open a new window), then run `/artifact-explorer:setup` again in a new Claude Code window.
@@ -15,7 +15,7 @@ Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DAT
 1. Options. Tell the user the plugin has these options, which they can change in `/config` (plugins): `watch_interval`, `browser_history`, `transcript_reads`, `chrome_screenshots`, `share_harvest`, `describe_model`, `describe_daily_cap`. Say that `chrome_screenshots` and `share_harvest` are off, and what each one does in one line. Do not change them.
 2. Config file. Run `test -f "${CLAUDE_PLUGIN_DATA}/config.toml" && echo yes || echo no`. If no, run `mkdir -p "${CLAUDE_PLUGIN_DATA}"`, then read `${CLAUDE_PLUGIN_ROOT}/config/default.toml` and write its content to `${CLAUDE_PLUGIN_DATA}/config.toml`. Tell the user they can edit that file for categories, filters and overrides, and that `${CLAUDE_PLUGIN_ROOT}/examples/` has samples. If it exists, leave it alone.
 3. Import. Run `test -f ~/.claude/artifact-explorer/meta.json && echo yes || echo no`. If yes, tell the user a catalog from the pre-plugin Artifact Explorer exists there, that `ae import` only reads that folder and never changes it, and ask whether to import it. Run `AE import` only if they say yes.
-4. First refresh. Do the full mode of the `refresh` skill (follow `${CLAUDE_PLUGIN_ROOT}/skills/refresh/SKILL.md`, full mode).
+4. First refresh. Do the full mode of the `refresh` skill (follow `${CLAUDE_PLUGIN_ROOT}/skills/refresh/SKILL.md`, full mode). Then run `AE topics` and show it. Tell the user that topics are labels they define, that they live in their `config.toml` as `[[topics]]` entries (`name`, optional `keywords`), and that a topic the describer suggests is accepted with `ae topics --accept NAME`.
 5. Permission rule. Without it, each `ae` call asks for approval, and the background describer never starts (no one is there to approve it), so new artifacts get descriptions only when you run `/artifact-explorer:refresh` in a session. Run `AE allow-rule`.
    - If it prints `present:`, tell the user: "The permission rule is already in ~/.claude/settings.json; nothing added." Do not ask.
    - If it prints `missing:`, show this rule and where it goes:
