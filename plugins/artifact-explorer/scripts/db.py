@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS artifacts(
   version TEXT, seq INTEGER, local_path TEXT,
   description TEXT, desc_source TEXT, desc_status TEXT,
   thumb TEXT, thumb_source TEXT, thumb_status TEXT,
-  first_seen REAL, updated REAL, desc_note TEXT);
+  first_seen REAL, updated REAL, desc_note TEXT,
+  category TEXT, cat_source TEXT, topics TEXT, topic_suggest TEXT,
+  access TEXT, other_org INTEGER, shared_seen REAL, shared_gone REAL, local_copy TEXT);
 CREATE TABLE IF NOT EXISTS events(
   artifact_id TEXT, ts REAL, kind TEXT, source TEXT, session_id TEXT, cwd TEXT, repo TEXT, detail TEXT,
   UNIQUE(artifact_id, ts, kind, source));
@@ -23,7 +25,12 @@ CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY, value TEXT);
 """
 
 FIELDS = ("uuid url title kind owned creator sharing size created modified last_accessed last_access_by "
-          "version seq local_path description desc_source desc_status desc_note thumb thumb_source thumb_status").split()
+          "version seq local_path description desc_source desc_status desc_note thumb thumb_source thumb_status "
+          "category cat_source topics topic_suggest access other_org shared_seen shared_gone local_copy").split()
+# columns added after 0.1.0, in the order they came: an older catalog gets each one on its next open
+ADDED = (("desc_note", "TEXT"), ("category", "TEXT"), ("cat_source", "TEXT"), ("topics", "TEXT"),
+         ("topic_suggest", "TEXT"), ("access", "TEXT"), ("other_org", "INTEGER"), ("shared_seen", "REAL"),
+         ("shared_gone", "REAL"), ("local_copy", "TEXT"))
 DESC_RANK = {None: 0, "title": 1, "publish": 2, "describer": 3, "import": 4}
 URL_ID = re.compile(r"^https://claude\.ai/(?:code/)?artifact/([A-Za-z0-9-]{10,})(?=$|[/?#])")
 UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -34,16 +41,19 @@ def connect(data, timeout=30):
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")  # readers (SessionStart) never wait on a long watcher pass
     con.executescript(SCHEMA)
-    if "desc_note" not in {r[1] for r in con.execute("PRAGMA table_info(artifacts)")}:
-        _add_desc_note(con)
+    have = {r[1] for r in con.execute("PRAGMA table_info(artifacts)")}
+    for name, typ in ADDED:
+        if name not in have:
+            _add_column(con, name, typ)
     _migrate(con, timeout)
     return con
 
 
-def _add_desc_note(con):
-    """0.1.2 column: why a row has no description. Another process may add it between the check and here."""
+def _add_column(con, name, typ):
+    """Add a column a newer version uses (0.1.2 desc_note; 0.2.0 category, topics, sharing state, local copy).
+    Another process may add it between the check and here."""
     try:
-        con.execute("ALTER TABLE artifacts ADD COLUMN desc_note TEXT")
+        con.execute("ALTER TABLE artifacts ADD COLUMN %s %s" % (name, typ))
         con.commit()
     except sqlite3.OperationalError as e:
         if "duplicate column" not in str(e):
