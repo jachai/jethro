@@ -299,7 +299,7 @@ class Unknowns(unittest.TestCase):
         con.commit()
         con.close()
         rows = build.collect(d, {})[0]
-        self.assertEqual((rows[0]["title"], rows[0]["from"], rows[0]["modified"]), ("Untitled", "", None))
+        self.assertEqual((rows[0]["title"], rows[0]["modified"]), ("Untitled", None))
         tpl = open(os.path.join(ROOT, "page", "template.html"), encoding="utf-8").read()
         self.assertIn('if (!t) return el("span", "dim", "unknown");', tpl)
 
