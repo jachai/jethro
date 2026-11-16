@@ -70,7 +70,11 @@ def data_dir(arg=None):
 
 
 # The allow rule `/artifact-explorer:setup` offers. The background describer needs it (no one is there to approve).
+# 0.2.3: the skills write the command with the path quoted (`sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" ...`), which the
+# old rule does not match. Setup writes both; an install that has only one of them still counts as present.
 ALLOW_RULE = "Bash(sh */artifact-explorer/*/bin/ae *)"
+ALLOW_RULE_QUOTED = 'Bash(sh "*/artifact-explorer/*/bin/ae" *)'
+ALLOW_RULES = (ALLOW_RULE_QUOTED, ALLOW_RULE)
 
 
 def user_settings():
@@ -85,7 +89,14 @@ def user_settings():
 
 def allow_rule_present():
     allow = (user_settings().get("permissions") or {}).get("allow") or []
-    return isinstance(allow, list) and ALLOW_RULE in allow
+    return isinstance(allow, list) and any(r in allow for r in ALLOW_RULES)
+
+
+def allow_rules_missing():
+    """The rules of ALLOW_RULES that settings.json does not have yet (setup adds these)."""
+    allow = (user_settings().get("permissions") or {}).get("allow") or []
+    allow = allow if isinstance(allow, list) else []
+    return [r for r in ALLOW_RULES if r not in allow]
 
 
 def options():

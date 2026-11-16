@@ -7,7 +7,7 @@ tools: Read
 
 You describe a batch of artifacts.
 
-You get the path of one manifest file as your prompt. Read it with the Read tool. It lists the allowed categories and topics, then the items:
+You get the path of one manifest file as your prompt. It lists up to 20 items; answer every one of them, one JSON line each. Read it with the Read tool. It lists the allowed categories and topics, then the items:
 
 ```
 Categories (pick exactly one): ...

@@ -127,7 +127,7 @@ def run(data, version, expect="any"):
                  s["spend_days"], ", config.toml" if s["config"] else ""))
         if expect == "fresh":
             bad.append("the data folder already has a catalog")
-    print("  permission rule: %s (%s)" % ("present" if common.allow_rule_present() else "missing", common.ALLOW_RULE))
+    print("  permission rule: %s (%s)" % ("present" if common.allow_rule_present() else "missing", " or ".join(common.ALLOW_RULES)))
     checks = page_check()
     print("  page check: " + ", ".join("%s %s" % (n, "ok" if ok else "FAILED") for n, ok in checks))
     bad += ["page check: " + n for n, ok in checks if not ok]

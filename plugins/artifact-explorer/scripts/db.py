@@ -30,7 +30,7 @@ FIELDS = ("uuid url title kind owned creator sharing size created modified last_
 # columns added after 0.1.0, in the order they came: an older catalog gets each one on its next open
 ADDED = (("desc_note", "TEXT"), ("category", "TEXT"), ("cat_source", "TEXT"), ("topics", "TEXT"),
          ("topic_suggest", "TEXT"), ("access", "TEXT"), ("other_org", "INTEGER"), ("shared_seen", "REAL"),
-         ("shared_gone", "REAL"), ("local_copy", "TEXT"))
+         ("shared_gone", "REAL"), ("local_copy", "TEXT"), ("recat_tried", "INTEGER"))
 DESC_RANK = {None: 0, "title": 1, "publish": 2, "describer": 3, "import": 4}
 URL_ID = re.compile(r"^https://claude\.ai/(?:code/)?artifact/([A-Za-z0-9-]{10,})(?=$|[/?#])")
 UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -60,19 +60,25 @@ def _add_column(con, name, typ):
             raise
 
 
-SCHEMA_VERSION = 1  # PRAGMA user_version once the one-off fixes below have run
+SCHEMA_VERSION = 2  # 2 (0.2.3): rows without category/topics are eligible for the background recat (a query, nothing stored); PRAGMA user_version once the one-off fixes below have run
 
 
 def _migrate(con, timeout):
     """One-off fixes for catalogs written by 0.1.0. A busy database skips them (no wait) until the next open."""
-    if con.execute("PRAGMA user_version").fetchone()[0] >= SCHEMA_VERSION:
+    ver = con.execute("PRAGMA user_version").fetchone()[0]
+    if ver >= SCHEMA_VERSION:
         return
     con.execute("PRAGMA busy_timeout=0")
     try:
-        con.execute("UPDATE artifacts SET thumb_status='pending' WHERE thumb_status IS NULL")
-        # rescan browser history once: 0.1.0 kept a row's first title only, often "Page not found"
-        state_set(con, "history_cursors", {})
-        fold_twins(con)
+        if ver < 1:
+            con.execute("UPDATE artifacts SET thumb_status='pending' WHERE thumb_status IS NULL")
+            # rescan browser history once: 0.1.0 kept a row's first title only, often "Page not found"
+            state_set(con, "history_cursors", {})
+            fold_twins(con)
+        if ver < 2:
+            # nothing destructive: described rows with no category/topics become eligible for the recat drain
+            # (describe.recat_where); recat_tried is a fresh column, so every such row counts as not yet tried
+            con.execute("UPDATE artifacts SET recat_tried=NULL WHERE recat_tried IS NOT NULL AND recat_tried<>1")
         con.execute("PRAGMA user_version=%d" % SCHEMA_VERSION)
         con.commit()
     except sqlite3.OperationalError:

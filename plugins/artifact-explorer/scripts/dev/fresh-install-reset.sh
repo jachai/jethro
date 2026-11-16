@@ -112,7 +112,7 @@ e=(d.get("plugins") or {}).get("artifact-explorer@artifact-explorer")
 print(", ".join(str(x.get("version")) for x in e) if isinstance(e,list) else "")' "$CONFIG/plugins/installed_plugins.json")"
   if [ -z "$INST" ]; then r=0; else r=1; fi; check $r "plugin not in installed_plugins.json${INST:+ (still lists $INST)}"
   if [ ! -d "$CONFIG/plugins/marketplaces/artifact-explorer" ]; then r=0; else r=1; fi; check $r "marketplace clone removed"
-  if grep -qF 'Bash(sh */artifact-explorer/*/bin/ae *)' "$SETTINGS" 2>/dev/null; then r=1; else r=0; fi
+  if grep -qF -e 'Bash(sh */artifact-explorer/*/bin/ae *)' -e '/artifact-explorer/*/bin/ae\" *)' "$SETTINGS" 2>/dev/null; then r=1; else r=0; fi
   check $r "allow rule not in settings.json"  # (a failing command outside an if would end the script: set -e)
   if [ -z "$(ae_watchers)" ]; then r=0; else r=1; fi; check $r "no watcher running"
 fi
