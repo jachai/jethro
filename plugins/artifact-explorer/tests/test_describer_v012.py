@@ -148,7 +148,7 @@ class ReviewFixes(Base):
         if pid == 0:
             os._exit(0)
         time.sleep(0.3)
-        self.assertTrue(REAL_PID_ALIVE(pid))  # unreaped zombie: kill(pid, 0) still succeeds
+        os.kill(pid, 0)  # unreaped zombie: kill(pid, 0) still succeeds (0.2.6: _pid_alive itself says dead via ps)
         json.dump({"pid": pid, "t": time.time(), "day": db.today(), "booked": 0.25},
                   open(os.path.join(self.d, "describer.json"), "w"))
         with mock.patch.object(common, "_pid_alive", REAL_PID_ALIVE):

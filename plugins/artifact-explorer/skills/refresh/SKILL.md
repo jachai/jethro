@@ -9,9 +9,14 @@ allowed-tools: Artifact, ArtifactData, Agent, Read, Write, ToolSearch, mcp__clau
 
 Argument: `$ARGUMENTS`. If it is `describe-only` or `describe-only 1`, this is the background mode (`describe-only 1` is setup's test run: one row only). Anything else is the full mode.
 
-Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DATA}"`. Write each `AE` command out in full in every Bash call; never store it in a shell variable (zsh does not split `$AE` into words, so `$AE pending` fails).
+Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DATA}"`. It is a placeholder, not a shell variable: write it out in full as `sh "<full path>/bin/ae" --data "<full data path>"`. Rules for every Bash call:
+- Run each `AE` command as its own Bash call, and start the command with `sh`.
+- Never set or use shell variables (no `AE=...`, `D=...`, `$F`): write every path out in full.
+- Never chain commands: no `;`, `&&`, `||`, newlines, pipes or redirects. Never `cd`.
+- A command that starts with anything but `sh` (a variable assignment, `cd`) matches no permission rule and the unattended run refuses it.
+- Several rows: use the batch commands (`AE batch excerpt`, `AE set-kind ID=KIND ID=KIND`), not one chained command.
 
-Before anything else, run `AE tmpdir scratch-bg` in the background mode, `AE tmpdir scratch` in the full mode (so a background run and a refresh in a session never share one). It prints an empty folder outside the data folder: SCRATCH. Every file you write with the Write tool goes in SCRATCH, never in the data folder or a batch folder (an unattended run may not write under `~/.claude`; the Write is refused there).
+Before anything else, run `AE tmpdir scratch-bg` in the background mode, `AE tmpdir scratch` in the full mode (so a background run and a refresh in a session never share one). It prints an empty folder outside the data folder: SCRATCH. SCRATCH is only for files you write with the Write tool: they go in SCRATCH, never in the data folder or a batch folder (an unattended run may not write under `~/.claude`; the Write is refused there). Never give SCRATCH to a read: Artifact and ArtifactData reads never get SCRATCH as `out_dir` (an Artifact read takes no `out_dir` at all; ArtifactData takes only the TMP from `AE tmpdir ID`).
 
 Only artifacts touched in the recent window (60 days by default) are waiting; `AE pending` already leaves the older ones out.
 
@@ -22,7 +27,7 @@ Every mode describes rows in batches of up to 20. ID, URL and KIND are a row's `
 For each batch:
 
 1. Run `AE batch start`. It prints an empty folder, FOLDER.
-2. For each row of the batch, build its excerpt as below (steps 1-2 of the row), writing it to `FOLDER/ID.txt`.
+2. For each row of the batch, build its excerpt as below (steps 1-2 of the row), writing it to `FOLDER/ID.txt`. Page rows need no call of their own: collect each one's `ID=SAVED_FILE` pair and run one `AE batch excerpt "FOLDER" ID1=SAVED_FILE1 ID2=SAVED_FILE2 ...` for all of them (it prints an error line for a pair that fails and `excerpted N, failed K`). Likewise record several types with one `AE set-kind ID1=KIND1 ID2=KIND2`.
 3. Run `AE batch manifest "FOLDER"`. It prints the manifest path and the item count. A count of 0 means nothing to describe: go to the next batch.
 4. Call the `describer` agent with just the manifest path as its prompt. It reads the manifest and every file itself and replies with one JSON line per row. Never read the saved pages or the excerpts yourself. The Agent tool runs the describer asynchronously and notifies you when it finishes: build up to 3 batches, launch their describer calls in one message, and save each reply as its notification arrives.
 5. Write the reply as it is with the Write tool to `SCRATCH/result.jsonl`, then run `AE batch save "SCRATCH/result.jsonl" --folder "FOLDER"` before you write the next reply. It prints `saved N, skipped K, suggested S`. Never put describer text on a command line.
@@ -31,8 +36,8 @@ A failed read of one artifact (not found, an error) skips that row and goes on.
 
 ### One row's excerpt
 
-1. **Type.** If KIND is `Docs`, `Dashboard` or `Slides`, go to that branch. Otherwise read the artifact with the Artifact tool, action `read`, the row's URL, and `path` set to `index.html`. This saves the page to a file and does not put it in your context; the result names the saved file. If the result says `an Artifact of type "TYPE"`, run `AE set-kind ID "TYPE"` (Data and Dashboard are one kind) and go to that type's branch. No such phrase means a plain page: the Page branch, with the saved file.
-2. **Page.** Run `AE excerpt "SAVED_FILE" --out "FOLDER/ID.txt" --id ID`.
+1. **Type.** If KIND is `Docs`, `Dashboard` or `Slides`, go to that branch. Otherwise read the artifact with the Artifact tool, action `read`, the row's URL, and `path` set to `index.html`. This saves the page to a file and does not put it in your context; the result names the saved file. If the result says `an Artifact of type "TYPE"`, run `AE set-kind ID=TYPE` (Data and Dashboard are one kind; several rows: `AE set-kind ID1=TYPE1 ID2=TYPE2`) and go to that type's branch. No such phrase means a plain page: the Page branch, with the saved file.
+2. **Page.** Keep the pair `ID=SAVED_FILE` for the batch's `AE batch excerpt "FOLDER" ID=SAVED_FILE ...` (one call per batch, not one per row; a lone row may use `AE excerpt "SAVED_FILE" --out "FOLDER/ID.txt" --id ID`).
    **Dashboard** (type `Data` or `Dashboard`). Run `AE tmpdir ID`: it prints an empty folder, TMP (ArtifactData refuses an `out_dir` inside the data folder). Call ArtifactData, action `list`, the row's URL, collection `files`, `out_dir` set to TMP; it saves `files/index.html.json` there. Call ArtifactData, action `list`, collection `datasets`: write one line per dataset, `Dataset: TITLE - DESCRIPTION`, with the Write tool to `SCRATCH/source.txt` (an empty file when there are none). Run `AE excerpt "TMP/files/index.html.json" "SCRATCH/source.txt" --json-field text --out "FOLDER/ID.txt" --id ID`.
    **Slides.** Read with the Artifact tool, action `read`, `path` set to `project/deck.json` (small, it comes back in the result: `title`, `order`, `sections` with one `description` each). Write the deck title and each section description, one per line, with the Write tool to `SCRATCH/source.txt`. Read the cover, `path` set to `project/slides/<first id in order>.html` (saved to a file). Run `AE excerpt "SCRATCH/source.txt" "SAVED_COVER" --out "FOLDER/ID.txt" --id ID`.
    **Docs.** Once per run, before the first Docs row: load the tools with ToolSearch, query `select:mcp__claude_ai_Claude_Docs__read,mcp__claude_ai_Claude_Docs__guide`, then call `mcp__claude_ai_Claude_Docs__guide` with `items` `["topic.index"]`. For each Docs row, with the short id from the URL (the part after `/artifact/`): (a) `mcp__claude_ai_Claude_Docs__read` with `ref` `{"object":"project","id":"<short id>"}`: note `frame.slug` and the body node id `files[0].content.id`; (b) read with `ref` `{"object":"node","id":"<body>"}`, `engine` `prose`, `container` `{"kind":"project","id":"<slug>"}`, `payload` `{"projection":"outline"}`: block ids; (c) the same `ref`, `engine` and `container`, `payload` `{"kind":"view","parentId":"<first paragraph id after the title and byline that is not a heading>"}`: the lead text (when (c) has no paragraph to read, leave the lead out). Write the title, the outline headings and the lead text with the Write tool to `SCRATCH/source.txt`. Run `AE excerpt "SCRATCH/source.txt" --out "FOLDER/ID.txt" --id ID --type Docs`.
@@ -65,4 +70,4 @@ You run unattended (`claude -p`, no one is there). Do not ask questions and neve
 9. Run `AE thumbs` and then `AE build`.
 10. Run `AE status` and report in three lines or fewer: rows in the window, rows described this run, rows still waiting (and the older line when it shows one).
 
-Reads never pass a custom `out_dir`, except ArtifactData's TMP from `AE tmpdir ID` above. Never run `AE` commands other than the ones above.
+Reads never pass a custom `out_dir`, except ArtifactData's TMP from `AE tmpdir ID` above. Never run `AE` commands other than the ones above. Remember: one `AE` command per Bash call, starting with `sh`, no variables, no chaining.
