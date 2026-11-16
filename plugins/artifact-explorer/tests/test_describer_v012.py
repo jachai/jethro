@@ -194,7 +194,7 @@ class NeverWaits(Base):
                        "permission_denials": [{"tool_name": "Bash", "tool_input": {"command": "ls"}}]}, f)
         self.alive.return_value = False
         describe.launch(self.d)
-        self.assertIn("describer finished: stopped: Bash refused ($0.04); refused: Bash", self.log())
+        self.assertIn("describer finished: stopped: Bash refused ($0.04); saved 0, $- per saved row; refused: Bash", self.log())
 
 
 class Cap(Base):

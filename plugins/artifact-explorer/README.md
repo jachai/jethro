@@ -49,7 +49,7 @@ At most once a day the build asks GitHub for the latest release of `jachai/artif
 
 ## Cost
 
-Descriptions are written in batches of up to 20 artifacts per describer call, up to 60 per run, by a background `claude -p` run on `haiku` (the `describe_model` option). Each run is limited to $0.15, $0.02 is booked against the daily cap when it starts, and the real cost replaces the booking when it ends. The default cap is $1.00 a day (`describe_daily_cap`); `ae status` shows today's spend. A run that ends without reporting its cost gives its booking back, and after two such runs in a day the describer waits for the next day. Without the setup permission rule no background run starts and nothing is spent; `/artifact-explorer:refresh` in a session describes on your normal usage.
+Descriptions are written in batches of up to 8 artifacts per describer call, each saved before the next starts, up to 60 per run, by a background `claude -p` run on `haiku` (the `describe_model` option). Each run is limited to $0.15, $0.02 is booked against the daily cap when it starts, and the real cost replaces the booking when it ends. The default cap is $1.00 a day (`describe_daily_cap`); `ae status` shows today's spend. A run that ends without reporting its cost gives its booking back, and after two such runs in a day the describer waits for the next day. Without the setup permission rule no background run starts and nothing is spent; `/artifact-explorer:refresh` in a session describes on your normal usage.
 
 ## Options
 
@@ -61,11 +61,12 @@ Change them in `/config` (plugins).
 - `chrome_screenshots`: let `/artifact-explorer:screenshots` use Claude in Chrome for thumbnails (default off).
 - `share_harvest`: let `/artifact-explorer:sharing` read the Share dialog of your artifacts in Chrome (default off).
 - `describe_model`: model of the background describer session (default `haiku`). The `describer` agent itself always runs on `haiku`.
+- `describe_stop_loss`: USD per saved row (default 0.01). A background run that saves no row, reaches 90% of its $0.15 limit, or costs more per saved row than this puts the watcher on a one-hour back-off.
 - `describe_daily_cap`: USD per day for background describer runs (default 1.0). A run starts only when today's spend plus one run's $0.02 booking stays within it, and only one run goes at a time.
 
 ## Which artifacts get described
 
-Only a recent window, 60 days by default (`[window] days` in config.toml; `0` covers everything). Older rows sit in a collapsed "N older artifacts" group on the page. `/artifact-explorer:refresh older` widens the window by 30 days and describes them. Docs, Slides and Dashboard artifacts are described from their own source (the Doc's lead paragraph, the deck outline, the dashboard page and datasets). When that source cannot be read the title stands in, and `/artifact-explorer:refresh retry` tries again. Artifacts shared with you have no date in the list, so they count from the day the catalog first saw them.
+Only a recent window, 60 days by default (`[window] days` in config.toml; `0` covers everything). Older rows sit in a collapsed "N older artifacts" group on the page. `/artifact-explorer:refresh older` widens the window by 30 days and describes them. Docs, Slides and Dashboard artifacts are described from their own source (the Doc's title and outline, the deck outline, the dashboard page and datasets). When that source cannot be read the title stands in, and `/artifact-explorer:refresh retry` tries again. Artifacts shared with you have no date in the list, so they count from the day the catalog first saw them.
 
 ## What leaves the machine
 
