@@ -32,11 +32,8 @@ def _plugin_version(root):
 
 def installed():
     """The installed_plugins.json entry for this plugin ({} when not installed), the first scope listed."""
-    d = _json(os.path.join(common.claude_dir(), "plugins", "installed_plugins.json"))
-    ent = ((d or {}).get("plugins") or {}).get(KEY) if isinstance(d, dict) else None
-    if isinstance(ent, list):
-        ent = ent[0] if ent else None
-    return ent if isinstance(ent, dict) else {}
+    ents = common.installed_entries()
+    return ents[0] if ents else {}
 
 
 def marketplace():
