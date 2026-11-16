@@ -119,7 +119,25 @@ def superseded(root=None, own=None):
     return max(newer, key=update.parse) if newer else None
 
 
+def other_watcher(data):
+    """The pid of another live watcher recorded in watcher.json, else None. Alive alone is not enough (pids are
+    reused): its command line must be an ae watch process."""
+    try:
+        with open(os.path.join(data, HEARTBEAT_FILE), encoding="utf-8") as f:
+            pid = int(json.load(f).get("pid", 0))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    if pid <= 0 or pid == os.getpid() or not common._pid_alive(pid):
+        return None
+    cmd = common.pid_cmdline(pid) or ""
+    return pid if ("ae.py" in cmd and " watch" in cmd) else None
+
+
 def loop(data, tick_seconds=TICK, max_ticks=None):
+    other = other_watcher(data)
+    if other:
+        print("watcher already running (pid %d); not starting another" % other)
+        return 0
     ppid = os.getppid()
     n = 0
     while max_ticks is None or n < max_ticks:

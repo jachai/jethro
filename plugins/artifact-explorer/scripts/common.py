@@ -206,7 +206,17 @@ def _pid_alive(pid):
         return False
     except PermissionError:
         return True
-    return True
+    return not _zombie(pid)
+
+
+def _zombie(pid):
+    """True when ps says the pid is a zombie (ended, not reaped yet): that counts as finished. False when ps fails."""
+    try:
+        out = subprocess.run(["ps", "-o", "stat=", "-p", str(int(pid))], capture_output=True, text=True,
+                             timeout=10).stdout.strip()
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False
+    return out.startswith("Z")
 
 
 def pid_cmdline(pid):
