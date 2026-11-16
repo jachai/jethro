@@ -210,7 +210,16 @@ class BackOff(Base):
         self.assertEqual(self.det.call_count, 1)
 
     def test_normal_run_no_backoff(self):
-        self.finished_run("described 3 of 3, skipped 0, no source 0, needs interactive 0, categorized 0")
+        describe.launch(self.d)
+        con = self.con()
+        for aid in (A, B, C):
+            db.upsert_artifact(con, aid, description="d", desc_status="done")
+        con.commit()
+        self.alive.return_value = False
+        write_out(self.d, "described 3 of 3, skipped 0, no source 0, needs interactive 0, categorized 0")
+        self.next_tick()
+        db.upsert_artifact(con, "zzz", url=U + "zzz", title="z", owned=1)  # something still waits
+        con.commit()
         self.det.reset_mock()
         describe.launch(self.d)
         self.assertEqual(self.det.call_count, 1)

@@ -171,6 +171,7 @@ def share(texts, chars):
     return [t[:caps.get(i, 0)] for i, t in enumerate(texts)]
 
 
+BATCH = 8  # rows per batch: prepared, described and saved before the next batch starts (0.2.7)
 MIN_TEXT = 50  # fewer visible characters than this is a viewer shell, not something to describe
 TYPED = {"docs", "slides", "data", "dashboard"}  # kinds whose index.html is only the viewer shell (their source is elsewhere)
 
@@ -396,7 +397,7 @@ def _local_source(r):
     return p if p.lower().endswith((".html", ".htm")) and os.path.isfile(p) else None
 
 
-def batch_local(data, limit=20):
+def batch_local(data, limit=BATCH):
     """The background run without the Artifact tool (0.2.4): a new batch folder with excerpts of own pending rows
     that have a local source, and every other row taken marked NEEDS_INTERACTIVE. Prints the folder, the manifest
     and the counts; describe the folder from `batch manifest` on, as usual."""
@@ -452,7 +453,9 @@ HARD_AGE = 2 * 3600  # a run of ours still alive past this is stopped (it is stu
 MAX_UNREPORTED = 2  # runs a day that may end without a cost report; then no more launches that day
 RUN_FILE, OUT_FILE = "describer.json", "describer.out"
 LOG_FILE = "describer.log"  # one line per finished run (describer.out holds only the latest raw output)
-BACKOFF = 3600  # after a run that ended in a refusal the watcher launches no describer for this long (0.2.6)
+BACKOFF = 3600  # after a run that ended in a refusal, saved no row, hit the ceiling or cost too much per row, the watcher launches no describer for this long (0.2.6, 0.2.7)
+STOP_LOSS_PER_ROW = 0.01  # USD per saved row; a run above it backs off (the describe_stop_loss option, 0.2.7)
+CEILING_SHARE = 0.9  # a run that spent this share of RUN_CEILING counts as having hit it
 DENIAL_CHARS = 2000
 RUN_MARK = "/artifact-explorer:refresh describe-only"
 # The background run's own `ae` calls, named outright. The skills write `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" ...` with
@@ -503,7 +506,7 @@ def _read_out(data):
         return None
 
 
-def _run_log(data, pid, res, note=""):
+def _run_log(data, pid, res, note="", per_row=""):
     """Append one line for a finished run to describer.log: time, pid, cost, result, each denied tool with its input."""
     parts = [time.strftime("%Y-%m-%d %H:%M:%S"), "pid %d" % pid]
     if res:
@@ -512,6 +515,8 @@ def _run_log(data, pid, res, note=""):
         except (TypeError, ValueError):
             parts.append("$?")
         parts.append("result: " + " ".join(str(res.get("result", "")).split())[:500])
+        if per_row:
+            parts.append(per_row)
         for d in res.get("permission_denials") or []:
             if isinstance(d, dict):
                 try:
@@ -537,6 +542,25 @@ def _backoff_until(con):
         return float(v["until"]) if isinstance(v, dict) else 0.0
     except (KeyError, TypeError, ValueError):
         return 0.0
+
+
+def _backoff_reason(res, saved, stop_loss):
+    """Why a finished run puts the watcher on back-off, or None. res is (cost, text, denied) or None."""
+    if not res:
+        return None
+    cost, text, denied = res
+    if text.startswith("stopped: refused"):
+        tool = text[len("stopped: refused"):].strip().split(" ")[0] or (denied[0] if denied else "?")
+        return "last run refused %s" % tool, tool
+    if saved is None:
+        return None
+    if saved <= 0:
+        return "last run saved 0 rows ($%.3f)" % cost, ""
+    if cost >= CEILING_SHARE * RUN_CEILING:
+        return "last run cost $%.3f, at the $%.2f ceiling" % (cost, RUN_CEILING), ""
+    if cost / saved > stop_loss + 1e-12:
+        return "last run cost $%.4f per saved row, over $%.4f" % (cost / saved, stop_loss), ""
+    return None
 
 
 def _ours(pid):
@@ -577,11 +601,21 @@ def _running(data, con):
             common.log(data, "describer pid %d is older than %d min and is no longer our run; not waiting on it"
                        % (pid, MAX_AGE // 60))
     res = _result(data)
-    _run_log(data, pid, _read_out(data) if res else None)
+    saved = None
+    if "pending_at_launch" in rec:
+        try:
+            now_pending = len(pending_rows(con, owned_only=True, win=data_window(data, con)))
+            saved = max(0, int(rec["pending_at_launch"]) - now_pending)
+        except (TypeError, ValueError):
+            saved = None
+    per_row = ""
+    if res and saved is not None:
+        per_row = "saved %d, $%s per saved row" % (saved, ("%.4f" % (res[0] / saved)) if saved else "-")
+    _run_log(data, pid, _read_out(data) if res else None, per_row=per_row)
     if res:
         cost, text, denied = res
         db.add_spend(con, cost - booked, day=rec.get("day"), runs=0)
-        line = "finished: %s ($%.2f)%s" % (text, cost, "; refused: " + ", ".join(denied) if denied else "")
+        line = "finished: %s ($%.2f)%s%s" % (text, cost, "; " + per_row if per_row else "", "; refused: " + ", ".join(denied) if denied else "")
     else:
         day = rec.get("day") or db.today()
         n = int(db.state_get(con, "unreported_" + day, 0)) + 1
@@ -590,15 +624,15 @@ def _running(data, con):
         line = ("ended without a cost report; released the $%.2f booked (%d of %d such runs allowed today)"
                 % (booked, n, MAX_UNREPORTED))
     common.log(data, "describer " + line)
-    if res and res[1].startswith("stopped: refused"):
+    why = _backoff_reason(res, saved, common.options()["describe_stop_loss"])
+    if why:
         try:
             ended = os.path.getmtime(os.path.join(data, OUT_FILE))
         except OSError:
             ended = time.time()
-        tool = res[1][len("stopped: refused"):].strip().split(" ")[0] or (res[2][0] if res[2] else "?")
         until = ended + BACKOFF
-        db.state_set(con, "describer_backoff", {"until": until, "tool": tool})
-        common.log(data, "describer back-off: last run refused %s, next try after %s" % (tool, time.strftime("%H:%M:%S", time.localtime(until))))
+        db.state_set(con, "describer_backoff", {"until": until, "tool": why[1], "reason": why[0]})
+        common.log(data, "describer back-off: %s, next try after %s" % (why[0], time.strftime("%H:%M:%S", time.localtime(until))))
     db.state_set(con, "describer_result", {"t": time.time(), "pid": pid, "line": line})
     con.commit()
     try:
@@ -608,22 +642,27 @@ def _running(data, con):
     return False
 
 
-def launch(data, test=False):
+def launch(data, test=False, rows=None):
     """One launch decision at a time, also when `ae launch-describer` runs outside a watcher pass.
-    test=True (setup's check): launch now for one row, whatever the interval, and print what happened."""
+    test=True (setup's check): launch now for one row, whatever the interval, and print what happened.
+    rows=N (0.2.7): the same manual launch, for at most N rows (`describe-only N`); test is rows=1."""
+    if test and not rows:
+        rows = 1
+    test = test or bool(rows)
     with common.Lock(os.path.join(data, "describer.lock"), 120) as ok:
         if not ok:
             if test:
                 print("describer test: another launch decision is in progress; try again in a minute")
             return 0
-        return _launch(data, test)
+        return _launch(data, test, rows)
 
 
-def _launch(data, test=False):
+def _launch(data, test=False, nrows=None):
     """Start one background describer run when it is due and none is running. Prints nothing.
     The run is `claude -p`: it exits when done, has stdin closed, may only use the refresh skill's tools
     (dontAsk: anything else is refused, never asked) and is capped at RUN_BUDGET."""
     say = print if test else (lambda *a: None)
+    nrows = nrows or 1
     opts = common.options()
     con = db.connect(data)
     if _running(data, con):
@@ -670,7 +709,7 @@ def _launch(data, test=False):
     if os.path.basename(os.path.normpath(data)).endswith("-inline"):
         # loaded with --plugin-dir (development): the new session must load it the same way
         argv += ["--plugin-dir", common.ROOT]
-    argv.append(RUN_MARK + (" 1" if test else ""))
+    argv.append(RUN_MARK + (" %d" % nrows if test else ""))
     try:
         os.remove(os.path.join(data, OUT_FILE))  # an older run's report must never be read as this run's
     except OSError:
@@ -684,14 +723,14 @@ def _launch(data, test=False):
         rec, tmp = os.path.join(data, RUN_FILE), os.path.join(data, RUN_FILE + ".tmp")
         try:
             with open(tmp, "w", encoding="utf-8") as f:
-                json.dump({"pid": pid, "t": now, "day": day, "booked": RUN_BUDGET}, f)
+                json.dump({"pid": pid, "t": now, "day": day, "booked": RUN_BUDGET, "pending_at_launch": len(rows)}, f)
             os.replace(tmp, rec)  # never half-written: a torn record would read as "no run"
         except OSError:
             common.log(data, "describer launched (pid %d) but its record could not be written" % pid)
             return 0
-        common.log(data, "describer launched (pid %d) for %d pending rows, %d to categorize%s" % (pid, len(rows), n_recat, " (test: 1 row)" if test else ""))
-        say("describer test: launched (pid %d) for 1 row, $%.2f booked; `ae status` shows its result in a few minutes"
-            % (pid, RUN_BUDGET))
+        common.log(data, "describer launched (pid %d) for %d pending rows, %d to categorize%s" % (pid, len(rows), n_recat, " (test: %d row%s)" % (nrows, "" if nrows == 1 else "s") if test else ""))
+        say("describer test: launched (pid %d) for %d row%s, $%.2f booked; `ae status` shows its result in a few minutes"
+            % (pid, nrows, "" if nrows == 1 else "s", RUN_BUDGET))
     else:
         common.log(data, "describer launch failed")
         say("describer test: launch failed (see watch.log)")
@@ -863,7 +902,7 @@ def recat_count(con, owned_only=False):
     return con.execute("SELECT count(*) FROM artifacts WHERE " + recat_where(owned_only)).fetchone()[0]
 
 
-def batch_recat(data, limit=40, owned_only=False):
+def batch_recat(data, limit=BATCH, owned_only=False):
     """New folder + manifest of described rows that lack a category or topics (text items, nothing to read)."""
     con = db.connect(data)
     rs = con.execute("SELECT id, title, description FROM artifacts WHERE " + recat_where(owned_only) +

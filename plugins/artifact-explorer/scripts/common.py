@@ -21,6 +21,7 @@ DEFAULT_OPTIONS = {
     "share_harvest": False,
     "describe_model": "haiku",
     "describe_daily_cap": 1.0,
+    "describe_stop_loss": 0.01,
 }
 
 
