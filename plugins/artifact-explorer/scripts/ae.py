@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-VERSION = "0.2.4"
+VERSION = "0.2.5"
 
 
 def main(argv=None):
@@ -91,6 +91,7 @@ def main(argv=None):
     b.add_argument("--limit", type=int, default=20)
     b = bs.add_parser("save", help="store the describer's JSON lines")
     b.add_argument("file")
+    b.add_argument("--folder", help="the batch folder whose manifest the reply answers (when the reply is written elsewhere)")
     s = sub.add_parser("topics", help="list topics and the describer's suggestions; --accept NAME adds one to config.toml")
     g = s.add_mutually_exclusive_group()
     g.add_argument("--accept", metavar="NAME")
@@ -194,7 +195,7 @@ def main(argv=None):
         return {"start": lambda: describe.batch_start(data), "manifest": lambda: describe.batch_manifest(data, getattr(a, "folder", None)),
                 "recat": lambda: describe.batch_recat(data, getattr(a, "limit", 40), getattr(a, "owned_only", False)),
                 "local": lambda: describe.batch_local(data, getattr(a, "limit", 20)),
-                "save": lambda: describe.batch_save(data, getattr(a, "file", None))}[a.bcmd]()
+                "save": lambda: describe.batch_save(data, getattr(a, "file", None), getattr(a, "folder", None))}[a.bcmd]()
     if a.cmd == "topics":
         return describe.topics_cmd(data, accept=a.accept, reject=a.reject)
     if a.cmd == "set-kind":
