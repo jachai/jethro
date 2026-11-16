@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- Renamed from question-walkthrough to fancy-questions: the repo (github.com/jachai/fancy-questions), the
+  marketplace and the plugin. Install with `/plugin marketplace add jachai/fancy-questions` and
+  `/plugin install fancy-questions@fancy-questions`; the skills are now `/fancy-questions:build` and
+  `/fancy-questions:collect`. The `qw` CLI, the page and its saved data are unchanged.
+
 ## [0.2.0] - 2026-11-15
 - More fun to answer. Answering a question pops the check mark and throws a small burst of confetti from the
   option; the last question gets a big two-sided burst (plain canvas, no library, stops itself in ~2 s,
