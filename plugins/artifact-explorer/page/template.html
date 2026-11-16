@@ -315,6 +315,7 @@ function when(t, by, label){
 }
 function desc(r){
  if (r.pending) return el("span", "pend", "description pending");
+ if (r.unread){ const s = el("span", "dim sec", "shared with you, not read"); s.title = "claude.ai asks consent for each read of someone else's artifact, so it is described only when you run /artifact-explorer:refresh"; return s; }
  if (r.skipped){ const s = el("span", "dim sec", "no description"); s.title = r.skipped; return s; }
  return el("span", r.description ? "" : "dim", r.description);
 }

@@ -59,8 +59,9 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(a["repos"], ["other", "proj"])
         self.assertEqual((a["mine"], a["category"]), (True, "Reports"))
         self.assertEqual((r["bbbbbbbbbb"]["mine"], r["bbbbbbbbbb"]["category"]), (False, "Decks"))
-        self.assertEqual((r["cccccccccc"]["category"], r["cccccccccc"]["pending"], "from" in r["cccccccccc"]),
-                         ("Uncategorized", True, False))
+        # 0.2.11: owner unknown (found in history): not read in the background, so "unread", not pending
+        self.assertEqual((r["cccccccccc"]["category"], r["cccccccccc"]["pending"], r["cccccccccc"]["unread"],
+                          "from" in r["cccccccccc"]), ("Uncategorized", False, True, False))
         self.assertNotIn("created_by", a)
 
     def test_sharing_labels(self):

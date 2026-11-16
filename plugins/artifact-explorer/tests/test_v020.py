@@ -197,13 +197,26 @@ class RevokedTest(Base):
         r = db.get(self.con, "a" * 10)
         self.assertEqual((r["access"], r["other_org"], r["owned"]), ("edit", 1, 0))
         self.assertIsNotNone(r["shared_seen"])
-        self.ingest([self.sh("b")])
+        self.ingest([self.sh("b"), self.sh("c", other_org=True)])  # 0.2.11: the list must carry other-org rows
         self.assertIsNotNone(self.gone("a"))
         self.assertIsNone(self.gone("b"))
         self.assertTrue(self.rows()["a" * 10]["revoked"])
         self.ingest([self.sh("a"), self.sh("b")])
         self.assertIsNone(self.gone("a"))
         self.assertFalse(self.rows()["a" * 10]["revoked"])
+
+    def test_same_org_only_list_keeps_other_org_rows(self):  # 0.2.11 (Plant Shelf Explorer)
+        self.ingest([self.sh("a", other_org=True, access="comment"), self.sh("b"), self.sh("c")])
+        self.ingest([self.sh("b")])  # complete, but no other-org row in it
+        self.assertIsNone(self.gone("a"))
+        self.assertIsNotNone(self.gone("c"))  # a same-org row missing from it is still marked
+        self.assertFalse(self.rows()["a" * 10]["revoked"])
+
+    def test_shared_pending_row_is_unread_not_pending(self):  # 0.2.11
+        self.ingest([self.sh("a")])
+        r = self.rows()["a" * 10]
+        self.assertFalse(r["pending"])
+        self.assertTrue(r["unread"])
 
     def test_zero_shared_rows_never_revokes(self):
         self.ingest([self.sh("a")])
