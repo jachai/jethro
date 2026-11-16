@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.7] - 2026-11-16
+
+### Fixed
+- A background describer run spent $0.146 preparing one batch of 18 rows (54 turns, one read per turn, three Docs reads per Docs row) and ran out of budget before the describer step, so it saved nothing; the watcher then started the same run again every 10 minutes. The refresh skill now works in batches of at most 8 rows (Describe rows, `batch recat --limit`, `batch local --limit`, older recat; the describer agent takes up to 8 items). Each batch is prepared, described by the describer agent and saved with `AE batch save` before the next one starts, and a run stops after the save when the budget is low. A Docs row is described from its title and outline headings only (the lead-paragraph read is gone). The independent reads of a batch go in parallel in one turn: all Artifact reads, then all Docs project reads, then all outline reads.
+- Back-off (one hour, one `describer back-off: REASON, next try after HH:MM:SS` line in `watch.log`) now also follows a run that saved 0 rows, a run whose cost reached 90% of its $0.15 limit, and a run whose cost per saved row was above `STOP_LOSS_PER_ROW` ($0.01, the new `describe_stop_loss` option). The refusal case stays. A run with no cost report behaves as before.
+
+### Added
+- `describe-only N` (N 1..60) for the background mode: describe at most N rows. `describe-only` alone stays at most 60 rows.
+- `ae launch-describer --rows N`: a manual launch like `--test` (ignores the interval and back-off, prints what happened) that passes `describe-only N`. `--test` is `--rows 1`.
+- `describer.json` records `pending_at_launch`. When a run ends, rows saved = that count minus the current pending count (at least 0); `describer.log` and the `describer finished` line in `watch.log` show the saved count and the cost per saved row.
+
 ## [0.2.6] - 2026-11-16
 
 ### Fixed
