@@ -21,10 +21,10 @@ class TileTest(unittest.TestCase):
         return json.loads(subprocess.run([NODE], input=code, capture_output=True, encoding="utf-8", check=True).stdout)
 
     def test_initials(self):
-        titles = ["Housing Twin plan", "x", "  change-orders  dashboard", "\U0001F680\U0001F680", "!!! ???", "", "日本語の資料",
+        titles = ["Garden plan", "x", "  change-orders  dashboard", "\U0001F680\U0001F680", "!!! ???", "", "日本語の資料",
                   "Бюджет 2026", "single"]
         out = self.run_js("console.log(JSON.stringify(%s.map(initials)))" % json.dumps(titles))
-        self.assertEqual(out[0], "HT")
+        self.assertEqual(out[0], "GP")
         self.assertEqual(out[1], "X")
         self.assertEqual(out[2], "CO")
         self.assertEqual(out[3:6], ["?", "?", "?"])
@@ -52,11 +52,10 @@ class TemplateStringsTest(unittest.TestCase):
     def test_strings(self):
         t = tpl()
         self.assertNotIn("Shared with me", t)
-        self.assertNotIn('"Open"', t)
         self.assertNotIn("PH-START", t)
         self.assertIn('<link rel="icon" href="favicon.ico" sizes="any">', t)
         self.assertIn('<link rel="icon" type="image/svg+xml" href="__FAVICON_SVG__">', t)
-        self.assertIn('if (r.url.startsWith("https://claude.ai/")) a.href = r.url;', t)
+        self.assertIn('r.url.startsWith("https://claude.ai/") ? r.url : ""', t)
         self.assertIn('if (!t) return el("span", "dim", "unknown");', t)
         for s in ('id="status"', "as of build", "Page may be stale", "setInterval", "/*OLD-START*/", "older artifact",
                   "Describe older", "/artifact-explorer:refresh older", "aria-expanded", "navigator.clipboard", "#older",

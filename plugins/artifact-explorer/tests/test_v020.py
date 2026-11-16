@@ -68,16 +68,16 @@ class CategorizeTest(Base):
 
 
 class TopicsTest(Base):
-    TR = build.compile_topics(".", [{"name": "Housing Twin"}, {"name": "Monitors", "keywords": ["monitor", "triage"]}])
+    TR = build.compile_topics(".", [{"name": "Garden plan"}, {"name": "Monitors", "keywords": ["monitor", "triage"]}])
 
     def test_title_keywords_when_never_tagged(self):
-        self.assertEqual(build.tag_topics(self.TR, "Housing twin v2 triage", None, None), (["Housing Twin", "Monitors"], []))
+        self.assertEqual(build.tag_topics(self.TR, "Garden plan v2 triage", None, None), (["Garden plan", "Monitors"], []))
         self.assertEqual(build.tag_topics(self.TR, "Other", None, None), ([], []))
 
     def test_stored_list_wins_and_is_filtered(self):
-        t = build.tag_topics(self.TR, "Housing Twin", ["monitors", "Gone"], json.dumps(["New One"]))
-        self.assertEqual(t, (["Monitors", "Housing Twin"], ["New One"]))  # plus the title keyword match
-        self.assertEqual(build.tag_topics(self.TR, "Housing Twin", [], None)[1], [])
+        t = build.tag_topics(self.TR, "Garden plan", ["monitors", "Gone"], json.dumps(["New One"]))
+        self.assertEqual(t, (["Monitors", "Garden plan"], ["New One"]))  # plus the title keyword match
+        self.assertEqual(build.tag_topics(self.TR, "Garden plan", [], None)[1], [])
 
     def test_suggestion_becomes_topic_once_configured(self):
         self.assertEqual(build.tag_topics(self.TR, "x", [], ["monitors"]), (["Monitors"], []))
@@ -86,7 +86,7 @@ class TopicsTest(Base):
 class BatchTest(Base):
     def setUp(self):
         super().setUp()
-        self.cfg('[[topics]]\nname = "Housing Twin"\n[[topics]]\nname = "Monitors"\n')
+        self.cfg('[[topics]]\nname = "Garden plan"\n[[topics]]\nname = "Monitors"\n')
         for i in "ab":
             db.upsert_artifact(self.con, i * 10, title="Row " + i, owned=1, description="old" if i == "b" else None,
                                desc_source="describer" if i == "b" else None)
@@ -110,7 +110,7 @@ class BatchTest(Base):
         txt = open(os.path.join(f, "manifest.txt"), encoding="utf-8").read()
         self.assertIn("items: 1", out)
         self.assertIn("Categories (pick exactly one): Reports, Plans, Dashboards, Decks, Docs, Personal", txt)
-        self.assertIn("Housing Twin, Monitors", txt)
+        self.assertIn("Garden plan, Monitors", txt)
         self.assertIn("## ITEM aaaaaaaaaa\nfile: " + os.path.join(f, "aaaaaaaaaa.txt"), txt)
         self.assertNotIn("bbbbbbbbbb", txt)
         self.assertNotIn("Uncategorized", txt)
@@ -123,7 +123,7 @@ class BatchTest(Base):
         with open(res, "w", encoding="utf-8") as fh:
             fh.write("```json\n")
             fh.write(json.dumps({"id": "aaaaaaaaaa", "description": "A report on things.", "category": "reports",
-                                 "topics": ["monitors", "Nope", "Housing Twin", "Monitors"], "new_topic": "Cost Tools"}) + "\n")
+                                 "topics": ["monitors", "Nope", "Garden plan", "Monitors"], "new_topic": "Cost Tools"}) + "\n")
             fh.write("garbage line\n{not json}\n")
             fh.write(json.dumps({"id": "zzzzzzzzzz", "description": "x", "category": "Plans"}) + "\n")
             fh.write(json.dumps({"id": "bbbbbbbbbb", "category": "Made Up", "topics": ["Nope"]}) + "\n```\n")
@@ -132,7 +132,7 @@ class BatchTest(Base):
         a, b = db.get(self.con, "aaaaaaaaaa"), db.get(self.con, "bbbbbbbbbb")
         self.assertEqual((a["description"], a["desc_source"], a["category"], a["cat_source"]),
                          ("A report on things.", "describer", "Reports", "describer"))
-        self.assertEqual(json.loads(a["topics"]), ["Monitors", "Housing Twin"])
+        self.assertEqual(json.loads(a["topics"]), ["Monitors", "Garden plan"])
         self.assertEqual(json.loads(a["topic_suggest"]), ["Cost Tools"])
         self.assertEqual((b["category"], b["topics"], b["description"]), (None, None, "old"))  # unknown category dropped, no topics stays NULL
 
@@ -197,13 +197,26 @@ class RevokedTest(Base):
         r = db.get(self.con, "a" * 10)
         self.assertEqual((r["access"], r["other_org"], r["owned"]), ("edit", 1, 0))
         self.assertIsNotNone(r["shared_seen"])
-        self.ingest([self.sh("b")])
+        self.ingest([self.sh("b"), self.sh("c", other_org=True)])  # 0.2.11: the list must carry other-org rows
         self.assertIsNotNone(self.gone("a"))
         self.assertIsNone(self.gone("b"))
         self.assertTrue(self.rows()["a" * 10]["revoked"])
         self.ingest([self.sh("a"), self.sh("b")])
         self.assertIsNone(self.gone("a"))
         self.assertFalse(self.rows()["a" * 10]["revoked"])
+
+    def test_same_org_only_list_keeps_other_org_rows(self):  # 0.2.11 (Plant Shelf Explorer)
+        self.ingest([self.sh("a", other_org=True, access="comment"), self.sh("b"), self.sh("c")])
+        self.ingest([self.sh("b")])  # complete, but no other-org row in it
+        self.assertIsNone(self.gone("a"))
+        self.assertIsNotNone(self.gone("c"))  # a same-org row missing from it is still marked
+        self.assertFalse(self.rows()["a" * 10]["revoked"])
+
+    def test_shared_pending_row_is_unread_not_pending(self):  # 0.2.11
+        self.ingest([self.sh("a")])
+        r = self.rows()["a" * 10]
+        self.assertFalse(r["pending"])
+        self.assertTrue(r["unread"])
 
     def test_zero_shared_rows_never_revokes(self):
         self.ingest([self.sh("a")])
@@ -308,7 +321,7 @@ class UpdateCheckTest(Base):
             off = open(build.build(self.d, max_age=0, update_check=False), encoding="utf-8").read()
         self.assertIn('"latest": "v9.0.0"', html)
         self.assertNotIn("v9.0.0", off)
-        self.assertIn('"version": "0.2.10"', html)
+        self.assertIn('"version": "0.2.11"', html)
 
 
 class FaviconTest(Base):
@@ -375,7 +388,7 @@ class ColorsTest(Base):
         self.assertEqual([c["name"] for c in p["categories"]][:3], ["Reports", "Plans", "Dashboards"])
         self.assertEqual(p["categories"][0]["color"], "#2a78d6")
         self.assertEqual(p["categories"][-1]["name"], "Uncategorized")
-        self.assertEqual((p["topics"], p["version"], p["accent"]), (["T1"], "0.2.10", "#0f6b5c"))
+        self.assertEqual((p["topics"], p["version"], p["accent"]), (["T1"], "0.2.11", "#0f6b5c"))
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 import db  # noqa: E402
+import promote  # noqa: E402
 import importer  # noqa: E402
 
 PENDING = "desc_status='pending' AND (description IS NULL OR description='')"  # status counts only
@@ -52,13 +53,16 @@ def access_of(row):
     return a if a in ("view", "comment", "edit") else None
 
 
-def mark_revoked(con, listed_ids, now):
+def mark_revoked(con, listed_ids, now, orgs=(0, 1)):
     """Rows owned by someone else, seen in an earlier shared list, missing from this complete one: shared_gone
-    = now. Returns the number marked. The caller guarantees the list had at least one shared row."""
-    listed = set(listed_ids)
+    = now. Returns the number marked. The caller guarantees the list had at least one shared row.
+    orgs (0.2.11): the other_org values the list actually contains. The shared list does not always carry the
+    rows from another organization (a list of only same-org rows once marked 9 reachable other-org artifacts
+    gone), so a row is marked only when its own kind (same org / other org) is in the list."""
+    listed, orgs = set(listed_ids), set(int(bool(o)) for o in orgs)
     n = 0
-    for r in con.execute("SELECT id FROM artifacts WHERE owned=0 AND shared_seen IS NOT NULL AND shared_gone IS NULL").fetchall():
-        if r["id"] not in listed:
+    for r in con.execute("SELECT id, other_org FROM artifacts WHERE owned=0 AND shared_seen IS NOT NULL AND shared_gone IS NULL").fetchall():
+        if r["id"] not in listed and int(bool(r["other_org"])) in orgs:
             con.execute("UPDATE artifacts SET shared_gone=?, updated=? WHERE id=?", (now, now, r["id"]))
             n += 1
     return n
@@ -71,7 +75,9 @@ def ingest_list(data, file, shared_complete=False):
         rows = first(rows, "artifacts", "items", "rows") or []
     con = db.connect(data)
     n, now = 0, time.time()
-    listed, shared = set(), 0
+    # a first load: nothing described yet (the watcher may already have added rows from browser history)
+    was_empty = con.execute("SELECT count(*) FROM artifacts WHERE description IS NOT NULL AND description!=''").fetchone()[0] == 0
+    listed, shared, orgs = set(), 0, set()
     for r in rows:
         aid = db.resolve(con, db.id_from_url(first(r, "url", "link")) or first(r, "id"))
         if not aid:
@@ -98,16 +104,21 @@ def ingest_list(data, file, shared_complete=False):
         listed.add(aid)
         if owned_of(r) == 0:
             shared += 1
+            orgs.add(int(bool(r.get("other_org"))))
             con.execute("UPDATE artifacts SET shared_seen=?, shared_gone=NULL WHERE id=?", (now, aid))
         n += 1
     if shared_complete:
         if shared:
-            gone = mark_revoked(con, listed, now)
+            gone = mark_revoked(con, listed, now, orgs)
             if gone:
                 common.log(data, "ingest-list: %d shared rows no longer in the shared list" % gone)
         else:
             common.log(data, "ingest-list: --shared-complete with no shared rows: nothing marked revoked")
     db.fold_twins(con)
+    capped = db.first_load_cap(con, common.load_config(data), was_empty)
+    if capped:
+        common.log(data, "ingest-list: first load: the newest %d rows are described, %d older ones wait (`/artifact-explorer:refresh older`)"
+                   % (n and (con.execute("SELECT count(*) FROM artifacts").fetchone()[0] - capped), capped))
     con.commit()
     print("ingested %d rows" % n)
     return 0
@@ -455,7 +466,6 @@ RUN_FILE, OUT_FILE = "describer.json", "describer.out"
 LOG_FILE = "describer.log"  # one line per finished run (describer.out holds only the latest raw output)
 BACKOFF = 3600  # after a run that ended in a refusal, saved no row, hit the ceiling or cost too much per row, the watcher launches no describer for this long (0.2.6, 0.2.7)
 STOP_LOSS_PER_ROW = 0.01  # USD per saved row; a run above it backs off (the describe_stop_loss option, 0.2.7)
-CEILING_SHARE = 0.9  # a run that spent this share of RUN_CEILING counts as having hit it
 DENIAL_CHARS = 2000
 RUN_MARK = "/artifact-explorer:refresh describe-only"
 # The background run's own `ae` calls, named outright. The skills write `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" ...` with
@@ -476,9 +486,14 @@ def _skill_tools():
     raise RuntimeError("refresh skill has no allowed-tools")
 
 
+# Tools the skill allows for the in-session refresh only: the background mode never calls them (0.2.11), and an
+# unattended run is refused any ArtifactData `out_dir`, so allowing it would only invite a refusal and a 1 h back-off.
+SESSION_ONLY_TOOLS = ("ArtifactData",)
+
+
 def allowed_tools():
-    """--allowedTools for the background run: the skill's tools plus AE_TOOL, one comma-separated value as the skill writes it."""
-    tools = [t.strip() for t in re.split(r",(?![^()]*\))", _skill_tools()) if t.strip()]
+    """--allowedTools for the background run: the skill's tools minus the session-only ones, plus AE_TOOLS, one comma-separated value as the skill writes it."""
+    tools = [t.strip() for t in re.split(r",(?![^()]*\))", _skill_tools()) if t.strip() and t.strip() not in SESSION_ONLY_TOOLS]
     for t in AE_TOOLS:
         if t not in tools:
             tools.append(t)
@@ -556,8 +571,9 @@ def _backoff_reason(res, saved, stop_loss):
         return None
     if saved <= 0:
         return "last run saved 0 rows ($%.3f)" % cost, ""
-    if cost >= CEILING_SHARE * RUN_CEILING:
-        return "last run cost $%.3f, at the $%.2f ceiling" % (cost, RUN_CEILING), ""
+    # 0.2.11: a run that hit the ceiling but saved rows at or under the stop-loss per row was cut short while
+    # working well: no back-off, the next watch interval continues (an hour's wait per ~8-16 rows left a first
+    # load of 70+ rows "description pending" for most of a day)
     if cost / saved > stop_loss + 1e-12:
         return "last run cost $%.4f per saved row, over $%.4f" % (cost / saved, stop_loss), ""
     return None
@@ -1027,11 +1043,25 @@ def batch_save(data, file, folder=None):
     return 0
 
 
-def topics_cmd(data, accept=None, reject=None):
-    """List configured topics (with row counts) and the describer's suggestions; or accept / reject one suggestion."""
+def topics_cmd(data, accept=None, reject=None, hide=None, unhide=None):
+    """List configured topics (with row counts) and the describer's suggestions; or accept / reject one suggestion;
+    or hide / unhide a topic (0.2.11: stored in the state table, applied on the next build)."""
     cfg = common.load_config(data)
     names = [t["name"] for t in cfg.get("topics", []) if t.get("name")]
     con = db.connect(data)
+    if hide is not None or unhide is not None:
+        k = promote.key_of(hide if hide is not None else unhide)
+        if not k:
+            print("bad topic name", file=sys.stderr)
+            return 2
+        cur = [x for x in (db.state_get(con, promote.HIDDEN_KEY, []) or []) if isinstance(x, str)]
+        new = sorted(set(cur) | {k}) if hide is not None else [x for x in cur if promote.key_of(x) != k]
+        db.state_set(con, promote.HIDDEN_KEY, new)
+        con.commit()
+        if hide is not None and k in {promote.key_of(n) for n in names}:
+            print("note: %r is also listed under [[topics]] in config.toml; remove it there too" % hide)
+        print(("hidden: " if hide is not None else "shown again: ") + k + " (run `ae build` to update the page)")
+        return 0
     if accept is not None:
         name = " ".join(accept.split())
         if not name or len(name) > 40:

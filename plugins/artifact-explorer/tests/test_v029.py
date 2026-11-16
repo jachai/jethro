@@ -43,7 +43,8 @@ class Promote(unittest.TestCase):
         self.d = tempfile.mkdtemp()
         self.con = db.connect(self.d)
 
-    def add(self, i, topics=None, suggest=None, title="T"):
+    def add(self, i, topics=None, suggest=None, title=None):
+        title = title or "Title %d" % i  # 0.2.11: distinct title families, so each row counts as a use
         db.upsert_artifact(self.con, "a%d" % i, title=title, kind="Page", owned=1)
         self.con.execute("UPDATE artifacts SET topics=?, topic_suggest=? WHERE id=?",
                          (json.dumps(topics) if topics is not None else None, suggest, "a%d" % i))
