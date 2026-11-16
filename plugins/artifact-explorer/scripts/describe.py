@@ -231,8 +231,13 @@ def excerpt_for(data, paths, out, aid=None, kind=None, chars=3000, json_field=No
 def set_desc(data, aid, text):
     con = db.connect(data)
     db.upsert_artifact(con, aid, description=text.strip()[:200], desc_source="describer", desc_status="ok")
+    _clear_needs(con, aid)
     con.commit()
     return 0
+
+
+def _clear_needs(con, aid):
+    con.execute("UPDATE artifacts SET desc_note=NULL WHERE id=? AND desc_note=?", (aid, NEEDS_INTERACTIVE))
 
 
 def set_no_source(data, aid, con=None):
@@ -245,10 +250,22 @@ def set_no_source(data, aid, con=None):
     r = db.get(con, aid)
     if r is not None and not r["description"]:
         db.upsert_artifact(con, aid, description=(r["title"] or aid)[:200], desc_source="title", desc_status="no-source")
+        _clear_needs(con, aid)
         if own:
             con.commit()
     if own:
         con.close()
+    return 0
+
+
+def set_needs_interactive(data, aid):
+    """The background run could not read this own row: leave it for the in-session refresh (0.2.4)."""
+    con = db.connect(data)
+    r = db.get(con, aid)
+    if r is not None and not r["description"] and r["desc_status"] == "pending":
+        db.upsert_artifact(con, aid, desc_note=NEEDS_INTERACTIVE)
+        con.commit()
+    con.close()
     return 0
 
 
@@ -283,7 +300,8 @@ def set_sharing(data, aid, text):
 COLS = "id,url,title,kind,owned,thumb_status,desc_status,modified,local_path"
 
 
-def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None, need_desc=False, win=None):
+def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None, need_desc=False, win=None,
+              with_note=False):
     """The one row query: `ae rows`, `ae pending` and the describer launch all come through here.
     `win` (db.window) keeps only rows inside the window."""
     where, args = [], []
@@ -304,7 +322,7 @@ def list_rows(con, owned=False, desc_status=None, thumb_status=None, limit=None,
     if desc_status == "pending" and need_desc:
         where.append("(owned=1 OR shared_gone IS NULL)")
     sql = "SELECT %s FROM artifacts%s ORDER BY owned DESC, modified DESC, id" % (
-        COLS, " WHERE " + " AND ".join(where) if where else "")
+        COLS + (",desc_note" if with_note else ""), " WHERE " + " AND ".join(where) if where else "")
     if limit is not None:
         sql += " LIMIT %d" % limit
     return [dict(r) for r in con.execute(sql, args)]
@@ -315,8 +333,64 @@ def rows(data, **kw):
     return 0
 
 
+# 0.2.4: a row the background run could not read (no Artifact tool in that session, no local source) keeps
+# desc_status 'pending' with this note: the background run and the watcher leave it alone (no relaunch every
+# watch interval for rows it cannot describe); the in-session refresh still describes it and clears the note.
+NEEDS_INTERACTIVE = "needs interactive refresh"
+
+
 def pending_rows(con, owned_only, win=None):
-    return list_rows(con, owned=owned_only, desc_status="pending", need_desc=True, win=win)
+    """Rows waiting for a description. owned_only is the background run's view (and the watcher's launch
+    check): rows marked NEEDS_INTERACTIVE are left out of it."""
+    rs = list_rows(con, owned=owned_only, desc_status="pending", need_desc=True, win=win, with_note=True)
+    if owned_only:
+        rs = [r for r in rs if r.get("desc_note") != NEEDS_INTERACTIVE]
+    for r in rs:
+        r.pop("desc_note", None)
+    return rs
+
+
+def needs_interactive_count(con, win=None):
+    cond, wargs = db.window_sql(win) if win is not None else ("1=1", [])
+    return con.execute("SELECT count(*) FROM artifacts WHERE owned=1 AND desc_status='pending' AND "
+                       "(description IS NULL OR description='') AND desc_note=? AND " + cond,
+                       [NEEDS_INTERACTIVE] + list(wargs)).fetchone()[0]
+
+
+def _local_source(r):
+    """An own row's local HTML source (the file it was published from), when it is still on disk."""
+    p = r.get("local_path") or ""
+    return p if p.lower().endswith((".html", ".htm")) and os.path.isfile(p) else None
+
+
+def batch_local(data, limit=20):
+    """The background run without the Artifact tool (0.2.4): a new batch folder with excerpts of own pending rows
+    that have a local source, and every other row taken marked NEEDS_INTERACTIVE. Prints the folder, the manifest
+    and the counts; describe the folder from `batch manifest` on, as usual."""
+    con = db.connect(data)
+    rs = pending_rows(con, True, data_window(data, con))[:max(0, limit)]
+    root = batch_root(data)
+    os.makedirs(root, exist_ok=True)
+    used = [int(x) for x in os.listdir(root) if x.isdigit()]
+    folder = os.path.join(root, str(max(used, default=0) + 1))
+    _clear_old(root)
+    os.makedirs(folder)
+    marked, local = 0, []
+    for r in rs:
+        if _local_source(r):
+            local.append(r)
+        else:
+            db.upsert_artifact(con, r["id"], desc_note=NEEDS_INTERACTIVE)
+            marked += 1
+    con.commit()
+    con.close()
+    for r in local:
+        _text, skipped = excerpt_for(data, [r["local_path"]], os.path.join(folder, r["id"] + ".txt"), aid=r["id"])
+        if skipped:
+            os.remove(os.path.join(folder, r["id"] + ".txt"))
+    print(folder)
+    print("marked needs interactive refresh: %d" % marked)
+    return batch_manifest(data, folder)
 
 
 def data_window(data, con):
@@ -349,6 +423,9 @@ RUN_MARK = "/artifact-explorer:refresh describe-only"
 # the path quoted, and in dontAsk `Bash(sh */bin/ae *)` matches only the unquoted form: allow both (0.2.3).
 AE_TOOLS = ('Bash(sh "*/bin/ae" *)', "Bash(sh */bin/ae *)")
 AE_TOOL = AE_TOOLS[1]
+# claude -p withholds the Artifact tools ("sdk_default_off") unless this is set; without them the run cannot read
+# a single page (0.2.3 described 0 rows). Checked on claude 2.1.325; batch_local covers a CLI that ignores it (0.2.4).
+HEADLESS_ENV = {"CLAUDE_CODE_ARTIFACT": "1"}
 
 
 def _skill_tools():
@@ -505,7 +582,7 @@ def _launch(data, test=False):
         os.remove(os.path.join(data, OUT_FILE))  # an older run's report must never be read as this run's
     except OSError:
         pass
-    pid = common.detach(argv, cwd=data, out=os.path.join(data, OUT_FILE))
+    pid = common.detach(argv, cwd=data, out=os.path.join(data, OUT_FILE), env=HEADLESS_ENV)
     if pid:
         day = db.today()
         db.state_set(con, "describer_last", now)
@@ -566,6 +643,7 @@ def status(data, as_json=False):
         "older_pending": outw("SELECT COUNT(*) FROM artifacts WHERE " + nodesc + " AND coalesce(desc_status,'pending')='pending'"),
         "skipped_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE desc_status='skipped'"),
         "no_source_descriptions": one("SELECT COUNT(*) FROM artifacts WHERE desc_status='no-source'"),
+        "needs_interactive": needs_interactive_count(con, win),
         "thumbs_ok": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status='ok'"),
         # waiting for a headless capture (or failed it)
         "thumbs_missing": one("SELECT COUNT(*) FROM artifacts WHERE thumb_status IS NULL OR thumb_status IN ('pending','failed')"),
@@ -593,6 +671,9 @@ def status(data, as_json=False):
     print("categorized: %(categorized)d of %(described)d described" % out)
     print("descriptions pending: %(pending_descriptions)d (no text, skipped: %(skipped_descriptions)d; "
           "no source: %(no_source_descriptions)d, title shown)" % out)
+    if out["needs_interactive"]:
+        print("needs interactive refresh: %(needs_interactive)d of yours the background run could not read "
+              "(run /artifact-explorer:refresh)" % out)
     print("thumbnails: %(thumbs_ok)d ok, %(thumbs_missing)d waiting or failed" % out)
     if out["thumbs_none"]:
         print("no thumbnail: %(thumbs_none)d (no local file: turn on chrome_screenshots to capture them)" % out)
@@ -743,6 +824,7 @@ def _save_line(con, line, cats, tops, texts, done):
             set_no_source(None, aid, con)
         else:
             fields.update(description=d, desc_source="describer", desc_status="ok")
+            _clear_needs(con, aid)
     cat = cats.get(str(o.get("category") or "").strip().lower())
     if cat:
         fields.update(category=cat, cat_source="recat" if is_text else "describer")
