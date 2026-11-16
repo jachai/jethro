@@ -278,6 +278,39 @@ def set_kind(data, aid, kind):
     return 0
 
 
+def set_kinds(data, pairs):
+    """`ae set-kind ID=KIND [ID=KIND ...]` or the old `ae set-kind ID KIND`. Prints nothing."""
+    if len(pairs) == 2 and "=" not in pairs[0]:
+        pairs = [pairs[0] + "=" + pairs[1]]
+    rc = 0
+    for p in pairs:
+        aid, sep, kind = p.partition("=")
+        if not sep or not aid or not kind:
+            print("bad pair (want ID=KIND): " + p, file=sys.stderr)
+            rc = 2
+            continue
+        set_kind(data, aid, kind)
+    return rc
+
+
+def batch_excerpt(data, folder, pairs):
+    """`ae batch excerpt FOLDER ID=SAVED_FILE ...`: `ae excerpt SAVED_FILE --out FOLDER/ID.txt --id ID` for each pair.
+    A failing pair prints an error line and the rest go on."""
+    ok = bad = 0
+    for p in pairs:
+        aid, sep, src = p.partition("=")
+        try:
+            if not sep or not aid or not src or os.sep in aid or "/" in aid:
+                raise ValueError("want ID=SAVED_FILE")
+            excerpt_for(data, src, os.path.join(folder, aid + ".txt"), aid)
+            ok += 1
+        except Exception as e:  # one bad file must not stop the batch
+            bad += 1
+            print("error: %s: %s" % (p, " ".join(str(e).split())[:200]))
+    print("excerpted %d, failed %d" % (ok, bad))
+    return 0
+
+
 def requeue_no_source(con, win=None):
     """Put title-only rows and the typed rows 0.1.2-0.1.3 skipped back in the queue, inside the window only
     (an older row put back would show "pending" with nothing ever picking it). Returns the count."""
@@ -418,6 +451,9 @@ MAX_AGE = 30 * 60  # past this a live pid is trusted only when its command line 
 HARD_AGE = 2 * 3600  # a run of ours still alive past this is stopped (it is stuck) and treated as ended
 MAX_UNREPORTED = 2  # runs a day that may end without a cost report; then no more launches that day
 RUN_FILE, OUT_FILE = "describer.json", "describer.out"
+LOG_FILE = "describer.log"  # one line per finished run (describer.out holds only the latest raw output)
+BACKOFF = 3600  # after a run that ended in a refusal the watcher launches no describer for this long (0.2.6)
+DENIAL_CHARS = 2000
 RUN_MARK = "/artifact-explorer:refresh describe-only"
 # The background run's own `ae` calls, named outright. The skills write `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" ...` with
 # the path quoted, and in dontAsk `Bash(sh */bin/ae *)` matches only the unquoted form: allow both (0.2.3).
@@ -458,6 +494,51 @@ def _result(data):
     return cost, " ".join(str(res.get("result", "")).split())[:200], denied
 
 
+def _read_out(data):
+    try:
+        with open(os.path.join(data, OUT_FILE), encoding="utf-8") as f:
+            res = json.load(f)
+        return res if isinstance(res, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _run_log(data, pid, res, note=""):
+    """Append one line for a finished run to describer.log: time, pid, cost, result, each denied tool with its input."""
+    parts = [time.strftime("%Y-%m-%d %H:%M:%S"), "pid %d" % pid]
+    if res:
+        try:
+            parts.append("$%.2f" % float(res.get("total_cost_usd")))
+        except (TypeError, ValueError):
+            parts.append("$?")
+        parts.append("result: " + " ".join(str(res.get("result", "")).split())[:500])
+        for d in res.get("permission_denials") or []:
+            if isinstance(d, dict):
+                try:
+                    ti = json.dumps(d.get("tool_input"), ensure_ascii=False)
+                except (TypeError, ValueError):
+                    ti = str(d.get("tool_input"))
+                parts.append("denied %s %s" % (d.get("tool_name"), ti[:DENIAL_CHARS]))
+    else:
+        parts.append(note or "no cost report")
+    p = os.path.join(data, LOG_FILE)
+    try:
+        if os.path.exists(p) and os.path.getsize(p) > 1_000_000:
+            os.replace(p, p + ".1")
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(" | ".join(x.replace("\n", " ") for x in parts) + "\n")
+    except OSError:
+        pass
+
+
+def _backoff_until(con):
+    v = db.state_get(con, "describer_backoff", None)
+    try:
+        return float(v["until"]) if isinstance(v, dict) else 0.0
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+
+
 def _ours(pid):
     """True when pid's command line is a describer run (so a live pid past MAX_AGE is not a reused one)."""
     return RUN_MARK in (common.pid_cmdline(pid) or "")
@@ -496,6 +577,7 @@ def _running(data, con):
             common.log(data, "describer pid %d is older than %d min and is no longer our run; not waiting on it"
                        % (pid, MAX_AGE // 60))
     res = _result(data)
+    _run_log(data, pid, _read_out(data) if res else None)
     if res:
         cost, text, denied = res
         db.add_spend(con, cost - booked, day=rec.get("day"), runs=0)
@@ -508,6 +590,15 @@ def _running(data, con):
         line = ("ended without a cost report; released the $%.2f booked (%d of %d such runs allowed today)"
                 % (booked, n, MAX_UNREPORTED))
     common.log(data, "describer " + line)
+    if res and res[1].startswith("stopped: refused"):
+        try:
+            ended = os.path.getmtime(os.path.join(data, OUT_FILE))
+        except OSError:
+            ended = time.time()
+        tool = res[1][len("stopped: refused"):].strip().split(" ")[0] or (res[2][0] if res[2] else "?")
+        until = ended + BACKOFF
+        db.state_set(con, "describer_backoff", {"until": until, "tool": tool})
+        common.log(data, "describer back-off: last run refused %s, next try after %s" % (tool, time.strftime("%H:%M:%S", time.localtime(until))))
     db.state_set(con, "describer_result", {"t": time.time(), "pid": pid, "line": line})
     con.commit()
     try:
@@ -549,6 +640,8 @@ def _launch(data, test=False):
         say("describer test: no `claude` command on PATH; the background describer cannot start")
         return 0
     if not test and now - db.state_get(con, "describer_last", 0) < opts["watch_interval"] * 60:
+        return 0
+    if not test and now < _backoff_until(con):  # the last run was refused: do not repeat it every interval (manual --test ignores this)
         return 0
     if not common.allow_rule_present():
         # without the setup allow rule every `ae` call in the unattended run would wait for approval;
