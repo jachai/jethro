@@ -3,6 +3,11 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.10] - 2026-11-16
+
+### Fixed
+- Promoted (and configured) topics were not applied to rows the describer had not tagged yet (topics never stored), so a promoted topic showed only 0-2 rows. A suggestion that matches a configured or promoted topic now applies to those rows too.
+
 ## [0.2.9] - 2026-11-16
 
 ### Added
