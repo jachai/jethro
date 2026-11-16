@@ -10,9 +10,11 @@ import re
 import sys
 
 RULE = "Bash(sh */artifact-explorer/*/bin/ae *)"
+RULE_QUOTED = 'Bash(sh "*/artifact-explorer/*/bin/ae" *)'  # 0.2.3: the skills quote the path
+RULES = (RULE_QUOTED, RULE)
 
 
-def remove(text):
+def remove(text, RULE=RULE):
     lit = re.escape(json.dumps(RULE))
     # "rule", (not last)  |  , "rule" (last in the list)
     out, n = re.subn(r'\n[ \t]*' + lit + r'[ \t]*,', "", text, count=1)
@@ -21,7 +23,7 @@ def remove(text):
     return out
 
 
-def add(text):
+def add(text, RULE=RULE):
     m = re.search(r'("allow"\s*:\s*\[)(\s*)', text)
     if not m:
         return None
@@ -35,20 +37,23 @@ def main(mode, src, dst):
     text = open(src, encoding="utf-8").read()
     want = json.loads(text)
     allow = want.setdefault("permissions", {}).setdefault("allow", [])
-    if mode == "remove":
-        if RULE not in allow:
-            print("  rule not present; nothing to change")
-            open(dst, "w", encoding="utf-8").write(text)
-            return 0
-        allow.remove(RULE)
-        out = remove(text)
-    else:
-        if RULE in allow:
-            print("  rule already present; nothing to change")
-            open(dst, "w", encoding="utf-8").write(text)
-            return 0
-        allow.insert(0, RULE)
-        out = add(text)
+    out, changed = text, False
+    for rule in (RULES if mode == "add" else reversed(RULES)):
+        if mode == "remove":
+            if rule not in allow:
+                continue
+            allow.remove(rule)
+            out = remove(out, rule)
+        else:
+            if rule in allow:
+                continue
+            allow.insert(0, rule)
+            out = add(out, rule) if out is not None else None
+        changed = True
+    if not changed:
+        print("  rule already in the wanted state; nothing to change")
+        open(dst, "w", encoding="utf-8").write(text)
+        return 0
     try:
         ok = out is not None and json.loads(out) == want
     except ValueError:

@@ -306,7 +306,8 @@ class WindowTest(Base):
         self.assertIn("window: 60 days (+30): 3 rows", run(self.d, "status")[1])
 
     def test_describer_launch_queue_is_windowed(self):
-        old(self.con, A, 5, desc_status="ok", description="done", desc_source="describer")
+        old(self.con, A, 5, desc_status="ok", description="done", desc_source="describer",
+            category="Plans", cat_source="describer", topics='["x"]')
         self.con.commit()
         with mock.patch.object(describe.shutil, "which", return_value="/bin/claude"), \
                 mock.patch.object(describe.common, "allow_rule_present", return_value=True), \

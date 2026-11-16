@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 
 
 def main(argv=None):
@@ -81,8 +81,9 @@ def main(argv=None):
     bs.add_parser("start", help="print a new empty batch folder")
     b = bs.add_parser("manifest", help="write FOLDER/manifest.txt from the excerpts in it")
     b.add_argument("folder")
-    b = bs.add_parser("recat", help="new batch folder + manifest of described rows that have no category pick yet")
+    b = bs.add_parser("recat", help="new batch folder + manifest of described rows that lack a category or topics")
     b.add_argument("--limit", type=int, default=40)
+    b.add_argument("--owned-only", action="store_true", help="only your own artifacts (the background run)")
     b = bs.add_parser("save", help="store the describer's JSON lines")
     b.add_argument("file")
     s = sub.add_parser("topics", help="list topics and the describer's suggestions; --accept NAME adds one to config.toml")
@@ -97,7 +98,11 @@ def main(argv=None):
         return doctor.run(a.data or os.environ.get("AE_DATA") or common.default_data_dir(), VERSION, a.expect)
     if a.cmd == "allow-rule":
         present = common.allow_rule_present()
-        print(("present: " if present else "missing: ") + common.ALLOW_RULE)
+        miss = common.allow_rules_missing()
+        have = [r for r in common.ALLOW_RULES if r not in miss]
+        print(("present: " + have[0]) if present else "missing: " + miss[0])
+        for r in miss:  # what setup would still add (both forms: the skills quote the path)
+            print("add: " + r)
         return 0 if present else 1
     data = common.data_dir(a.data)
 
@@ -182,7 +187,7 @@ def main(argv=None):
         return describe.ingest_list(data, a.file, shared_complete=a.shared_complete)
     if a.cmd == "batch":
         return {"start": lambda: describe.batch_start(data), "manifest": lambda: describe.batch_manifest(data, getattr(a, "folder", None)),
-                "recat": lambda: describe.batch_recat(data, getattr(a, "limit", 40)),
+                "recat": lambda: describe.batch_recat(data, getattr(a, "limit", 40), getattr(a, "owned_only", False)),
                 "save": lambda: describe.batch_save(data, getattr(a, "file", None))}[a.bcmd]()
     if a.cmd == "topics":
         return describe.topics_cmd(data, accept=a.accept, reject=a.reject)

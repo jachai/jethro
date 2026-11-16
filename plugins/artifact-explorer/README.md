@@ -49,7 +49,7 @@ At most once a day the build asks GitHub for the latest release of `jachai/artif
 
 ## Cost
 
-Descriptions are written in batches of up to 8 artifacts per describer call by a background `claude -p` run on `haiku` (the `describe_model` option). Each run is limited to $0.20, $0.25 is booked against the daily cap when it starts, and the real cost replaces the booking when it ends. The default cap is $1.00 a day (`describe_daily_cap`); `ae status` shows today's spend. A run that ends without reporting its cost gives its booking back, and after two such runs in a day the describer waits for the next day. Without the setup permission rule no background run starts and nothing is spent; `/artifact-explorer:refresh` in a session describes on your normal usage.
+Descriptions are written in batches of up to 20 artifacts per describer call, up to 60 per run, by a background `claude -p` run on `haiku` (the `describe_model` option). Each run is limited to $0.15, $0.02 is booked against the daily cap when it starts, and the real cost replaces the booking when it ends. The default cap is $1.00 a day (`describe_daily_cap`); `ae status` shows today's spend. A run that ends without reporting its cost gives its booking back, and after two such runs in a day the describer waits for the next day. Without the setup permission rule no background run starts and nothing is spent; `/artifact-explorer:refresh` in a session describes on your normal usage.
 
 ## Options
 
@@ -61,7 +61,7 @@ Change them in `/config` (plugins).
 - `chrome_screenshots`: let `/artifact-explorer:screenshots` use Claude in Chrome for thumbnails (default off).
 - `share_harvest`: let `/artifact-explorer:sharing` read the Share dialog of your artifacts in Chrome (default off).
 - `describe_model`: model of the background describer session (default `haiku`). The `describer` agent itself always runs on `haiku`.
-- `describe_daily_cap`: USD per day for background describer runs (default 1.0). A run starts only when today's spend plus one run's $0.25 limit stays within it, and only one run goes at a time.
+- `describe_daily_cap`: USD per day for background describer runs (default 1.0). A run starts only when today's spend plus one run's $0.02 booking stays within it, and only one run goes at a time.
 
 ## Which artifacts get described
 
