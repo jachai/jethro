@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-VERSION = "0.2.3"
+VERSION = "0.2.4"
 
 
 def main(argv=None):
@@ -40,6 +40,8 @@ def main(argv=None):
     g = s.add_mutually_exclusive_group(required=True)
     g.add_argument("--file", help="UTF-8 file holding the sentence (never pass artifact-derived text as an argument)")
     g.add_argument("--no-source", action="store_true", help="no readable source: show the title, retried by `pending --retry-no-source`")
+    g.add_argument("--needs-interactive", action="store_true",
+                   help="the background run could not read it: the background run skips it, the in-session refresh describes it")
     s = sub.add_parser("set-kind", help="record the Artifact type a read reported (Data and Dashboard are one kind)")
     s.add_argument("id")
     s.add_argument("kind")
@@ -84,6 +86,9 @@ def main(argv=None):
     b = bs.add_parser("recat", help="new batch folder + manifest of described rows that lack a category or topics")
     b.add_argument("--limit", type=int, default=40)
     b.add_argument("--owned-only", action="store_true", help="only your own artifacts (the background run)")
+    b = bs.add_parser("local", help="no Artifact tool (background run): batch of own pending rows with a local source; "
+                      "the others are marked needs interactive refresh")
+    b.add_argument("--limit", type=int, default=20)
     b = bs.add_parser("save", help="store the describer's JSON lines")
     b.add_argument("file")
     s = sub.add_parser("topics", help="list topics and the describer's suggestions; --accept NAME adds one to config.toml")
@@ -188,6 +193,7 @@ def main(argv=None):
     if a.cmd == "batch":
         return {"start": lambda: describe.batch_start(data), "manifest": lambda: describe.batch_manifest(data, getattr(a, "folder", None)),
                 "recat": lambda: describe.batch_recat(data, getattr(a, "limit", 40), getattr(a, "owned_only", False)),
+                "local": lambda: describe.batch_local(data, getattr(a, "limit", 20)),
                 "save": lambda: describe.batch_save(data, getattr(a, "file", None))}[a.bcmd]()
     if a.cmd == "topics":
         return describe.topics_cmd(data, accept=a.accept, reject=a.reject)
@@ -196,6 +202,8 @@ def main(argv=None):
     if a.cmd == "set-desc":
         if a.no_source:
             return describe.set_no_source(data, a.id)
+        if a.needs_interactive:
+            return describe.set_needs_interactive(data, a.id)
         with open(a.file, encoding="utf-8") as f:
             return describe.set_desc(data, a.id, f.read())
     if a.cmd == "rows":

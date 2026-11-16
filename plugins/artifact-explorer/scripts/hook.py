@@ -86,11 +86,15 @@ def _start(data):
     con = db.connect(data, timeout=3)
     cond, args = db.window_sql(db.window(con, common.load_config(data)))
     n = con.execute("SELECT COUNT(*) FROM artifacts WHERE owned=0 AND desc_status='pending' AND " + cond, args).fetchone()[0]
+    # own rows the background run could not read (0.2.4): only an in-session refresh describes them
+    m = con.execute("SELECT COUNT(*) FROM artifacts WHERE owned=1 AND desc_status='pending' AND desc_note=? AND "
+                    "(description IS NULL OR description='') AND " + cond, ["needs interactive refresh"] + list(args)).fetchone()[0]
     con.close()
-    if n:
+    parts = (["%d shared artifacts" % n] if n else []) + (["%d of yours the background describer could not read" % m] if m else [])
+    if parts:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext":
-              "Artifact Explorer: %d shared artifacts are waiting for a description. "
-              "Run /artifact-explorer:refresh to describe them." % n}}))
+              "Artifact Explorer: %s %s waiting for a description. "
+              "Run /artifact-explorer:refresh to describe them." % (" and ".join(parts), "is" if not n and m == 1 else "are")}}))
 
 
 def spool_dir(data):
