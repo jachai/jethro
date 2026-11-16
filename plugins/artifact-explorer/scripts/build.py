@@ -177,13 +177,14 @@ def _stored(v):
 
 
 def auto_topics(data, cfg):
-    """(promoted topic dicts, alias map) for this pass; promotion is re-run on every build (0.2.9)."""
+    """(promoted topic dicts, alias map, hidden topic keys) for this pass; promotion is re-run on every build (0.2.9)."""
     con = db.connect(data)
     try:
         names, alias = promote.resolve(con, cfg)
+        hidden = {promote.key_of(x) for x in (db.state_get(con, promote.HIDDEN_KEY, []) or []) if isinstance(x, str)}
     finally:
         con.close()
-    return [{"name": n, "keywords": ["(?!)"], "auto": True} for n in names], alias
+    return [{"name": n, "keywords": ["(?!)"], "auto": True} for n in names], alias, hidden
 
 
 def all_topics(cfg, auto):
@@ -194,7 +195,7 @@ def all_topics(cfg, auto):
 def collect(data, cfg):
     flt, over = cfg.get("filter", {}), cfg.get("overrides", {})
     rules = compile_rules(data, cfg.get("categories", []))
-    auto, alias = auto_topics(data, cfg)
+    auto, alias, hidden = auto_topics(data, cfg)
     trules = compile_topics(data, all_topics(cfg, auto))
     inc, exc = set(flt.get("include_repos", [])), set(flt.get("exclude_repos", []))
     exc_ids = set(flt.get("exclude_ids", []))
@@ -212,6 +213,9 @@ def collect(data, cfg):
         thumb = r["thumb"] if r["thumb"] and os.path.exists(os.path.join(data, r["thumb"])) else ""
         others = r["owned"] == 0
         topics, suggested = tag_topics(trules, r["title"], _stored(r["topics"]), r["topic_suggest"], alias)
+        if hidden:  # 0.2.11: `ae topics --hide NAME`
+            topics = [t for t in topics if promote.key_of(t) not in hidden]
+            suggested = [t for t in suggested if promote.key_of(t) not in hidden]
         copy = r["local_copy"] if others and r["local_copy"] and os.path.exists(os.path.join(data, r["local_copy"])) else ""
         access = (r["access"] or "").lower()
         rows.append({

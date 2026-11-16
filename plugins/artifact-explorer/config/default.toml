@@ -65,8 +65,11 @@ min_uses = 2
 # Only artifacts touched in the last `days` are described and get a thumbnail; older ones sit in a collapsed
 # "older artifacts" group on the page. key = "modified" (else created, else first seen) or "created".
 # days = 0 describes everything. `/artifact-explorer:refresh older` widens the window by 30 days each time.
+# first_load (0.2.11): on the very first refresh only the newest N artifacts are described (default 100, 0 = all);
+# `/artifact-explorer:refresh older` lifts it.
 [window]
 days = 60
+first_load = 100
 key = "modified"
 
 # Which rows to show. Empty lists mean "show everything".

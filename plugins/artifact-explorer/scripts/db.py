@@ -219,6 +219,36 @@ def add_event(con, aid, ts, kind, source, session_id=None, cwd=None, repo=None, 
     return bool(cur.rowcount)
 
 
+FIRST_LOAD_KEY = "first_load_cutoff"
+FIRST_LOAD_DONE = "first_load_done"
+DEFAULT_FIRST_LOAD = 100
+
+
+def first_load_cap(con, cfg, was_empty):
+    """0.2.11: called after each list ingest. On the very first one (nothing described before it), when more
+    than [window] first_load rows (default 100, 0 = no cap) came in, record the time of the Nth newest as a cutoff:
+    only those rows are described and get thumbnails, the rest wait in the older group. Returns rows capped."""
+    if state_get(con, FIRST_LOAD_DONE, False):
+        return 0
+    state_set(con, FIRST_LOAD_DONE, True)
+    if not was_empty:
+        return 0
+    try:
+        cap = max(0, int((cfg.get("window") or {}).get("first_load", DEFAULT_FIRST_LOAD)))
+    except (TypeError, ValueError):
+        cap = DEFAULT_FIRST_LOAD
+    w = cfg.get("window") or {}
+    expr = "coalesce(%s)" % ", ".join(WINDOW_KEYS.get(str(w.get("key", "modified")).lower(), WINDOW_KEYS["modified"]))
+    total = con.execute("SELECT count(*) FROM artifacts").fetchone()[0]
+    if not cap or total <= cap:
+        return 0
+    t = con.execute("SELECT %s FROM artifacts ORDER BY %s DESC LIMIT 1 OFFSET ?" % (expr, expr), (cap - 1,)).fetchone()[0]
+    if t is None:
+        return 0
+    state_set(con, FIRST_LOAD_KEY, t)
+    return total - cap
+
+
 WINDOW_KEYS = {"modified": ("modified", "created", "first_seen"), "created": ("created", "modified", "first_seen")}
 
 
@@ -233,6 +263,9 @@ def window(con, cfg, now=None):
     extra = int(state_get(con, "window_extra_days", 0) or 0)
     cols = WINDOW_KEYS.get(str(w.get("key", "modified")).lower(), WINDOW_KEYS["modified"])
     cutoff = None if days == 0 else (now or time.time()) - (days + extra) * 86400
+    first = state_get(con, FIRST_LOAD_KEY, None)  # 0.2.11: the first load covers the newest [window] first_load rows
+    if isinstance(first, (int, float)) and not extra:  # `ae window --widen` (refresh older) lifts it
+        cutoff = first if cutoff is None else max(cutoff, first)
     return {"days": days, "extra": extra, "cutoff": cutoff, "cols": cols,
             "expr": "coalesce(%s)" % ", ".join(cols)}
 
