@@ -51,6 +51,17 @@ keywords = ["personal","travel","trip","recipe","home","family","budget"]
 # keywords = ["housing", "twin"]     # optional regexes on the TITLE; default is the name itself
 # `ae topics` lists them and the describer's suggestions; `ae topics --accept NAME` adds one.
 
+# Suggested topics (0.2.9): a describer suggestion used on at least `min_uses` artifacts is promoted to a topic on
+# every build (0 = off). Near-duplicates merge first (case, plural, 'change order backlog' -> 'change orders' when
+# the longer one has fewer uses). Promoted topics are remembered. To drop or rename one, in config.toml:
+#   [topic_promote]
+#   demote = ["Test Suite"]
+#   [topic_promote.rename]
+#   "Pricing" = "Pricing Model"
+# A topic you list under [[topics]] is never changed by promotion.
+[topic_promote]
+min_uses = 2
+
 # Only artifacts touched in the last `days` are described and get a thumbnail; older ones sit in a collapsed
 # "older artifacts" group on the page. key = "modified" (else created, else first seen) or "created".
 # days = 0 describes everything. `/artifact-explorer:refresh older` widens the window by 30 days each time.
