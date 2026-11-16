@@ -1,10 +1,10 @@
 ---
 name: walkthrough-checker
-description: Checks a published question-walkthrough artifact in Chrome before it is called ready (themes, phone width, SVG text fit, recommended-first, multi-part and pick-some guards, one db save + delete, summary). Give it the artifact URL and the data dir. Returns at most 10 lines.
+description: Checks a published fancy-questions walkthrough artifact in Chrome before it is called ready (themes, phone width, SVG text fit, recommended-first, multi-part and pick-some guards, one db save + delete, summary). Give it the artifact URL and the data dir. Returns at most 10 lines.
 model: sonnet
 ---
 
-You check one question-walkthrough page. You are given an artifact URL and a data dir (`page.json`,
+You check one fancy-questions walkthrough page. You are given an artifact URL and a data dir (`page.json`,
 `cards/*.json`). Do not edit any file and do not republish; report what is wrong so the builder fixes the data.
 
 Setup: load the Chrome tools in ONE ToolSearch call (`tabs_context_mcp, tabs_create_mcp, navigate, computer,
