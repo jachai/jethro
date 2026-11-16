@@ -45,6 +45,8 @@ Data dir: `walkthrough/<slug>/` in the current project unless the user names one
 6. **Publish a NEW artifact** with the Artifact tool: `file_path: <dir>/index.html`, `icon: "checklist"`,
    `capabilities: {"db": {}, "user": {"scopes": ["profile"]}}`, a one-sentence description. Never republish
    over last round's page: its answers live in its own db. Write the URL into `<dir>/state.md`.
+   Sharing comes later (step 9): the reader must be a **Contributor** or higher; a Viewer or Commenter can open
+   the page but none of their answers reach the author.
 7. **Pre-share check: can a reader's answer reach you?** A reader whose share level is too low can open the
    page but every save is refused (the page now says so in a red banner, but the answers still never reach
    you). Run ONE write as a Contributor-level reader, then remove it. Load `ArtifactData` if it is deferred:
