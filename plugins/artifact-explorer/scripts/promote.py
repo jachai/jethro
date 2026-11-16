@@ -7,7 +7,7 @@ state table (key topics_promoted: {key: display name}) so it stays promoted, and
 names to add to the Topic filter plus an alias map (every raw spelling -> the topic it applies to).
 
 0.2.11: uses are counted per title family (the first two words of the title), so two versions of one artifact
-('demo build-trace diagram' and 'demo build-trace exemplar') count once and a one-off topic is not promoted.
+('garden bed-plan diagram' and 'garden bed-plan exemplar') count once and a one-off topic is not promoted.
 Promotions saved before 0.2.11 are checked once against this rule. `ae topics --hide NAME` hides a topic
 (kept in the state table, undone by --unhide NAME).
 

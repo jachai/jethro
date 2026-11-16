@@ -69,7 +69,7 @@ class TemplateTest(unittest.TestCase):
 
 
 class TopicFamilyTest(unittest.TestCase):
-    """Item 3: 'demo pipeline' was promoted from two versions of one diagram."""
+    """Item 3: 'garden pipeline' was promoted from two versions of one diagram."""
     def setUp(self):
         self.d = tempfile.mkdtemp()
         self.con = db.connect(self.d)
@@ -80,16 +80,16 @@ class TopicFamilyTest(unittest.TestCase):
         self.con.commit()
 
     def test_one_title_family_is_not_promoted(self):
-        self.add(1, "demo build-trace — full pipeline graph exemplar", ["demo pipeline"])
-        self.add(2, "demo build-trace diagram — Garden Run v1", ["demo pipeline"])
+        self.add(1, "garden bed-plan — full pipeline graph exemplar", ["garden pipeline"])
+        self.add(2, "garden bed-plan diagram — Garden Run v1", ["garden pipeline"])
         self.assertEqual(promote.resolve(self.con, {})[0], [])
-        self.add(3, "Pipeline cost review", ["demo pipeline"])  # a second family promotes it
-        self.assertEqual(promote.resolve(self.con, {})[0], ["demo pipeline"])
+        self.add(3, "Pipeline cost review", ["garden pipeline"])  # a second family promotes it
+        self.assertEqual(promote.resolve(self.con, {})[0], ["garden pipeline"])
 
     def test_old_promotion_rechecked_once(self):
-        self.add(1, "demo build-trace one", ["demo pipeline"])
-        self.add(2, "demo build-trace two", ["demo pipeline"])
-        db.state_set(self.con, promote.STATE_KEY, {"demo pipeline": "demo pipeline"})  # saved by 0.2.10
+        self.add(1, "garden bed-plan one", ["garden pipeline"])
+        self.add(2, "garden bed-plan two", ["garden pipeline"])
+        db.state_set(self.con, promote.STATE_KEY, {"garden pipeline": "garden pipeline"})  # saved by 0.2.10
         self.con.commit()
         self.assertEqual(promote.resolve(self.con, {})[0], [])
         self.assertTrue(db.state_get(self.con, promote.RECHECK_KEY))

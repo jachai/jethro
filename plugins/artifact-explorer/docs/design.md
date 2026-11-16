@@ -157,8 +157,8 @@ keywords = ["report","audit","review","post-?mortem","summary"]
 # ... Plans, Dashboards, Decks, Docs, Personal; Uncategorized is the fallback
 
 [[topics]]                # personal labels; none ship by default
-name = "Housing"
-keywords = ["housing"]    # regexes on the title; default is the name as a literal
+name = "Travel"
+keywords = ["trip"]    # regexes on the title; default is the name as a literal
 
 [filter]                  # empty = show everything
 include_repos = []        # show only rows whose repos intersect this list (rows with no repo are hidden when it is set)
