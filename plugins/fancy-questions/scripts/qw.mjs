@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { load, check } from './lint.mjs';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export function build(dir) {

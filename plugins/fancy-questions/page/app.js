@@ -10,6 +10,8 @@ const ALLQ = Q.flatMap(parts);
 const answers = {}, pending = {};
 let idx = 0, mode = '';
 let db = null, user = null, meId = null;
+/* What user.can('data.write') said: true, false, or null (not told / no user capability). */
+let canWrite = null;
 /* Why answers are not reaching the author (any entry = fail loud). */
 const broken = new Set();
 const AUTHOR = PAGE.author || PAGE.discussWith || 'the person who sent you this page';
@@ -21,7 +23,10 @@ const $ = id => document.getElementById(id);
 const nosave=$('nosave'), nosaveTxt=$('nosavetxt'), stage=$('stage'), bar=$('bar'), fill=$('fill'), chips=$('chips'), saveEl=$('save'), saveTxt=$('savetxt'), toastEl=$('toast');
 let toastT; function toast(msg){ toastEl.textContent=msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove('show'),2200); }
 function setSave(state,text){ saveEl.className='save '+state; saveTxt.textContent=text; }
-const WHY = {nodb:'this page could not open its answer store', listener:'this page could not reach its answer store', slow:'the answer store is not answering', write:'the last save was refused', perm:'your access to this page only lets you view it'};
+const WHY = {nodb:'this page could not open its answer store', listener:'this page could not reach its answer store', slow:'the answer store is not answering', write:'the last save was refused', perm:'your access to this page only lets you view it', refused:'the page refused the save; if you were shared as Viewer or Commenter, ask '+AUTHOR+' to make you a Contributor'};
+/* A refused set() arrives as invalid_argument both for a viewer below Contributor and for a malformed write.
+   Only claim view-only when the platform said so; if it said this viewer CAN write, it is a plain refused save. */
+function saveFailReason(e, can){ return !(e&&e.code==='invalid_argument') || can===true ? 'write' : 'refused'; }
 function fail(why,quiet){ broken.add(why); paintBroken(!quiet); }
 function heal(...whys){ whys.forEach(w=>broken.delete(w)); paintBroken(false); }
 function paintBroken(loud){
@@ -260,13 +265,24 @@ const celebrations=[], seenMs=new Set();
 let msT;
 function afterPick(wasDone, before, card, from){
   const after=answered(), kind=celebrateKind(wasDone, isDone(card), after, TOTAL), ms=milestoneAt(before, after, TOTAL);
-  if(kind){ celebrations.push(kind); if(!reduced()) confetti(kind==='final'?140:34, kind==='final'?null:from); }
+  if(kind){ celebrations.push(kind);
+    if(!reduced()){ const W=window.innerWidth||800, H=window.innerHeight||600, shells=kind==='final'?shellPlan(SHELLS, W, H, Math.random):[];
+      confetti(kind==='final'?220:70, kind==='final'?null:from, shells); playSound(kind, shells); } }
   if(ms && !seenMs.has(ms)){ seenMs.add(ms); const b=$('milestone'); if(b){ b.textContent=milestoneText(ms, after, TOTAL); b.className='milestone show '+ms; clearTimeout(msT); msT=setTimeout(()=>{ b.className='milestone'; }, ms==='done'?3200:2400); } }
   const tr=fill.parentNode; if(kind && tr && !reduced()){ tr.classList.remove('bump'); void tr.offsetWidth; tr.classList.add('bump'); }
 }
-/* Small canvas confetti: one fixed canvas, pointer-events none, stops itself (about 1 s, 2 s for the last one). */
+/* Pure. The last card's fireworks: n shells, launched one after another across the middle of the screen.
+   at = launch delay (ms), rise = flight time (ms); each bursts at (x, y) after at+rise. Sound uses the same plan. */
+const SHELLS=6;
+function shellPlan(n, W, H, rnd){
+  const out=[]; for(let i=0;i<n;i++){ const lane=(i+0.5)/n;
+    out.push({at:i*260+Math.round(rnd()*80), rise:620+Math.round(rnd()*260), x:Math.round(W*(0.12+0.76*((lane+rnd()*0.16)%1))), y:Math.round(H*(0.14+0.26*rnd())), c:i}); }
+  return out;
+}
+/* Canvas confetti and fireworks: one fixed canvas, pointer-events none, stops itself
+   (about 1.5 s for a card; about 3.5 s for the last one: a two-sided confetti burst plus the shells). */
 let cv=null, bits=[], raf=0;
-function confetti(n, from){
+function confetti(n, from, shells){
   if(!document.body || typeof window.innerWidth!=='number') return;
   if(!cv){ cv=document.createElement('canvas'); cv.className='confetti'; cv.setAttribute('aria-hidden','true'); document.body.appendChild(cv); }
   const g=cv.getContext&&cv.getContext('2d'); if(!g) return;
@@ -276,16 +292,68 @@ function confetti(n, from){
   const cs=getComputedStyle(document.documentElement), cols=['--yes','--accent','--discuss','--no'].map(v=>cs.getPropertyValue(v).trim()||'#1D5C8A');
   const r=from&&from.getBoundingClientRect?from.getBoundingClientRect():null, now=performance.now(), L=Math.max(W*0.08,W/2-440), R=Math.min(W*0.92,W/2+440);
   for(let i=0;i<n;i++){
-    const big=!r, a=big?Math.PI*(1.15+0.7*Math.random()):Math.PI*(1.1+0.8*Math.random()), sp=big?9+Math.random()*9:4+Math.random()*5;
+    const big=!r, a=big?Math.PI*(1.15+0.7*Math.random()):Math.PI*(1.05+0.9*Math.random()), sp=big?10+Math.random()*10:6+Math.random()*7;
     const x=big?(i%2?L:R):r.right-24, y=big?H*0.95:r.top+20;
-    bits.push({x, y, vx:Math.cos(a)*sp*(big&&i%2?-1:1), vy:Math.sin(a)*sp, w:6+Math.random()*6, h:4+Math.random()*4, rot:Math.random()*6, vr:(Math.random()-.5)*.4, c:cols[i%cols.length], t0:now, life:big?2000:1100});
+    bits.push({x, y, vx:Math.cos(a)*sp*(big&&i%2?-1:1), vy:Math.sin(a)*sp, w:8+Math.random()*8, h:5+Math.random()*5, rot:Math.random()*6, vr:(Math.random()-.5)*.4, c:cols[i%cols.length], t0:now, life:big?2200:1500});
   }
+  (shells||[]).forEach(s=>bits.push({rocket:true, x:s.x, y0:H+8, y:H+8, ty:s.y, c:cols[s.c%cols.length], t0:now+s.at, life:s.rise}));
   if(!raf){ let last=now; const tick=t=>{ const dt=Math.min(2.5,(t-last)/16.7); last=t; g.clearRect(0,0,W,H);
-      bits=bits.filter(b=>t-b.t0<b.life); bits.forEach(b=>{ b.vy+=0.32*dt; b.vx*=Math.pow(0.985,dt); b.x+=b.vx*dt; b.y+=b.vy*dt; b.rot+=b.vr*dt;
-        g.globalAlpha=Math.max(0,1-Math.pow((t-b.t0)/b.life,3)); g.save(); g.translate(b.x,b.y); g.rotate(b.rot); g.fillStyle=b.c; g.fillRect(-b.w/2,-b.h/2,b.w,b.h); g.restore(); });
+      const keep=[]; bits.forEach(b=>{ const age=t-b.t0; if(age<0){ keep.push(b); return; }
+        if(age>=b.life){ if(b.rocket) burst(b, t, keep); return; } keep.push(b);
+        if(b.rocket){ const k=age/b.life, e=1-Math.pow(1-k,2.2); b.y=b.y0+(b.ty-b.y0)*e;
+          g.globalAlpha=1; g.strokeStyle=b.c; g.lineWidth=2.5; g.beginPath(); g.moveTo(b.x,b.y); g.lineTo(b.x,Math.min(b.y0,b.y+34)); g.stroke();
+          g.fillStyle=b.c; g.beginPath(); g.arc(b.x,b.y,3.5,0,7); g.fill(); return; }
+        if(b.spark){ b.vy+=0.07*dt; b.vx*=Math.pow(0.965,dt); b.vy*=Math.pow(0.965,dt); b.x+=b.vx*dt; b.y+=b.vy*dt;
+          g.globalAlpha=Math.max(0,1-Math.pow(age/b.life,2)); g.fillStyle=b.c; g.beginPath(); g.arc(b.x,b.y,b.s,0,7); g.fill(); return; }
+        b.vy+=0.32*dt; b.vx*=Math.pow(0.985,dt); b.x+=b.vx*dt; b.y+=b.vy*dt; b.rot+=b.vr*dt;
+        g.globalAlpha=Math.max(0,1-Math.pow(age/b.life,3)); g.save(); g.translate(b.x,b.y); g.rotate(b.rot); g.fillStyle=b.c; g.fillRect(-b.w/2,-b.h/2,b.w,b.h); g.restore(); });
+      bits=keep; g.globalAlpha=1;
       if(bits.length) raf=requestAnimationFrame(tick); else { raf=0; g.clearRect(0,0,W,H); } };
     raf=requestAnimationFrame(tick); }
 }
+/* A rocket reached its height: a ring of 80 sparks in its colour, with a few white glints. */
+function burst(b, t, into){
+  const n=80, pow=5.5+Math.random()*2.5;
+  for(let i=0;i<n;i++){ const a=(i/n)*Math.PI*2+Math.random()*0.08, sp=pow*(0.55+0.45*Math.random());
+    into.push({spark:true, x:b.x, y:b.ty, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, s:i%9===0?2.6:2, c:i%9===0?'#fff':b.c, t0:t, life:1300+Math.random()*500}); }
+}
+
+/* ---------- sound: a pop for each answered card, a whistle and a bang per shell on the last one ----------
+   Made in the browser (WebAudio, no files). Only after the reader's own tap, never under reduced motion, and a
+   mute button in the top bar that this browser remembers. */
+const SND='qw-sound-v1', sounds=[];
+let muted=false; try{ muted=localStorage.getItem(SND)==='off'; }catch(e){}
+let ac=null;
+function audio(){ if(ac) return ac; const A=globalThis.AudioContext||globalThis.webkitAudioContext; if(!A) return null; try{ ac=new A(); }catch(e){ ac=null; } return ac; }
+function noise(c, dur){ const len=Math.max(1,Math.floor(c.sampleRate*dur)), b=c.createBuffer(1,len,c.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2); const s=c.createBufferSource(); s.buffer=b; return s; }
+function sPop(c, t, vol){
+  const o=c.createOscillator(), g=c.createGain(); o.type='triangle'; o.frequency.setValueAtTime(950,t); o.frequency.exponentialRampToValueAtTime(170,t+0.13);
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+0.006); g.gain.exponentialRampToValueAtTime(0.0001,t+0.17);
+  o.connect(g); g.connect(c.destination); o.start(t); o.stop(t+0.2);
+  const n=noise(c,0.07), f=c.createBiquadFilter(), ng=c.createGain(); f.type='bandpass'; f.frequency.value=2600; ng.gain.value=vol*0.7;
+  n.connect(f); f.connect(ng); ng.connect(c.destination); n.start(t);
+}
+function sWhistle(c, t, dur){
+  const o=c.createOscillator(), g=c.createGain(); o.type='sine'; o.frequency.setValueAtTime(650,t); o.frequency.exponentialRampToValueAtTime(2300,t+dur);
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.045,t+0.06); g.gain.setValueAtTime(0.045,t+Math.max(0.07,dur-0.06)); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g); g.connect(c.destination); o.start(t); o.stop(t+dur+0.02);
+}
+function sBang(c, t, vol){
+  const n=noise(c,1.1), f=c.createBiquadFilter(), g=c.createGain(); f.type='lowpass'; f.frequency.setValueAtTime(3200,t); f.frequency.exponentialRampToValueAtTime(260,t+0.9);
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+1.05); n.connect(f); f.connect(g); g.connect(c.destination); n.start(t);
+}
+function playSound(kind, shells){
+  if(muted || reduced()) return; sounds.push(kind); const c=audio(); if(!c) return;
+  try{ if(c.state==='suspended') c.resume(); const t=c.currentTime+0.02;
+    if(kind!=='final') sPop(c, t, 0.22);
+    else { sPop(c, t, 0.22); (shells||[]).forEach(s=>{ sWhistle(c, t+s.at/1000, s.rise/1000); sBang(c, t+(s.at+s.rise)/1000, 0.4); }); }
+  }catch(e){ console.warn('sound', e); }
+}
+function paintSound(){ const b=$('snd'); if(!b) return; b.classList.toggle('muted', muted); b.setAttribute('aria-pressed', String(!muted));
+  b.setAttribute('aria-label', muted?'Sound off. Turn sound on':'Sound on. Mute'); b.title=muted?'Sound off':'Sound on'; }
+function toggleSound(){ muted=!muted; try{ localStorage.setItem(SND, muted?'off':'on'); }catch(e){} paintSound(); toast(muted?'Sound off':'Sound on'); if(!muted) playSound('preview'); }
+{ const b=$('snd'); if(b){ paintSound(); b.addEventListener('click', toggleSound); } }
 
 /* ---------- interaction ---------- */
 function wire(el){
@@ -366,7 +434,7 @@ async function save(qid){
   if(writing[qid]){ queued[qid]=true; return; }
   writing[qid]=true; setSave('busy','Saving…');
   try{ const r=Object.assign({},answers[qid]); delete r.synced; await db.doc('answers/'+qid).set(r); heal('write','slow'); if(!broken.size) setSave('ok','Saved '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})); }
-  catch(e){ console.warn('save failed', e); fail(e&&e.code==='invalid_argument' ? 'perm' : 'write'); }
+  catch(e){ console.warn('save failed', e); fail(canWrite===false ? 'perm' : saveFailReason(e, canWrite)); }
   writing[qid]=false; if(queued[qid]){ queued[qid]=false; if(answers[qid]) save(qid); }
 }
 async function copyAnswers(){
@@ -391,7 +459,7 @@ async function boot(){
   try{
     const [d,u]=await Promise.all([claude.use('db'), claude.use('user')]);
     db=d; user=u;
-    if(u){ try{ meId=await u.id(); }catch(e){} try{ if(await u.can('data.write')===false) fail('perm',1); }catch(e){} }
+    if(u){ try{ meId=await u.id(); }catch(e){} try{ const c=await u.can('data.write'); canWrite=(c===true||c===false)?c:null; if(canWrite===false) fail('perm',1); }catch(e){} }
     if(!db){ fail('nodb',1); return; }
     let first=true; const timer=setTimeout(()=>{ if(first) fail('slow',1); },10000);
     db.collection('answers').onSnapshot(snap=>{
@@ -409,6 +477,6 @@ async function boot(){
     }, err=>{ clearTimeout(timer); console.warn('db listener', err); fail('listener',1); });
   }catch(e){ console.warn('boot', e); fail('nodb',1); }
 }
-if(globalThis.__QW_TEST__) globalThis.__QW_TEST__.api={answersText, celebrateKind, milestoneAt, milestoneText, celebrations, milestone:()=>{ const b=$('milestone'); return b?b.textContent:''; }, broken, pick:(i,p)=>pick(i,p), go:n=>go(n), state:()=>({idx, answers})};
+if(globalThis.__QW_TEST__) globalThis.__QW_TEST__.api={answersText, celebrateKind, shellPlan, saveFailReason, sounds, toggleSound, muted:()=>muted, milestoneAt, milestoneText, celebrations, milestone:()=>{ const b=$('milestone'); return b?b.textContent:''; }, broken, pick:(i,p)=>pick(i,p), go:n=>go(n), state:()=>({idx, answers})};
 boot();
 })();
