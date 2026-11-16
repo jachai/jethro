@@ -3,6 +3,11 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.5] - 2026-11-16
+
+### Fixed
+- The background describer still saved nothing: an unattended `claude -p` run may not use the Write tool under `~/.claude`, where the data folder is, so writing the describer's reply (`result.jsonl`) was refused and the run stopped. Every file the refresh skill writes (the reply, Docs/Slides/Dashboard sources, the artifact list) now goes to a scratch folder from `ae tmpdir` in the system temp folder. `ae batch save --folder FOLDER` reads the batch's manifest from the batch folder.
+
 ## [0.2.4] - 2026-11-16
 
 ### Fixed

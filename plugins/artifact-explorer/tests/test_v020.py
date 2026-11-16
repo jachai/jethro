@@ -308,7 +308,7 @@ class UpdateCheckTest(Base):
             off = open(build.build(self.d, max_age=0, update_check=False), encoding="utf-8").read()
         self.assertIn('"latest": "v9.0.0"', html)
         self.assertNotIn("v9.0.0", off)
-        self.assertIn('"version": "0.2.4"', html)
+        self.assertIn('"version": "0.2.5"', html)
 
 
 class FaviconTest(Base):
@@ -375,7 +375,7 @@ class ColorsTest(Base):
         self.assertEqual([c["name"] for c in p["categories"]][:3], ["Reports", "Plans", "Dashboards"])
         self.assertEqual(p["categories"][0]["color"], "#2a78d6")
         self.assertEqual(p["categories"][-1]["name"], "Uncategorized")
-        self.assertEqual((p["topics"], p["version"], p["accent"]), (["T1"], "0.2.4", "#0f6b5c"))
+        self.assertEqual((p["topics"], p["version"], p["accent"]), (["T1"], "0.2.5", "#0f6b5c"))
 
 
 if __name__ == "__main__":
