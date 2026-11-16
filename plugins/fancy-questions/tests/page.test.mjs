@@ -19,8 +19,9 @@ function el() {
 }
 
 // db: {mode: 'null' | 'listenerError' | 'refuse' | 'ok'}; can: true|false|null
-async function run({ db = 'ok', can = null, stored = null, docs = [] } = {}) {
-  const els = {}, handlers = {}, writes = [], clip = [];
+// reduce: prefers-reduced-motion (true by default, so motion tests opt in); sound: the remembered 'qw-sound-v1' value
+async function run({ db = 'ok', can = null, stored = null, docs = [], reduce = true, sound = null } = {}) {
+  const els = {}, handlers = {}, writes = [], clip = [], ls = {};
   const document = {
     getElementById: id => (els[id] ||= el()), createElement: () => el(), activeElement: null, title: '',
     addEventListener: (t, fn) => { (handlers[t] ||= []).push(fn); },
@@ -36,7 +37,7 @@ async function run({ db = 'ok', can = null, stored = null, docs = [] } = {}) {
   const T = {};
   const ctx = {
     document, window: { scrollTo() {} }, navigator: { clipboard: { writeText: async t => { clip.push(t); } } },
-    localStorage: { getItem: k => (stored && /answers/.test(k) ? JSON.stringify(stored) : null), setItem() {} }, matchMedia: () => ({ matches: true }),
+    localStorage: { getItem: k => (k === 'qw-sound-v1' ? sound : stored && /answers/.test(k) ? JSON.stringify(stored) : null), setItem: (k, v) => { ls[k] = v; } }, matchMedia: () => ({ matches: reduce }),
     requestAnimationFrame: f => f(), performance: { now: () => 0 }, setTimeout, clearTimeout, console: { warn() {} },
     claude: { use: async n => n === 'db' ? (db === 'null' ? null : store) : n === 'user' ? user : null },
     __QW_TEST__: T,
@@ -44,7 +45,7 @@ async function run({ db = 'ok', can = null, stored = null, docs = [] } = {}) {
   ctx.globalThis = ctx;
   vm.runInNewContext(app, ctx);
   await new Promise(r => setTimeout(r, 20));
-  return { els, T: T.api, writes, clip, handlers, document,
+  return { els, T: T.api, writes, clip, handlers, document, ls,
     banner: () => !els.nosave.hidden, text: () => els.nosavetxt.innerHTML, toast: () => els.toast.textContent, save: () => els.savetxt.textContent,
     click: async () => { handlers.click.forEach(h => h({ target: { closest: () => ({}) }, preventDefault() {} })); await new Promise(r => setTimeout(r, 5)); } };
 }
@@ -81,6 +82,19 @@ test('a refused set (view-only, can() unknown): banner after the pick and nothin
   await pickFirst(p);
   assert.equal(p.banner(), true); assert.equal(p.writes.length, 0);
   assert.match(p.toast(), /Not sent to Sam/);
+  assert.doesNotMatch(p.text(), /only lets you view/, 'can() unknown: no definite view-only claim');
+  assert.match(p.text(), /refused the save; if you were shared as Viewer or Commenter, ask Sam to make you a Contributor/);
+});
+test('a refused set when the platform said the viewer CAN write: a plain refused save, never view-only', async () => {
+  const p = await run({ db: 'refuse', can: true });
+  await pickFirst(p);
+  assert.equal(p.banner(), true); assert.match(p.text(), /the last save was refused/); assert.doesNotMatch(p.text(), /view|Contributor/);
+});
+test('saveFailReason: invalid_argument is only a possible access problem when can() did not say yes', async () => {
+  const { T } = await run();
+  const ia = { code: 'invalid_argument' };
+  assert.equal(T.saveFailReason(ia, null), 'refused'); assert.equal(T.saveFailReason(ia, true), 'write');
+  assert.equal(T.saveFailReason({ code: 'unavailable' }, null), 'write'); assert.equal(T.saveFailReason(null, null), 'write');
 });
 test('Copy all my answers: plain text, one line per question and part, ready to paste', async () => {
   const p = await run({ db: 'refuse' });
@@ -143,4 +157,44 @@ test('no celebration for answers arriving from the store (page load or another d
   const p = await run({ docs: restored.concat([{ qid: 'q-route-b', optionId: 'x', at: '2026-11-15T10:00:00Z' }]) });
   assert.equal(Object.keys(p.T.state().answers).length, 3);
   assert.equal(p.T.celebrations.length, 0); assert.equal(p.T.milestone(), '');
+});
+
+// v0.2.1: bigger fireworks with sound, a remembered mute, nothing under reduced motion
+test('shellPlan: n shells launched one after another, bursting inside the top half of the screen', async () => {
+  const { T } = await run();
+  let k = 0; const rnd = () => [0, 0.5, 0.999][k++ % 3];
+  const s = T.shellPlan(6, 390, 800, rnd);
+  assert.equal(s.length, 6);
+  s.forEach((x, i) => {
+    assert.ok(x.x >= 390 * 0.12 - 1 && x.x <= 390 * 0.88 + 1, 'x on screen, off the edges');
+    assert.ok(x.y >= 800 * 0.14 - 1 && x.y <= 800 * 0.4 + 1, 'bursts in the upper part');
+    assert.ok(x.rise >= 620 && x.rise <= 880);
+    if (i) assert.ok(x.at > s[i - 1].at, 'launches in order');
+  });
+  assert.ok(s[5].at + s[5].rise < 2600, 'the last shell bursts within about 2.6 s');
+});
+test('sound: a pop for a card, the fireworks for the last one', async () => {
+  const p = await run({ reduce: false });
+  await pickFirst(p);
+  p.T.go(2); p.T.pick(0, 0); p.T.pick(0, 1);
+  assert.deepEqual([...p.T.celebrations], ['card', 'final']);
+  assert.deepEqual([...p.T.sounds], ['card', 'final']);
+});
+test('mute: the button silences the next answers and is remembered in this browser', async () => {
+  const p = await run({ reduce: false });
+  assert.equal(p.T.muted(), false);
+  p.T.toggleSound();
+  assert.equal(p.T.muted(), true); assert.equal(p.ls['qw-sound-v1'], 'off'); assert.equal(p.toast(), 'Sound off');
+  await pickFirst(p);
+  assert.deepEqual([...p.T.celebrations], ['card'], 'still celebrates'); assert.equal(p.T.sounds.length, 0, 'but silently');
+  p.T.toggleSound();
+  assert.equal(p.ls['qw-sound-v1'], 'on'); assert.deepEqual([...p.T.sounds], ['preview'], 'turning it on plays one pop');
+  const again = await run({ reduce: false, sound: 'off' });
+  assert.equal(again.T.muted(), true, 'muted on the next visit');
+  await pickFirst(again); assert.equal(again.T.sounds.length, 0);
+});
+test('reduced motion: no fireworks sound, even with sound on', async () => {
+  const p = await run({ reduce: true });
+  await pickFirst(p);
+  assert.deepEqual([...p.T.celebrations], ['card']); assert.equal(p.T.sounds.length, 0);
 });
