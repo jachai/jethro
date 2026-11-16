@@ -67,7 +67,8 @@ class WatchTest(unittest.TestCase):
     def test_loop_survives_errors_and_prints_nothing(self):
         m = stubs()
         m["transcripts"].scan.side_effect = RuntimeError("boom")
-        with mock.patch.dict("sys.modules", m), mock.patch("sys.stdout") as out:
+        with mock.patch.dict("sys.modules", m), mock.patch("sys.stdout") as out, \
+                mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": helpers.tmp()}):  # never the real ~/.claude
             self.assertEqual(watch.loop(self.data, tick_seconds=0, max_ticks=2), 0)
         out.write.assert_not_called()
         self.assertIn("boom", open(os.path.join(self.data, "watch.log")).read())

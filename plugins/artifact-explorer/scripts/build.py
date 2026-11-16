@@ -201,11 +201,7 @@ def status(data, now):
 
 
 def version():
-    try:
-        with open(os.path.join(common.ROOT, ".claude-plugin", "plugin.json"), encoding="utf-8") as f:
-            return str(json.load(f).get("version") or "")
-    except (OSError, ValueError):
-        return ""
+    return common.own_version()
 
 
 def accent_of(cfg):
