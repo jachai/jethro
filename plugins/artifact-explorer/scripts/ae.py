@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-VERSION = "0.2.5"
+VERSION = "0.2.6"
 
 
 def main(argv=None):
@@ -43,8 +43,7 @@ def main(argv=None):
     g.add_argument("--needs-interactive", action="store_true",
                    help="the background run could not read it: the background run skips it, the in-session refresh describes it")
     s = sub.add_parser("set-kind", help="record the Artifact type a read reported (Data and Dashboard are one kind)")
-    s.add_argument("id")
-    s.add_argument("kind")
+    s.add_argument("pairs", nargs="+", metavar="ID=KIND", help="one or more ID=KIND pairs (the old form `ID KIND` also works)")
     s = sub.add_parser("set-sharing", help="record an artifact's sharing state")
     s.add_argument("id")
     s.add_argument("--file", required=True, help="UTF-8 file holding the phrase (never pass page-derived text as an argument)")
@@ -89,6 +88,9 @@ def main(argv=None):
     b = bs.add_parser("local", help="no Artifact tool (background run): batch of own pending rows with a local source; "
                       "the others are marked needs interactive refresh")
     b.add_argument("--limit", type=int, default=20)
+    b = bs.add_parser("excerpt", help="excerpt several saved pages: FOLDER ID=SAVED_FILE ... (like `excerpt SAVED_FILE --out FOLDER/ID.txt --id ID` each)")
+    b.add_argument("folder")
+    b.add_argument("pairs", nargs="+", metavar="ID=SAVED_FILE")
     b = bs.add_parser("save", help="store the describer's JSON lines")
     b.add_argument("file")
     b.add_argument("--folder", help="the batch folder whose manifest the reply answers (when the reply is written elsewhere)")
@@ -195,11 +197,12 @@ def main(argv=None):
         return {"start": lambda: describe.batch_start(data), "manifest": lambda: describe.batch_manifest(data, getattr(a, "folder", None)),
                 "recat": lambda: describe.batch_recat(data, getattr(a, "limit", 40), getattr(a, "owned_only", False)),
                 "local": lambda: describe.batch_local(data, getattr(a, "limit", 20)),
+                "excerpt": lambda: describe.batch_excerpt(data, getattr(a, "folder", None), getattr(a, "pairs", None)),
                 "save": lambda: describe.batch_save(data, getattr(a, "file", None), getattr(a, "folder", None))}[a.bcmd]()
     if a.cmd == "topics":
         return describe.topics_cmd(data, accept=a.accept, reject=a.reject)
     if a.cmd == "set-kind":
-        return describe.set_kind(data, a.id, a.kind)
+        return describe.set_kinds(data, a.pairs)
     if a.cmd == "set-desc":
         if a.no_source:
             return describe.set_no_source(data, a.id)
