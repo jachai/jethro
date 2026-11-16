@@ -1,7 +1,7 @@
 {
   "name": "artifact-explorer",
   "displayName": "Artifact Explorer",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "A catalog of your claude.ai artifacts on your own machine: one local page to search, sort and reopen everything you made or were sent.",
   "author": {
     "name": "Jonathan Achai",

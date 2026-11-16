@@ -855,12 +855,14 @@ def _save_line(con, line, cats, tops, texts, done):
     return sug
 
 
-def batch_save(data, file):
+def batch_save(data, file, folder=None):
     """Parse the describer's reply (one JSON object per line; anything else is ignored) and store it."""
     cfg = common.load_config(data)
     cats = {c["name"].lower(): c["name"] for c in cfg.get("categories", []) if c.get("name")}
     tops = {t["name"].lower(): t["name"] for t in cfg.get("topics", []) if t.get("name")}
-    texts = _text_items(os.path.dirname(os.path.abspath(file)))
+    # the reply is written outside the data folder (an unattended run may not Write under ~/.claude, 0.2.5),
+    # so the batch folder holding the manifest is named with --folder; without it, the reply's own folder
+    texts = _text_items(os.path.abspath(folder) if folder else os.path.dirname(os.path.abspath(file)))
     with open(file, encoding="utf-8", errors="replace") as f:
         lines = f.read().splitlines()
     con = db.connect(data)
