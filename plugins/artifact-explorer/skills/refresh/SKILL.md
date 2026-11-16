@@ -41,11 +41,13 @@ A failed read of one artifact (not found, an error) skips that row and goes on.
 
 You run unattended (`claude -p`, no one is there). Do not ask questions and never wait for a person: finish all the steps in this one turn. Do not read any artifact owned by someone else: reading one always asks for consent and nobody is there to answer. If a tool call is refused for permission (the result says it was denied, not allowed, or needs approval), stop at once and reply with one line, `stopped: refused` followed by that tool's name, for example `stopped: refused Bash`. A Docs source that is simply not there (no Claude Docs tools in this session) is not a refusal: that row gets `--no-source`. Otherwise end with the one line of step 5. Wait for each describer reply before you finish.
 
-1. Run `AE pending --owned-only --json`, with `--limit 1` added when the argument is `describe-only 1`. It prints the rows that need a description. If there are none, go on to step 3 (rows to categorize may still be waiting).
-2. Take at most 60 rows (1 for `describe-only 1`) and describe them as in "Describe rows", in batches of 20.
-3. Then categorize rows that were described earlier but have no category or topics: run `AE batch recat --owned-only --limit 20` (`--limit 1` for `describe-only 1`). It prints a folder and a count; describe that folder like any batch from step 3 on of "Describe rows" (its items are text lines, nothing to read). Repeat until 60 rows are done in all or it prints 0. These rows count whatever their age.
+1. Categorize first. This needs no artifact read, so do it even when no source can be read: run `AE batch recat --owned-only --limit 20` (`--limit 1` for `describe-only 1`). It prints a folder and a count. Describe that folder like any batch, from step 3 of "Describe rows" (its items are text lines, so there is nothing to read). Repeat until 60 rows are done in all or it prints 0. These rows count whatever their age.
+2. Run `AE pending --owned-only --json`, with `--limit 1` added when the argument is `describe-only 1`. It prints the rows that need a description. If there are none, go to step 4.
+3. Describe at most 60 of them (1 for `describe-only 1`) in batches of 20.
+   - **Artifact tool present** (`Artifact` is among your tools): describe them as in "Describe rows". In this mode a row whose read errors (not found, an error, the saved file is missing) gets `AE set-desc ID --needs-interactive` instead of being skipped, so the next background run leaves it alone.
+   - **No Artifact tool in this session:** do not look for it with ToolSearch and do not mark rows `--no-source`. Run `AE batch local --limit 20` (`--limit 1` for `describe-only 1`). It prints a folder, how many rows it marked `needs interactive refresh`, then a manifest path and an item count. Those items are the rows that have a local source file. If the count is above 0, describe that folder from step 4 of "Describe rows". Repeat until it prints `items: 0` and `marked needs interactive refresh: 0`, at most 3 times. The marked rows are left for an in-session `/artifact-explorer:refresh`.
 4. Run `AE build`.
-5. Reply with one line: `described N of M, skipped K, no source S, categorized C`.
+5. Reply with one line: `described N of M, skipped K, no source S, needs interactive I, categorized C`.
 
 ## Full mode
 

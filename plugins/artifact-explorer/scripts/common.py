@@ -311,10 +311,12 @@ def ae_argv(*args):
     return [sys.executable, os.path.join(HERE, "ae.py")] + [str(a) for a in args]
 
 
-def detach(argv, cwd=None, out=None):
+def detach(argv, cwd=None, out=None, env=None):
     """Start argv in the background, detached from this process, stdin closed; stdout to the file `out` when
-    given. Returns the child's pid, or None when it could not start. Never raises."""
-    kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=cwd)
+    given; `env` adds to (never replaces) this process's environment. Returns the child's pid, or None when it
+    could not start. Never raises."""
+    kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=cwd,
+              env=dict(os.environ, **env) if env else None)
     if os.name == "nt":
         kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     else:
