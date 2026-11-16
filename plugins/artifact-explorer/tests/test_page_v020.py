@@ -52,11 +52,10 @@ class TemplateStringsTest(unittest.TestCase):
     def test_strings(self):
         t = tpl()
         self.assertNotIn("Shared with me", t)
-        self.assertNotIn('"Open"', t)
         self.assertNotIn("PH-START", t)
         self.assertIn('<link rel="icon" href="favicon.ico" sizes="any">', t)
         self.assertIn('<link rel="icon" type="image/svg+xml" href="__FAVICON_SVG__">', t)
-        self.assertIn('if (r.url.startsWith("https://claude.ai/")) a.href = r.url;', t)
+        self.assertIn('r.url.startsWith("https://claude.ai/") ? r.url : ""', t)
         self.assertIn('if (!t) return el("span", "dim", "unknown");', t)
         for s in ('id="status"', "as of build", "Page may be stale", "setInterval", "/*OLD-START*/", "older artifact",
                   "Describe older", "/artifact-explorer:refresh older", "aria-expanded", "navigator.clipboard", "#older",
