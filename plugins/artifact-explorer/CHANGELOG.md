@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.6] - 2026-11-16
+
+### Fixed
+- The background describer was refused twice in 0.2.5. The model chained many `ae` calls into one Bash command that began with shell variables (`AE=...; D=...; sh ...`), which matches no permission rule, so the whole command was refused; and it called the Artifact tool with `out_dir` set to the scratch folder, which a read refuses. The refresh skill now says `AE` is written out in full, every `AE` command is its own Bash call starting with `sh`, with no shell variables, chaining, pipes, redirects or `cd`, and that SCRATCH is only for files written with the Write tool (Artifact reads take no `out_dir`; ArtifactData only the TMP from `AE tmpdir ID`).
+- Only one watcher runs per data folder: a second `ae watch` prints a line and exits 0 when `watcher.json` names a live pid whose command line is an `ae.py ... watch` process. A zombie process now counts as finished, so an ended describer that was not reaped no longer looks alive.
+- A describer run that ends with a refusal (`stopped: refused TOOL`) puts the watcher on a one-hour back-off: no new describer is launched for 3600 s and `watch.log` gets one line (`describer back-off: last run refused TOOL, next try after HH:MM:SS`). `ae launch-describer --test` is not blocked.
+
+### Added
+- `ae batch excerpt FOLDER ID=SAVED_FILE [ID=SAVED_FILE ...]` does `ae excerpt SAVED_FILE --out FOLDER/ID.txt --id ID` for each pair, prints an error line for a pair that fails and goes on, then `excerpted N, failed K`.
+- `ae set-kind ID=KIND [ID=KIND ...]` takes several pairs (the old `ae set-kind ID KIND` still works).
+- `describer.log` in the data folder: one line per finished describer run with time, pid, cost, result text and, for each permission denial, the tool name and its input (cut at 2000 characters). `describer.out` still holds the latest raw output.
+
 ## [0.2.5] - 2026-11-16
 
 ### Fixed
