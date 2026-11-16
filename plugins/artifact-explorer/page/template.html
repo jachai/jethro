@@ -41,12 +41,15 @@ select{padding:7px 8px;border:1px solid var(--line);border-radius:8px;background
 .chip i{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
 .chip[aria-pressed=true] i{box-shadow:0 0 0 1.5px var(--accent-ink)}
 .chip.tc2{border-color:var(--line)}
+.chip.tpc{--tb:var(--tbl,var(--chip));--tf:var(--tfl,var(--ink));background:var(--tb);color:var(--tf)}
+.chip.tpc span{color:inherit;opacity:.7}
+.chip.tpc[aria-pressed=true]{background:var(--tb);color:var(--tf);border-color:var(--tf);font-weight:650;box-shadow:inset 0 0 0 1px var(--tf)}
+@media (prefers-color-scheme:dark){.chip.tpc{--tb:var(--tbd,var(--chip));--tf:var(--tfd,var(--ink))}}
 .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);overflow-x:auto;max-width:100%}
 table{border-collapse:collapse;width:100%}
 th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
 tbody tr{position:relative}
 tbody tr:hover{background:color-mix(in srgb,var(--chip) 55%,var(--panel))}
-tbody tr:focus-within{outline:2px solid var(--accent);outline-offset:-2px}
 tr:last-child td{border-bottom:0}
 th{font-weight:600;font-size:12px;color:var(--muted);white-space:nowrap;cursor:pointer;user-select:none;background:var(--panel)}
 th[aria-sort]{color:var(--ink)}
@@ -59,11 +62,13 @@ td.n{text-align:right;font-variant-numeric:tabular-nums}
 .dim{color:var(--muted)}
 .pend{color:var(--muted);font-style:italic}
 a{color:var(--link)}
-a.stretch{color:var(--ink);text-decoration:none;font-weight:inherit}
-a.stretch::after{content:"";position:absolute;inset:0;z-index:1}
-a.stretch:hover{text-decoration:underline}
-a.stretch:focus-visible{outline:none;text-decoration:underline}
-.sec{position:relative;z-index:2}
+a.shot,a.av{display:block;cursor:pointer}
+a.shot:hover,a.av:hover{filter:brightness(1.04)}
+a.shot:focus-visible,a.av:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.ttl{user-select:text}
+a.open{display:inline-block;padding:3px 11px;border-radius:6px;border:1px solid var(--line);background:var(--chip);color:var(--ink);text-decoration:none;font-size:12.5px;font-weight:500;white-space:nowrap}
+a.open:hover{border-color:var(--accent);color:var(--accent)}
+.sec{position:relative}
 .repo{display:inline-block;background:var(--chip);border-radius:4px;padding:0 6px;margin:0 4px 2px 0;font-size:12px}
 .pill,.chip,.av,.shot{--c:var(--cl,var(--neutral))}
 @media (prefers-color-scheme:dark){.pill,.chip,.av,.shot{--c:var(--cd,var(--neutral))}}
@@ -75,7 +80,6 @@ button.tp{cursor:pointer;line-height:inherit}
 button.tp:hover{border-color:var(--tf)}
 button.tp[aria-pressed=true]{border-color:var(--tf);font-weight:650}
 @media (prefers-color-scheme:dark){.tp{--tb:var(--tbd,var(--chip));--tf:var(--tfd,var(--ink))}}
-.tp.sug{background:none;color:var(--muted);border:1px dashed var(--muted);color:var(--muted);font-style:italic}
 .bd{display:inline-block;padding:0 7px;border-radius:5px;font-size:11.5px;font-weight:500;color:var(--ink);background:var(--chip);border:1px solid var(--line);white-space:nowrap}
 .bd.org{border-style:dashed}
 .bd.gone{background:color-mix(in srgb,var(--warn) 16%,var(--panel));border-color:color-mix(in srgb,var(--warn) 55%,var(--line))}
@@ -87,7 +91,6 @@ button.tp[aria-pressed=true]{border-color:var(--tf);font-weight:650}
 tbody tr>td:first-child{box-shadow:inset 4px 0 0 var(--other)}
 tbody tr.mine>td:first-child{box-shadow:inset 4px 0 0 var(--mine)}
 .card:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
-.card:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .shot{aspect-ratio:16/9;background:var(--chip);overflow:hidden}
 .shot img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
 .shot svg,.av svg{width:100%;height:100%;display:block}
@@ -154,10 +157,12 @@ const COLS = {
  created:{h:"Created",k:r=>dateOf(r,"created")[0]||0,cls:"w",date:"created"},
  size:{h:"Size",k:r=>r.size||0,cls:"n"},
  description:{h:"Description",k:r=>r.description.toLowerCase(),cls:"d"},
- repos:{h:"Repos",k:r=>r.repos.join(" ").toLowerCase()}
+ repos:{h:"Repos",k:r=>r.repos.join(" ").toLowerCase()},
+ open:{h:"",cls:"w"}
 };
-const cols = (cfg.columns||[]).filter(c=>COLS[c]);  // unknown keys (such as the old "open") are ignored
-if (cols.indexOf("title") < 0) cols.unshift("title");  // the title carries the row link, so it is always shown
+const cols = (cfg.columns||[]).filter(c=>COLS[c]);  // unknown keys are ignored
+if (cols.indexOf("title") < 0) cols.unshift("title");  // the title is always shown
+if (cols.indexOf("open") < 0) cols.push("open");  // every row keeps its Open button
 const $ = id => document.getElementById(id);
 if (cfg.accent) document.documentElement.style.setProperty("--accent", cfg.accent);
 document.title = cfg.title || "Artifact Explorer";
@@ -229,8 +234,15 @@ function initialsTile(id, title, color){
   '<rect y="82" width="160" height="8" style="fill:' + escXml(color || "#898781") + '"/></svg>';
 }
 /*TILE-END*/
+/*LINK-START*/
+function openURL(r){ return r.url && r.url.startsWith("https://claude.ai/") ? r.url : ""; }
+function winName(r){ return "ae-" + String(r.id || r.url).replace(/[^\w-]/g, "_"); }
+function aim(a, r){ a.href = openURL(r); a.target = winName(r); a.rel = "noopener"; return a; }
+function openBtn(r){ return openURL(r) ? aim(el("a", "open", "Open"), r) : null; }
+/*LINK-END*/
 function picture(r, cls){
- const box = tint(el("div", cls), r.category);
+ const link = openURL(r), box = tint(el(link ? "a" : "div", cls), r.category);
+ if (link) { aim(box, r); box.setAttribute("aria-label", "Open " + (r.title || "artifact")); }
  if (r.thumb && !r.older) { const i = el("img"); i.src = r.thumb; i.alt = ""; i.loading = "lazy"; box.appendChild(i); }
  else box.innerHTML = initialsTile(r.id, r.title, "var(--c)");  // only escaped text and generated numbers
  return box;
@@ -302,18 +314,15 @@ function when(t, by, label){
 }
 function desc(r){
  if (r.pending) return el("span", "pend", "description pending");
+ if (r.unread){ const s = el("span", "dim sec", "shared with you, not read"); s.title = "claude.ai asks consent for each read of someone else's artifact, so it is described only when you run /artifact-explorer:refresh"; return s; }
  if (r.skipped){ const s = el("span", "dim sec", "no description"); s.title = r.skipped; return s; }
  return el("span", r.description ? "" : "dim", r.description);
 }
 
-// The title is a real link stretched over the whole card or row (::after), so Cmd/Ctrl-click and middle-click
-// open a new tab natively, a plain click opens in this tab, and Enter works on focus.
-function titleLink(r){
- if (!r.url) return el("span", "", r.title);
- const a = el("a", "stretch", r.title);
- if (r.url.startsWith("https://claude.ai/")) a.href = r.url;
- return a;
-}
+// Titles and descriptions are plain, selectable text. Only the thumbnail (cards and table) and the table's
+// Open button are links. Each link targets a window named after the artifact ("ae-<id>"), so the first click
+// opens a new tab and a later click on the same artifact goes back to that tab instead of opening another.
+function titleText(r){ return el("span", "ttl", r.title); }
 function catPill(r){
  const p = tint(el("span", "pill"), r.category);
  p.appendChild(el("i")); p.appendChild(document.createTextNode(r.category));
@@ -321,11 +330,12 @@ function catPill(r){
  return p;
 }
 const TSLOT = cfg.topic_slots || {}, TPAL = cfg.topic_palette || [];
-function topicPill(t, tag){
- const e = el(tag, "tp", t), c = TPAL[TSLOT[t]];
+function topicTint(e, t){
+ const c = TPAL[TSLOT[t]];
  if (c) { e.style.setProperty("--tbl", c[0]); e.style.setProperty("--tfl", c[1]); e.style.setProperty("--tbd", c[2]); e.style.setProperty("--tfd", c[3]); }
  return e;
 }
+function topicPill(t, tag){ return topicTint(el(tag, "tp", t), t); }
 function topicPills(r){
  if (!r.topics.length && !r.suggested.length) return null;
  const box = el("div", "tps");
@@ -335,7 +345,9 @@ function topicPills(r){
   e.onclick = () => { if (topicNames.indexOf(t) < 0) return; st.topics = on ? st.topics.filter(x => x !== t) : st.topics.concat(t); save(); render(); };
   box.appendChild(e);
  });
- r.suggested.forEach(t => { const e = el("span", "tp sug sec", t); e.title = "Suggested topic (not in your config yet): " + t; box.appendChild(e); });
+ // 0.2.11: the describer's other topics are applied as they are (no "suggested" state); they are not in the
+ // Topic filter until used on artifacts from at least two title families (or listed in config.toml)
+ r.suggested.forEach(t => box.appendChild(topicPill(t, "span")));
  return box;
 }
 function sharingNode(r){
@@ -355,7 +367,7 @@ function cell(c, r){
  const td = el("td", COLS[c].cls || ""), d = COLS[c].date;
  if (c === "title") {
   const w = el("div", "tt"), b = el("div"), x = el("div", "row2");
-  w.appendChild(picture(r, "av")); b.appendChild(titleLink(r));
+  w.appendChild(picture(r, "av")); b.appendChild(titleText(r));
   if (cols.indexOf("category") < 0) x.appendChild(catPill(r));
   if (cols.indexOf("sharing") < 0) { const s = sharingNode(r); if (s) x.appendChild(s); }
   if (x.childNodes.length) b.appendChild(x);
@@ -367,6 +379,7 @@ function cell(c, r){
  else if (d) { const v = dateOf(r, d); td.appendChild(when(v[0], d === "accessed" ? r.accessed_by : "", v[1])); }
  else if (c === "size") td.textContent = bytes(r.size);
  else if (c === "description") td.appendChild(desc(r));
+ else if (c === "open") { const o = openBtn(r); if (o) td.appendChild(o); }
  else if (c === "repos") r.repos.forEach(x => td.appendChild(el("span", "repo", x)));
  else td.textContent = r[c] || "";
  return td;
@@ -388,9 +401,10 @@ const topicOK = r => !st.topics.length || st.topics.some(t => r.topics.indexOf(t
 function chips(q){
  const base = rows.filter(r => match(r, q)), box = $("chips"), tbox = $("tchips");
  box.textContent = ""; tbox.textContent = "";
- const add = (parent, label, n, on, fn, cat) => {
+ const add = (parent, label, n, on, fn, cat, topic) => {
   const b = el("button", "chip");
   if (cat != null) { tint(b, cat); b.appendChild(el("i")); }
+  else if (topic != null) { b.classList.add("tpc"); topicTint(b, topic); }
   b.appendChild(document.createTextNode(label)); b.appendChild(el("span", "", n));
   b.setAttribute("aria-pressed", String(on)); b.onclick = () => { fn(); save(); render(); };
   parent.appendChild(b);
@@ -404,7 +418,7 @@ function chips(q){
   const forTopic = base.filter(catOK);
   topicNames.forEach(t => {
    const n = forTopic.filter(r => r.topics.indexOf(t) >= 0).length, on = st.topics.indexOf(t) >= 0;
-   if (n || on) add(tbox, t, n, on, () => { st.topics = on ? st.topics.filter(x => x !== t) : st.topics.concat(t); });
+   if (n || on) add(tbox, t, n, on, () => { st.topics = on ? st.topics.filter(x => x !== t) : st.topics.concat(t); }, null, t);
   });
   if (st.topics.length) add(tbox, "Clear topics", "", false, () => { st.topics = []; });
  }
@@ -435,7 +449,7 @@ function cards(list){
  const g = el("div", "grid");
  list.forEach(r => {
   const c = el("div", r.mine ? "card mine" : "card other"), s = picture(r, "shot"), b = el("div", "cb"), f = el("div", "foot");
-  b.appendChild(el("h3")).appendChild(titleLink(r));
+  b.appendChild(el("h3")).appendChild(titleText(r));
   const meta = addAll(el("div", "row2"), [catPill(r)]);
   b.appendChild(meta);
   const tp = topicPills(r); if (tp) b.appendChild(tp);

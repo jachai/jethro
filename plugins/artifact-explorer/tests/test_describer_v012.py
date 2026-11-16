@@ -172,6 +172,7 @@ class NeverWaits(Base):
         self.assertNotIn("--bg", argv)
         self.assertEqual(argv[argv.index("--permission-mode") + 1], "dontAsk")
         tools, _ = self.skill_tools()
+        tools = tools.replace("ArtifactData, ", "")  # 0.2.11: the background run never calls ArtifactData
         self.assertEqual(argv[argv.index("--allowedTools") + 1], tools + ", " + describe.AE_TOOL)  # 0.1.5
         self.assertEqual(argv[argv.index("--output-format") + 1], "json")
         self.assertEqual(float(argv[argv.index("--max-budget-usd") + 1]), describe.RUN_CEILING)
