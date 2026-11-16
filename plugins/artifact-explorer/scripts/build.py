@@ -230,7 +230,10 @@ def collect(data, cfg):
             # sort key for "Modified": shared rows have no modified time, so use the last access, then created
             "recent": modified or r["last_accessed"] or created or r["first_seen"],
             "accessed": r["last_accessed"], "accessed_by": r["last_access_by"] or "",
-            "size": r["size"], "description": desc, "pending": not desc and r["desc_status"] == "pending",
+            "size": r["size"], "description": desc, "pending": not desc and r["desc_status"] == "pending" and r["owned"] == 1,
+            # 0.2.11: claude.ai asks consent for every read of someone else's artifact, so the background run never
+            # reads them: say so instead of an endless "description pending"
+            "unread": not desc and r["desc_status"] == "pending" and r["owned"] != 1,
             "skipped": (r["desc_note"] or "no text") if not desc and r["desc_status"] == "skipped" else "",
             "repos": repos, "thumb": thumb.replace(os.sep, "/"), "older": not db.in_window(r, win)})
     state = db.state_get(con, "build_hash")

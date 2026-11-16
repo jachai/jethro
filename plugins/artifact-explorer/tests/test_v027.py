@@ -126,9 +126,13 @@ class BackOffV027(Base):
         self.assertIn("describer back-off: last run saved 0 rows", self.log())
         self.assertTrue(self.blocked())
 
-    def test_ceiling(self):
+    def test_ceiling_productive_no_backoff(self):  # 0.2.11: a cheap-per-row run that hit the ceiling continues
+        self.assertIsNone(describe._backoff_reason((0.157, "described 16", []), 16, 0.01))
+        self.assertIsNotNone(describe._backoff_reason((0.157, "described 3", []), 3, 0.01))
+
+    def test_ceiling_costly(self):
         self.run_ended(0.14, mark_described=3)
-        self.assertIn("at the $0.15 ceiling", self.log())
+        self.assertIn("per saved row, over $0.0100", self.log())
         self.assertTrue(self.blocked())
 
     def test_over_stop_loss(self):

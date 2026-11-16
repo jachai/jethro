@@ -52,13 +52,16 @@ def access_of(row):
     return a if a in ("view", "comment", "edit") else None
 
 
-def mark_revoked(con, listed_ids, now):
+def mark_revoked(con, listed_ids, now, orgs=(0, 1)):
     """Rows owned by someone else, seen in an earlier shared list, missing from this complete one: shared_gone
-    = now. Returns the number marked. The caller guarantees the list had at least one shared row."""
-    listed = set(listed_ids)
+    = now. Returns the number marked. The caller guarantees the list had at least one shared row.
+    orgs (0.2.11): the other_org values the list actually contains. The shared list does not always carry the
+    rows from another organization (a list of only same-org rows once marked 9 reachable other-org artifacts
+    gone), so a row is marked only when its own kind (same org / other org) is in the list."""
+    listed, orgs = set(listed_ids), set(int(bool(o)) for o in orgs)
     n = 0
-    for r in con.execute("SELECT id FROM artifacts WHERE owned=0 AND shared_seen IS NOT NULL AND shared_gone IS NULL").fetchall():
-        if r["id"] not in listed:
+    for r in con.execute("SELECT id, other_org FROM artifacts WHERE owned=0 AND shared_seen IS NOT NULL AND shared_gone IS NULL").fetchall():
+        if r["id"] not in listed and int(bool(r["other_org"])) in orgs:
             con.execute("UPDATE artifacts SET shared_gone=?, updated=? WHERE id=?", (now, now, r["id"]))
             n += 1
     return n
@@ -71,7 +74,7 @@ def ingest_list(data, file, shared_complete=False):
         rows = first(rows, "artifacts", "items", "rows") or []
     con = db.connect(data)
     n, now = 0, time.time()
-    listed, shared = set(), 0
+    listed, shared, orgs = set(), 0, set()
     for r in rows:
         aid = db.resolve(con, db.id_from_url(first(r, "url", "link")) or first(r, "id"))
         if not aid:
@@ -98,11 +101,12 @@ def ingest_list(data, file, shared_complete=False):
         listed.add(aid)
         if owned_of(r) == 0:
             shared += 1
+            orgs.add(int(bool(r.get("other_org"))))
             con.execute("UPDATE artifacts SET shared_seen=?, shared_gone=NULL WHERE id=?", (now, aid))
         n += 1
     if shared_complete:
         if shared:
-            gone = mark_revoked(con, listed, now)
+            gone = mark_revoked(con, listed, now, orgs)
             if gone:
                 common.log(data, "ingest-list: %d shared rows no longer in the shared list" % gone)
         else:
@@ -455,7 +459,6 @@ RUN_FILE, OUT_FILE = "describer.json", "describer.out"
 LOG_FILE = "describer.log"  # one line per finished run (describer.out holds only the latest raw output)
 BACKOFF = 3600  # after a run that ended in a refusal, saved no row, hit the ceiling or cost too much per row, the watcher launches no describer for this long (0.2.6, 0.2.7)
 STOP_LOSS_PER_ROW = 0.01  # USD per saved row; a run above it backs off (the describe_stop_loss option, 0.2.7)
-CEILING_SHARE = 0.9  # a run that spent this share of RUN_CEILING counts as having hit it
 DENIAL_CHARS = 2000
 RUN_MARK = "/artifact-explorer:refresh describe-only"
 # The background run's own `ae` calls, named outright. The skills write `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" ...` with
@@ -556,8 +559,9 @@ def _backoff_reason(res, saved, stop_loss):
         return None
     if saved <= 0:
         return "last run saved 0 rows ($%.3f)" % cost, ""
-    if cost >= CEILING_SHARE * RUN_CEILING:
-        return "last run cost $%.3f, at the $%.2f ceiling" % (cost, RUN_CEILING), ""
+    # 0.2.11: a run that hit the ceiling but saved rows at or under the stop-loss per row was cut short while
+    # working well: no back-off, the next watch interval continues (an hour's wait per ~8-16 rows left a first
+    # load of 70+ rows "description pending" for most of a day)
     if cost / saved > stop_loss + 1e-12:
         return "last run cost $%.4f per saved row, over $%.4f" % (cost / saved, stop_loss), ""
     return None
