@@ -3,6 +3,11 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.8] - 2026-11-16
+
+### Fixed
+- A background describer run was refused at its first Dashboard row (`stopped: refused ArtifactData`): an unattended `claude -p` run is refused any ArtifactData call with a custom `out_dir`, including the TMP from `ae tmpdir ID`, so the whole 8-row batch went unsaved. In the background mode the refresh skill no longer takes the Dashboard branch: a Dashboard or Data row makes no `ae tmpdir` or ArtifactData call, gets `ae set-desc ID --needs-interactive` and is left out of the batch, and the other rows of the batch are still described and saved. The in-session `/artifact-explorer:refresh` describes those rows as before.
+
 ## [0.2.7] - 2026-11-16
 
 ### Fixed
