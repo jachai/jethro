@@ -1,6 +1,6 @@
 ---
 name: build
-description: Turn a set of open questions for Ops, a PM, a customer or any one decider into a one-card-at-a-time claude.ai artifact (recommendation first, a visual per question, answers saved in the artifact's shared db). Use for "turn these questions into a walkthrough", "question walkthrough", "make a decisions page for Ops", "interview page", or a new round after collecting answers.
+description: Turn a set of open questions for Ops, a PM, a customer or any one decider into a one-card-at-a-time claude.ai artifact (recommendation first, a visual per question, answers saved in the artifact's shared db). Use for "turn these questions into a walkthrough", "question walkthrough", "fancy questions", "make a decisions page for Ops", "interview page", or a new round after collecting answers.
 allowed-tools: Bash(sh *bin/qw *)
 ---
 
@@ -68,7 +68,7 @@ Data dir: `walkthrough/<slug>/` in the current project unless the user names one
    **How to share:** open the page, click Share, add <reader> as **Contributor** (not Viewer or Commenter),
    then send the link; Viewers and Commenters can open it but their answers never reach you.
    Then: write `shared: <ISO time>` into `state.md` once the author says it is sent, and
-   `/question-walkthrough:collect <url>` once the answers are in.
+   `/fancy-questions:collect <url>` once the answers are in.
 
 ## Who can save answers (the platform's sharing levels; do not guess other names)
 

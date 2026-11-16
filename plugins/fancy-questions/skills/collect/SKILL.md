@@ -1,6 +1,6 @@
 ---
 name: collect
-description: Read the answers saved on a question-walkthrough artifact and write answers.md (for people) and decided.json (seeds the next round). Use for "collect the answers", "what did Ops pick", "read the walkthrough answers", or /question-walkthrough:collect <artifact url>.
+description: Read the answers saved on a fancy-questions walkthrough artifact and write answers.md (for people) and decided.json (seeds the next round). Use for "collect the answers", "what did Ops pick", "read the walkthrough answers", or /fancy-questions:collect <artifact url>.
 ---
 
 # Collect walkthrough answers
