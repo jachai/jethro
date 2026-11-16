@@ -380,10 +380,11 @@ class Docs(unittest.TestCase):
 
     def test_setup_starts_with_doctor_and_checks_rule_and_test_runs(self):
         s = self.read("skills", "setup", "SKILL.md")
-        self.assertLess(s.index("`AE doctor`"), s.index("1. Options."))
+        self.assertLess(s.index("`AE doctor`"), s.index("1. Everything asked once"))
         self.assertIn("Never call this setup fresh", s)
         self.assertIn("already in ~/.claude/settings.json; nothing added", s)
-        self.assertIn("Added the rule (checked)", s)
+        self.assertIn("Added the rules (checked)", s)
+        self.assertIn("without asking (step 1 covered it)", s)  # 0.2.11: every question up front
         self.assertIn("`AE launch-describer --test`", s)
         self.assertIn("--limit N", self.read("skills", "refresh", "SKILL.md"))
 

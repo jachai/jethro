@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 import db  # noqa: E402
+import promote  # noqa: E402
 import importer  # noqa: E402
 
 PENDING = "desc_status='pending' AND (description IS NULL OR description='')"  # status counts only
@@ -74,6 +75,8 @@ def ingest_list(data, file, shared_complete=False):
         rows = first(rows, "artifacts", "items", "rows") or []
     con = db.connect(data)
     n, now = 0, time.time()
+    # a first load: nothing described yet (the watcher may already have added rows from browser history)
+    was_empty = con.execute("SELECT count(*) FROM artifacts WHERE description IS NOT NULL AND description!=''").fetchone()[0] == 0
     listed, shared, orgs = set(), 0, set()
     for r in rows:
         aid = db.resolve(con, db.id_from_url(first(r, "url", "link")) or first(r, "id"))
@@ -112,6 +115,10 @@ def ingest_list(data, file, shared_complete=False):
         else:
             common.log(data, "ingest-list: --shared-complete with no shared rows: nothing marked revoked")
     db.fold_twins(con)
+    capped = db.first_load_cap(con, common.load_config(data), was_empty)
+    if capped:
+        common.log(data, "ingest-list: first load: the newest %d rows are described, %d older ones wait (`/artifact-explorer:refresh older`)"
+                   % (n and (con.execute("SELECT count(*) FROM artifacts").fetchone()[0] - capped), capped))
     con.commit()
     print("ingested %d rows" % n)
     return 0
@@ -1031,11 +1038,25 @@ def batch_save(data, file, folder=None):
     return 0
 
 
-def topics_cmd(data, accept=None, reject=None):
-    """List configured topics (with row counts) and the describer's suggestions; or accept / reject one suggestion."""
+def topics_cmd(data, accept=None, reject=None, hide=None, unhide=None):
+    """List configured topics (with row counts) and the describer's suggestions; or accept / reject one suggestion;
+    or hide / unhide a topic (0.2.11: stored in the state table, applied on the next build)."""
     cfg = common.load_config(data)
     names = [t["name"] for t in cfg.get("topics", []) if t.get("name")]
     con = db.connect(data)
+    if hide is not None or unhide is not None:
+        k = promote.key_of(hide if hide is not None else unhide)
+        if not k:
+            print("bad topic name", file=sys.stderr)
+            return 2
+        cur = [x for x in (db.state_get(con, promote.HIDDEN_KEY, []) or []) if isinstance(x, str)]
+        new = sorted(set(cur) | {k}) if hide is not None else [x for x in cur if promote.key_of(x) != k]
+        db.state_set(con, promote.HIDDEN_KEY, new)
+        con.commit()
+        if hide is not None and k in {promote.key_of(n) for n in names}:
+            print("note: %r is also listed under [[topics]] in config.toml; remove it there too" % hide)
+        print(("hidden: " if hide is not None else "shown again: ") + k + " (run `ae build` to update the page)")
+        return 0
     if accept is not None:
         name = " ".join(accept.split())
         if not name or len(name) > 40:

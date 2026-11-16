@@ -250,7 +250,7 @@ def old(con, aid, days, **kw):
 
 
 class WindowTest(Base):
-    CFG = {"window": {"days": 60, "key": "modified"}}
+    CFG = {"window": {"days": 60, "key": "modified", "first_load": 100}}
 
     def setUp(self):
         super().setUp()
@@ -262,7 +262,7 @@ class WindowTest(Base):
 
     def test_default_config_has_a_60_day_window(self):
         import common
-        self.assertEqual(common.load_config(self.d)["window"], {"days": 60, "key": "modified"})
+        self.assertEqual(common.load_config(self.d)["window"], {"days": 60, "key": "modified", "first_load": 100})
 
     def test_in_window_and_cutoff(self):
         w = db.window(self.con, self.CFG)

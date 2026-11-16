@@ -99,6 +99,8 @@ def main(argv=None):
     g = s.add_mutually_exclusive_group()
     g.add_argument("--accept", metavar="NAME")
     g.add_argument("--reject", metavar="NAME")
+    g.add_argument("--hide", metavar="NAME", help="hide a topic from the filter, cards and table (promoted or suggested)")
+    g.add_argument("--unhide", metavar="NAME")
     s = sub.add_parser("tmpdir", help="print an empty per-row folder in the system temp dir for ArtifactData out_dir (the data folder is refused there)")
     s.add_argument("id")
     a = p.parse_args(argv)
@@ -201,7 +203,7 @@ def main(argv=None):
                 "excerpt": lambda: describe.batch_excerpt(data, getattr(a, "folder", None), getattr(a, "pairs", None)),
                 "save": lambda: describe.batch_save(data, getattr(a, "file", None), getattr(a, "folder", None))}[a.bcmd]()
     if a.cmd == "topics":
-        return describe.topics_cmd(data, accept=a.accept, reject=a.reject)
+        return describe.topics_cmd(data, accept=a.accept, reject=a.reject, hide=a.hide, unhide=a.unhide)
     if a.cmd == "set-kind":
         return describe.set_kinds(data, a.pairs)
     if a.cmd == "set-desc":
