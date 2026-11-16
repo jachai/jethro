@@ -174,7 +174,7 @@ class NeverWaits(Base):
         tools, _ = self.skill_tools()
         self.assertEqual(argv[argv.index("--allowedTools") + 1], tools + ", " + describe.AE_TOOL)  # 0.1.5
         self.assertEqual(argv[argv.index("--output-format") + 1], "json")
-        self.assertLess(float(argv[argv.index("--max-budget-usd") + 1]), describe.RUN_BUDGET)
+        self.assertEqual(float(argv[argv.index("--max-budget-usd") + 1]), describe.RUN_CEILING)
         self.assertEqual(kw["out"], os.path.join(self.d, "describer.out"))
 
     def test_skill_batches_describer_calls_and_stops_on_refusal(self):  # 0.2.0: batches, no per-row call
@@ -229,7 +229,7 @@ class Cap(Base):
         describe.launch(self.d)
         self.assertEqual(self.det.call_count, 2)
         self.assertAlmostEqual(db.spend_today(self.con()), describe.RUN_BUDGET)
-        self.assertIn("released the $0.25 booked", self.log())
+        self.assertIn("released the $0.02 booked", self.log())
 
 
 if __name__ == "__main__":

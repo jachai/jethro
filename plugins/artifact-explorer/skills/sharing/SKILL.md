@@ -1,7 +1,7 @@
 ---
 name: sharing
 description: Read the sharing state of your own artifacts from the Share dialog with Claude in Chrome and record it. Only when the share_harvest option is on. Use when asked to "update artifact sharing" or "who can see my artifacts".
-allowed-tools: Bash(sh *bin/ae *), Write, mcp__claude-in-chrome__*
+allowed-tools: Bash(sh *bin/ae *), Bash(sh "*/bin/ae" *), Write, mcp__claude-in-chrome__*
 ---
 
 # Sharing

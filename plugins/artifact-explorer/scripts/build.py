@@ -9,6 +9,8 @@ import sys
 import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import categorize as cat_guess  # noqa: E402
+import colorsys  # noqa: E402
 import common  # noqa: E402
 import db  # noqa: E402
 
@@ -42,7 +44,24 @@ def compile_rules(data, cats):
     return rules
 
 
-def categorize(rules, title, desc, kind, stored=None):
+def _hex(h, s, l):
+    return "#%02x%02x%02x" % tuple(round(255 * c) for c in colorsys.hls_to_rgb(h / 360.0, l, s))
+
+
+# 12 topic hues. (light bg, light text, dark bg, dark text); every pair keeps text contrast above 4.5:1 (tested).
+TOPIC_PALETTE = [(_hex(h, .70, .90), _hex(h, .75, .20), _hex(h, .38, .22), _hex(h, .80, .86)) for h in range(0, 360, 30)]
+
+
+def topic_key(name):
+    return " ".join(str(name or "").casefold().split())
+
+
+def topic_slot(name):
+    """Stable palette index for a topic: the same name (any case or spacing) always gets the same one."""
+    return int(hashlib.sha256(topic_key(name).encode("utf-8")).hexdigest(), 16) % len(TOPIC_PALETTE)
+
+
+def categorize(rules, title, desc, kind, stored=None, row=None):
     """Category by fallback order (a config override is applied by the caller, before this): the describer's
     stored pick when it is a configured name, then the first category whose kinds has the row's kind, then the
     first whose keywords match title + description, else FALLBACK."""
@@ -55,11 +74,23 @@ def categorize(rules, title, desc, kind, stored=None):
         for name, _, kinds in rules:
             if k in kinds:
                 return name
+    if row is not None:  # title/url/description patterns (categorize.py), limited to the configured names
+        g = cat_guess.derive_category(row, [n for n, _, _ in rules])
+        if g:
+            return g
     text = "%s %s" % (title or "", desc or "")
     for name, pats, _ in rules:
         if any(p.search(text) for p in pats):
             return name
     return FALLBACK
+
+
+def _known(rules, name):
+    return bool(name) and any(n.lower() == str(name).strip().lower() for n, _, _ in rules)
+
+
+def _known_kind(rules, kind):
+    return bool(kind) and any(str(kind).lower() in ks for _, _, ks in rules)
 
 
 def compile_topics_cfg(cfg):
@@ -168,7 +199,10 @@ def collect(data, cfg):
         rows.append({
             "id": r["id"], "title": (r["title"] or "").strip() or "Untitled", "kind": r["kind"] or "",
             "url": r["url"] if (r["url"] or "").startswith("https://claude.ai/") else "",
-            "category": o.get("category") or categorize(rules, r["title"], desc, r["kind"], r["category"]),
+            "category": o.get("category") or categorize(
+                rules, r["title"], desc, r["kind"], r["category"],
+                {"kind": r["kind"], "title": r["title"], "url": r["url"], "description": desc}),
+            "guessed": not (o.get("category") or _known(rules, r["category"]) or _known_kind(rules, r["kind"])),
             "topics": topics, "suggested": suggested,
             "mine": not others,
             "access": access if access in SHARE_LEVELS else "", "other_org": bool(r["other_org"]),
@@ -294,7 +328,8 @@ def build(data, max_age=None, update_check=True):
     accent, ver = accent_of(cfg), version()
     extra = sorted({r["category"] for r in rows} - {c["name"] for c in cats} - {FALLBACK})
     page = {k: cfg.get("page", {}).get(k) for k in ("title", "columns")}
-    page.update(accent=accent, categories=category_colors(cats, extra), version=ver,
+    names = {t for r in rows for t in r["topics"] + r["suggested"]} | {t["name"] for t in compile_topics_cfg(cfg)}
+    page.update(topic_palette=TOPIC_PALETTE, topic_slots={n: topic_slot(n) for n in sorted(names)}, accent=accent, categories=category_colors(cats, extra), version=ver,
                 topics=[t["name"] for t in compile_topics_cfg(cfg)])
     upd = None
     if update_check:

@@ -1,7 +1,7 @@
 ---
 name: open
 description: Open the Artifact Explorer page in the default browser. Use when asked to "open the artifact explorer", "show my artifacts", or "open the artifact catalog".
-allowed-tools: Bash(sh *bin/ae *)
+allowed-tools: Bash(sh *bin/ae *), Bash(sh "*/bin/ae" *)
 ---
 
 # Open
