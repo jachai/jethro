@@ -100,11 +100,38 @@ def tick(data):
         common.log(data, "watch: " + traceback.format_exc())
 
 
+def superseded(root=None, own=None):
+    """The newer installed version when this code was updated away, else None.
+
+    Every open session runs its own watcher from the version installed when the session started, and a
+    plugin update does not stop them, so one of them would keep rebuilding the page with the old code (0.2.2:
+    two dozen 0.2.0 watchers outlived an update). Superseded means: no installed_plugins.json entry points at
+    this code's folder any more and one has a newer version. A scope still installed at this version keeps its
+    watcher, and so does a watcher run from a checkout that was never installed."""
+    import update
+    root = os.path.realpath(root or common.ROOT)
+    own = own if own is not None else common.own_version()
+    ents = common.installed_entries()
+    paths = [e.get("installPath") for e in ents if isinstance(e.get("installPath"), str)]
+    if not paths or root in {os.path.realpath(p) for p in paths}:
+        return None
+    newer = [str(e.get("version")) for e in ents if update.newer(e.get("version"), own)]
+    return max(newer, key=update.parse) if newer else None
+
+
 def loop(data, tick_seconds=TICK, max_ticks=None):
     ppid = os.getppid()
     n = 0
     while max_ticks is None or n < max_ticks:
         if os.name != "nt" and (os.getppid() == 1 or os.getppid() != ppid):
+            return 0
+        try:
+            new = superseded()
+        except Exception:
+            new = None
+        if new:
+            common.log(data, "watch: %s is installed, this watcher runs %s; exiting (a new session starts one)"
+                       % (new, common.own_version()))
             return 0
         heartbeat(data)
         tick(data)

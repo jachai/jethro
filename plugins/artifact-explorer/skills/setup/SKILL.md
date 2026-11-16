@@ -1,7 +1,7 @@
 ---
 name: setup
 description: First-time setup for Artifact Explorer. Shows the options, creates the config file, offers to import an older catalog, runs a first refresh, offers a permission rule, and opens the page. Use when asked to "set up artifact explorer" or after installing the plugin.
-allowed-tools: Artifact, Agent, Read, Write, Bash(sh *bin/ae *), Bash(test *), Bash(mkdir *), Bash(cp *), Bash(ls *)
+allowed-tools: Artifact, Agent, Read, Write, Bash(sh *bin/ae *), Bash(sh "*/bin/ae" *), Bash(test *), Bash(mkdir *), Bash(cp *), Bash(ls *)
 ---
 
 # Setup
@@ -17,13 +17,14 @@ Below, `AE` means `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" --data "${CLAUDE_PLUGIN_DAT
 3. Import. Run `test -f ~/.claude/artifact-explorer/meta.json && echo yes || echo no`. If yes, tell the user a catalog from the pre-plugin Artifact Explorer exists there, that `ae import` only reads that folder and never changes it, and ask whether to import it. Run `AE import` only if they say yes.
 4. First refresh. Do the full mode of the `refresh` skill (follow `${CLAUDE_PLUGIN_ROOT}/skills/refresh/SKILL.md`, full mode). Then run `AE topics` and show it. Tell the user that topics are labels they define, that they live in their `config.toml` as `[[topics]]` entries (`name`, optional `keywords`), and that a topic the describer suggests is accepted with `ae topics --accept NAME`.
 5. Permission rule. Without it, each `ae` call asks for approval, and the background describer never starts (no one is there to approve it), so new artifacts get descriptions only when you run `/artifact-explorer:refresh` in a session. Run `AE allow-rule`.
-   - If it prints `present:`, tell the user: "The permission rule is already in ~/.claude/settings.json; nothing added." Do not ask.
-   - If it prints `missing:`, show this rule and where it goes:
+   - If it prints `present:` and no `add:` line, tell the user: "The permission rules are already in ~/.claude/settings.json; nothing added." Do not ask.
+   - If it prints `missing:`, or `present:` followed by `add:` lines (an older install has only one of the two forms; the quoted path the skills write needs the second), show the rules on its `add:` lines and where they go:
 
      ```
+     Bash(sh "*/artifact-explorer/*/bin/ae" *)
      Bash(sh */artifact-explorer/*/bin/ae *)
      ```
 
-     It goes in `permissions.allow` in `~/.claude/settings.json`. Ask: "Add this rule? (yes/no)". Only on a clear yes, read `~/.claude/settings.json`, add the rule to `permissions.allow` (create the keys if missing, keep everything else), and write the file back. Then run `AE allow-rule` again: on `present:` say "Added the rule (checked)"; on `missing:` say the rule did not take and the describer stays off. On anything but yes, do not touch the file and say the rule was not added.
-6. Describer test. Only when the rule is present: ask "Run a one-row test of the background describer now? It books $0.25 of today's describer cap and usually costs a few cents. (yes/no)". On a clear yes, run `AE launch-describer --test` and show its one line. Tell the user that `AE status` shows a `last describer run:` line once it ends (a few minutes), and that a line with `refused:` means a permission is missing. On anything else, skip it.
+     They go in `permissions.allow` in `~/.claude/settings.json`. Ask: "Add these rules? (yes/no)". Only on a clear yes, read `~/.claude/settings.json`, add the rules that are not there yet to `permissions.allow` (create the keys if missing, keep everything else), and write the file back. Then run `AE allow-rule` again: on `present:` say "Added the rule (checked)"; on `missing:` say the rule did not take and the describer stays off. On anything but yes, do not touch the file and say the rule was not added.
+6. Describer test. Only when the rule is present: ask "Run a one-row test of the background describer now? It books $0.02 of today's describer cap and usually costs a few cents. (yes/no)". On a clear yes, run `AE launch-describer --test` and show its one line. Tell the user that `AE status` shows a `last describer run:` line once it ends (a few minutes), and that a line with `refused:` means a permission is missing. On anything else, skip it.
 7. Open the page: run `AE open`. Tell the user the watcher runs while a Claude Code session is open and keeps the page fresh.

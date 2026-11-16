@@ -1,7 +1,7 @@
 ---
 name: screenshots
 description: Capture thumbnails with Claude in Chrome for artifacts that have no thumbnail (no local file, or the headless capture failed). Only when the chrome_screenshots option is on. Use when asked to "take artifact screenshots" or "fill in missing thumbnails".
-allowed-tools: Bash(sh *bin/ae *), Read, mcp__claude-in-chrome__*
+allowed-tools: Bash(sh *bin/ae *), Bash(sh "*/bin/ae" *), Read, mcp__claude-in-chrome__*
 ---
 
 # Screenshots

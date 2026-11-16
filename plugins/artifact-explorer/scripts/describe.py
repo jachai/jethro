@@ -338,16 +338,17 @@ def pending(data, owned_only=False, as_json=False, retry_no_source=False, limit=
     return 0
 
 
-RUN_BUDGET = 0.25  # one background run's worst case: booked at launch, checked against the daily cap
-RUN_LIMIT = 0.20  # passed as --max-budget-usd; claude checks it between turns, so the last turn may go a little over
+RUN_BUDGET = 0.02  # booked at launch (a typical 60-row haiku run costs about this), checked against the daily cap; the real cost replaces it
+RUN_CEILING = 0.15  # passed as --max-budget-usd, a hard stop for a runaway run; claude checks it between turns, so the last turn may go a little over
 MAX_AGE = 30 * 60  # past this a live pid is trusted only when its command line is still our describer run
 HARD_AGE = 2 * 3600  # a run of ours still alive past this is stopped (it is stuck) and treated as ended
 MAX_UNREPORTED = 2  # runs a day that may end without a cost report; then no more launches that day
 RUN_FILE, OUT_FILE = "describer.json", "describer.out"
 RUN_MARK = "/artifact-explorer:refresh describe-only"
-# 0.1.5: the background run's own `ae` calls, named outright. The skill's `Bash(sh *bin/ae *)` alone let an
-# 11-14 headless run refuse `ae pending`; this is the pattern the setup allow rule uses, without the folder.
-AE_TOOL = "Bash(sh */bin/ae *)"
+# The background run's own `ae` calls, named outright. The skills write `sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" ...` with
+# the path quoted, and in dontAsk `Bash(sh */bin/ae *)` matches only the unquoted form: allow both (0.2.3).
+AE_TOOLS = ('Bash(sh "*/bin/ae" *)', "Bash(sh */bin/ae *)")
+AE_TOOL = AE_TOOLS[1]
 
 
 def _skill_tools():
@@ -362,8 +363,9 @@ def _skill_tools():
 def allowed_tools():
     """--allowedTools for the background run: the skill's tools plus AE_TOOL, one comma-separated value as the skill writes it."""
     tools = [t.strip() for t in re.split(r",(?![^()]*\))", _skill_tools()) if t.strip()]
-    if AE_TOOL not in tools:
-        tools.append(AE_TOOL)
+    for t in AE_TOOLS:
+        if t not in tools:
+            tools.append(t)
     return ", ".join(tools)
 
 
@@ -460,7 +462,8 @@ def _launch(data, test=False):
         say("describer test: a describer run is already going (see `ae status`); not starting another")
         return 0
     rows = pending_rows(con, owned_only=True, win=data_window(data, con))
-    if not rows:
+    n_recat = recat_count(con, owned_only=True)
+    if not rows and not n_recat:
         say("describer test: nothing of yours is waiting for a description, so there is nothing to test on")
         return 0
     now = time.time()
@@ -493,7 +496,7 @@ def _launch(data, test=False):
         return 0
     argv = [claude, "-p", "--model", opts["describe_model"], "--output-format", "json",
             "--permission-mode", "dontAsk", "--allowedTools", allowed_tools(),
-            "--max-budget-usd", "%.2f" % RUN_LIMIT]
+            "--max-budget-usd", "%.2f" % RUN_CEILING]
     if os.path.basename(os.path.normpath(data)).endswith("-inline"):
         # loaded with --plugin-dir (development): the new session must load it the same way
         argv += ["--plugin-dir", common.ROOT]
@@ -516,7 +519,7 @@ def _launch(data, test=False):
         except OSError:
             common.log(data, "describer launched (pid %d) but its record could not be written" % pid)
             return 0
-        common.log(data, "describer launched (pid %d) for %d pending rows%s" % (pid, len(rows), " (test: 1 row)" if test else ""))
+        common.log(data, "describer launched (pid %d) for %d pending rows, %d to categorize%s" % (pid, len(rows), n_recat, " (test: 1 row)" if test else ""))
         say("describer test: launched (pid %d) for 1 row, $%.2f booked; `ae status` shows its result in a few minutes"
             % (pid, RUN_BUDGET))
     else:
@@ -672,12 +675,25 @@ def batch_manifest(data, folder):
     return _report(folder, write_manifest(data, folder, items))
 
 
-def batch_recat(data, limit=40):
-    """New folder + manifest of described rows that have no category pick yet (text items, nothing to read)."""
+def recat_where(owned_only=False):
+    """Described rows the describer has not yet given a category or topics (0.2.3). Whatever the window: they
+    were described already. recat_tried is set once a reply came back for the row, so a row the describer
+    cannot place is asked once, not forever."""
+    return ("description IS NOT NULL AND description<>'' AND coalesce(desc_source,'')<>'title' "
+            "AND coalesce(cat_source,'')<>'none' AND recat_tried IS NULL "
+            "AND (cat_source IS NULL OR category IS NULL OR topics IS NULL OR topics IN ('', '[]'))"
+            + (" AND owned=1" if owned_only else ""))
+
+
+def recat_count(con, owned_only=False):
+    return con.execute("SELECT count(*) FROM artifacts WHERE " + recat_where(owned_only)).fetchone()[0]
+
+
+def batch_recat(data, limit=40, owned_only=False):
+    """New folder + manifest of described rows that lack a category or topics (text items, nothing to read)."""
     con = db.connect(data)
-    rs = con.execute("SELECT id, title, description FROM artifacts WHERE description IS NOT NULL AND description<>'' "
-                     "AND coalesce(desc_source,'')<>'title' AND cat_source IS NULL "
-                     "ORDER BY owned DESC, modified DESC, id LIMIT ?", (max(0, limit),)).fetchall()
+    rs = con.execute("SELECT id, title, description FROM artifacts WHERE " + recat_where(owned_only) +
+                     " ORDER BY owned DESC, modified DESC, id LIMIT ?", (max(0, limit),)).fetchall()
     con.close()
     if not rs:
         print("items: 0")
@@ -782,9 +798,11 @@ def batch_save(data, file):
         else:
             saved += 1
             sug += r
-    for aid in texts - done:  # asked for a category and got none: do not ask again
+    for aid in texts:  # asked once: never again (a reply with no pick for a row leaves it as it is)
         try:
-            con.execute("UPDATE artifacts SET cat_source='none' WHERE id=? AND cat_source IS NULL", (aid,))
+            con.execute("UPDATE artifacts SET recat_tried=1 WHERE id=?", (aid,))
+            if aid not in done:
+                con.execute("UPDATE artifacts SET cat_source='none' WHERE id=? AND cat_source IS NULL", (aid,))
         except Exception:
             pass
     con.commit()

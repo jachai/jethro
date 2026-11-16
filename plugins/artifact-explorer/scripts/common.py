@@ -28,6 +28,37 @@ def claude_dir():
     return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
 
 
+def _read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def own_version():
+    """The version of the code that is running: .claude-plugin/plugin.json next to these scripts ("" if unreadable)."""
+    d = _read_json(os.path.join(ROOT, ".claude-plugin", "plugin.json"))
+    return str(d.get("version") or "") if isinstance(d, dict) else ""
+
+
+def installed_entries():
+    """This plugin's installed_plugins.json entries (one per scope), [] when it is not installed."""
+    d = _read_json(os.path.join(claude_dir(), "plugins", "installed_plugins.json"))
+    ent = ((d or {}).get("plugins") or {}).get(PLUGIN_KEY) if isinstance(d, dict) else None
+    if isinstance(ent, dict):
+        ent = [ent]
+    return [e for e in ent if isinstance(e, dict)] if isinstance(ent, list) else []
+
+
+def marketplace_dir():
+    """The local clone of the artifact-explorer marketplace (known_marketplaces.json), or None."""
+    d = _read_json(os.path.join(claude_dir(), "plugins", "known_marketplaces.json"))
+    ent = d.get("artifact-explorer") if isinstance(d, dict) else None
+    loc = ent.get("installLocation") if isinstance(ent, dict) else None
+    return loc if isinstance(loc, str) and os.path.isdir(loc) else None
+
+
 def default_data_dir():
     return os.path.join(claude_dir(), "plugins", "data", "artifact-explorer-artifact-explorer")
 
@@ -39,7 +70,11 @@ def data_dir(arg=None):
 
 
 # The allow rule `/artifact-explorer:setup` offers. The background describer needs it (no one is there to approve).
+# 0.2.3: the skills write the command with the path quoted (`sh "${CLAUDE_PLUGIN_ROOT}/bin/ae" ...`), which the
+# old rule does not match. Setup writes both; an install that has only one of them still counts as present.
 ALLOW_RULE = "Bash(sh */artifact-explorer/*/bin/ae *)"
+ALLOW_RULE_QUOTED = 'Bash(sh "*/artifact-explorer/*/bin/ae" *)'
+ALLOW_RULES = (ALLOW_RULE_QUOTED, ALLOW_RULE)
 
 
 def user_settings():
@@ -54,7 +89,14 @@ def user_settings():
 
 def allow_rule_present():
     allow = (user_settings().get("permissions") or {}).get("allow") or []
-    return isinstance(allow, list) and ALLOW_RULE in allow
+    return isinstance(allow, list) and any(r in allow for r in ALLOW_RULES)
+
+
+def allow_rules_missing():
+    """The rules of ALLOW_RULES that settings.json does not have yet (setup adds these)."""
+    allow = (user_settings().get("permissions") or {}).get("allow") or []
+    allow = allow if isinstance(allow, list) else []
+    return [r for r in ALLOW_RULES if r not in allow]
 
 
 def options():

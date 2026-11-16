@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.3] - 2026-11-16
+
+### Fixed
+- Background descriptions never ran: the skills write the `ae` path in quotes, and the background run's permission rule only matched the unquoted form, so every run was refused at its first call. Both forms are now allowed in the skills, the background run and the setup rule (`Bash(sh "*/artifact-explorer/*/bin/ae" *)` added next to the old rule; existing installs with the old rule keep working, and setup offers the new one).
+- Rows described before 0.2.0 never got a category or topics. Schema version 2 makes every owned row missing a category or topics eligible again, and the background run now fills them (recat) after describing new rows.
+- The update badge falls back to the marketplace clone when GitHub cannot be reached.
+- A watcher replaced by a newer one now exits.
+
+### Changed
+- Describer batches are up to 20 artifacts per call and 60 per run (was 8 and 10).
+- A background run books $0.02 against the daily cap at launch instead of $0.25; the real cost still replaces the booking when it ends. Each run's hard ceiling is $0.15.
+
+### Added
+- Every topic has a stable color, with a pill on each card and row in light and dark themes; clicking a pill filters by that topic.
+- Rows without a category get one derived from kind, URL, title and description keywords instead of showing as Uncategorized (marked "guessed", never written to the catalog).
+- CONTRIBUTING release steps (tag the merged bump commit) and a pull request template.
+
 ## [0.2.2] - 2026-11-15
 
 ### Changed
