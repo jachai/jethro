@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.11] - 2026-11-16
+
+Chosen as 0.2.11, not 0.3.0: no config breaks; only defaults change.
+
+### Changed
+- Card: only the thumbnail is a link, so the title and text can be selected and copied. The table has an Open button on every row again.
+- Every artifact link has its own window name (`ae-<id>`). claude.ai's cross-origin opener policy clears the name, so the tab cannot be reused and each click opens a new tab.
+- Topic chips in the filter row carry the same color as that topic's marks on cards and rows, in both themes.
+- Everything is automatic: a suggested topic is applied as a normal topic (no "suggested" state or tooltip). Setup asks for every permission once, up front. The first load is capped at the newest 100 artifacts (`[window] first_load`; `ae window --widen` lifts it).
+- Topic promotion counts uses per title family (first two title words), so a one-off such as "demo pipeline" is no longer promoted; a one-time recheck drops old one-family promotions.
+- The background describer is no longer allowed ArtifactData (it never calls it there; an unattended run was refused it and backed off for an hour). A test checks that every tool and `ae` form the background mode uses is allowed.
+
+### Added
+- `ae topics --hide NAME` / `--unhide NAME` to hide a topic from the page.
+
+### Fixed
+- A reachable artifact was marked "No longer shared": other-organization rows are now marked gone only when the list includes other-organization rows.
+- Many cards sat on "description pending": a productive run that reached the budget ceiling no longer backs off, and shared rows the describer cannot read show "shared with you, not read" instead of pending.
+
 ## [0.2.10] - 2026-11-16
 
 ### Fixed

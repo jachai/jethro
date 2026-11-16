@@ -35,11 +35,11 @@ Do not use a `*` version glob there: old versions stay in the cache, and the glo
 ## The page
 
 - Every artifact has a category with a color (set `color` and `color_dark` on a `[[categories]]` entry to change it). The describer picks one category per artifact in the same call as its sentence. Rows without a description fall back to their kind, then to keywords, then "Uncategorized".
-- Topics are labels you define as `[[topics]]` in your `config.toml` (`name`, and optional `keywords` matched on the title). The describer tags up to three and may suggest a new one. `ae topics` lists them with counts and the suggestions; `ae topics --accept NAME` adds a suggestion to your config, `--reject NAME` drops it. Topic pills filter the page like categories do.
+- Topics are automatic. The describer tags each artifact (up to three) and may suggest a topic; a suggestion shows as a normal topic pill straight away, and one used by at least `min_uses` artifacts across different title families is promoted to the Topic filter. Nothing waits for you. To steer it: define your own `[[topics]]` in `config.toml` (`name`, optional `keywords` matched on the title), rename one with `[topic_promote.rename]`, or hide one with `ae topics --hide NAME` (`--unhide NAME` brings it back). `ae topics` lists topics with counts. Topic pills filter the page like categories do, and a topic has the same color in the filter row, on cards and in the table.
 - Your own artifacts show nothing about who made them. Someone else's shows "from <name>" (or "from another organization").
 - A shared artifact shows its access: view, comment or edit. One that was in an earlier shared list and is missing from the latest complete one shows "No longer shared".
 - Whenever a refresh reads an artifact someone else made, the page file is kept in `copies/` in the data folder (never your own artifacts, never published anywhere). A "No longer shared" row with a copy gets "Save local copy"; without one it says there is no copy.
-- Click a card or a row to open the artifact. Cmd/Ctrl-click or middle-click opens a new tab.
+- On a card only the thumbnail opens the artifact, so the title and text can be selected and copied; the table has an Open button on each row. Each artifact has its own window name, but claude.ai's cross-origin opener policy blocks reusing the tab, so each click opens a new tab.
 - The header shows when the page was built and how long ago, and the version that built it. An artifact with no thumbnail gets a tile with its initials.
 - The page has a favicon (a four-card grid in the accent color); `favicon.ico` is written next to `explorer.html`.
 
@@ -66,7 +66,18 @@ Change them in `/config` (plugins).
 
 ## Which artifacts get described
 
-Only a recent window, 60 days by default (`[window] days` in config.toml; `0` covers everything). Older rows sit in a collapsed "N older artifacts" group on the page. `/artifact-explorer:refresh older` widens the window by 30 days and describes them. Docs, Slides and Dashboard artifacts are described from their own source (the Doc's title and outline, the deck outline, the dashboard page and datasets). When that source cannot be read the title stands in, and `/artifact-explorer:refresh retry` tries again. Artifacts shared with you have no date in the list, so they count from the day the catalog first saw them.
+The first load covers only the newest 100 artifacts (`[window] first_load` in config.toml; `ae window --widen` lifts it). After that only a recent window, 60 days by default (`[window] days` in config.toml; `0` covers everything). Older rows sit in a collapsed "N older artifacts" group on the page. `/artifact-explorer:refresh older` widens the window by 30 days and describes them. Docs, Slides and Dashboard artifacts are described from their own source (the Doc's title and outline, the deck outline, the dashboard page and datasets). When that source cannot be read the title stands in, and `/artifact-explorer:refresh retry` tries again. Artifacts shared with you have no date in the list, so they count from the day the catalog first saw them.
+
+## Permissions
+
+Setup asks for everything once, in one message, and nothing afterwards:
+
+- Two rules in `permissions.allow` of `~/.claude/settings.json`, so each `ae` call runs without a prompt and the background describer can start: `Bash(sh "*/artifact-explorer/*/bin/ae" *)` and `Bash(sh */artifact-explorer/*/bin/ae *)`.
+- Reading your claude.ai artifact list and your own artifacts with the Artifact tool (claude.ai may show its own consent prompt).
+- A one-row background describer test, and later background runs, within `describe_daily_cap`.
+- The options in `/config` (plugins), and importing an older catalog when one exists.
+
+Artifacts shared with you by others are never read in the background (claude.ai asks consent per read); they show "shared with you, not read" until you run `/artifact-explorer:refresh` yourself. The background run is allowed exactly the tools it uses (no ArtifactData), so it is never refused one.
 
 ## What leaves the machine
 
