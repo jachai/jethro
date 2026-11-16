@@ -13,6 +13,7 @@ import categorize as cat_guess  # noqa: E402
 import colorsys  # noqa: E402
 import common  # noqa: E402
 import db  # noqa: E402
+import promote  # noqa: E402
 
 FALLBACK = "Uncategorized"
 DEFAULT_ACCENT = "#0f6b5c"
@@ -122,11 +123,12 @@ def _names(v):
     return [str(x) for x in v if isinstance(x, str)] if isinstance(v, list) else []
 
 
-def tag_topics(trules, title, stored, suggest):
+def tag_topics(trules, title, stored, suggest, alias=None):
     """(topics, suggested) for a row. topics = the describer's stored list (None = never tagged; cut to configured
     names plus any suggestion configured by now) plus configured topics whose keywords match the title.
     suggested = the suggested names that are not configured."""
     canon = {n.lower(): n for n, _ in trules}
+    canon.update(alias or {})  # 0.2.9: merged spellings of a configured or promoted topic
     sug = _names(suggest)
     topics = []
     for n in (_names(stored) if stored is not None else []) + (sug if stored is not None else []):
@@ -174,10 +176,26 @@ def _stored(v):
     return _names(v)
 
 
+def auto_topics(data, cfg):
+    """(promoted topic dicts, alias map) for this pass; promotion is re-run on every build (0.2.9)."""
+    con = db.connect(data)
+    try:
+        names, alias = promote.resolve(con, cfg)
+    finally:
+        con.close()
+    return [{"name": n, "keywords": ["(?!)"], "auto": True} for n in names], alias
+
+
+def all_topics(cfg, auto):
+    have = {str(t["name"]).strip().lower() for t in compile_topics_cfg(cfg)}
+    return compile_topics_cfg(cfg) + [t for t in auto if t["name"].lower() not in have]
+
+
 def collect(data, cfg):
     flt, over = cfg.get("filter", {}), cfg.get("overrides", {})
     rules = compile_rules(data, cfg.get("categories", []))
-    trules = compile_topics(data, cfg.get("topics", []))
+    auto, alias = auto_topics(data, cfg)
+    trules = compile_topics(data, all_topics(cfg, auto))
     inc, exc = set(flt.get("include_repos", [])), set(flt.get("exclude_repos", []))
     exc_ids = set(flt.get("exclude_ids", []))
     con = db.connect(data)
@@ -193,7 +211,7 @@ def collect(data, cfg):
         created, modified = r["first_pub"] or r["created"], r["last_pub"] or r["modified"]
         thumb = r["thumb"] if r["thumb"] and os.path.exists(os.path.join(data, r["thumb"])) else ""
         others = r["owned"] == 0
-        topics, suggested = tag_topics(trules, r["title"], _stored(r["topics"]), r["topic_suggest"])
+        topics, suggested = tag_topics(trules, r["title"], _stored(r["topics"]), r["topic_suggest"], alias)
         copy = r["local_copy"] if others and r["local_copy"] and os.path.exists(os.path.join(data, r["local_copy"])) else ""
         access = (r["access"] or "").lower()
         rows.append({
@@ -328,9 +346,10 @@ def build(data, max_age=None, update_check=True):
     accent, ver = accent_of(cfg), version()
     extra = sorted({r["category"] for r in rows} - {c["name"] for c in cats} - {FALLBACK})
     page = {k: cfg.get("page", {}).get(k) for k in ("title", "columns")}
-    names = {t for r in rows for t in r["topics"] + r["suggested"]} | {t["name"] for t in compile_topics_cfg(cfg)}
+    tcfg = all_topics(cfg, auto_topics(data, cfg)[0])
+    names = {t for r in rows for t in r["topics"] + r["suggested"]} | {t["name"] for t in tcfg}
     page.update(topic_palette=TOPIC_PALETTE, topic_slots={n: topic_slot(n) for n in sorted(names)}, accent=accent, categories=category_colors(cats, extra), version=ver,
-                topics=[t["name"] for t in compile_topics_cfg(cfg)])
+                topics=[t["name"] for t in tcfg])
     upd = None
     if update_check:
         import update

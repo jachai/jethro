@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.9] - 2026-11-16
+
+### Added
+- Suggested topics are promoted automatically. A describer suggestion used on at least `min_uses` artifacts (`[topic_promote] min_uses`, default 2, 0 = off) becomes a topic: it applies to those rows and shows in the Topic filter. Promotion re-runs on every build and watcher pass. Promoted topics are recorded in the state table, so they stay; `[topic_promote] demote = [...]` drops one and `[topic_promote.rename]` renames one. Topics in `[[topics]]` and row overrides are never changed.
+- Near-duplicate suggestions are merged before counting: case, spacing, simple plural ('change order' = 'change orders'), and a word-prefix rule ('change order backlog' folds into 'change orders' only when the longer one has fewer uses).
+
 ## [0.2.8] - 2026-11-16
 
 ### Fixed
