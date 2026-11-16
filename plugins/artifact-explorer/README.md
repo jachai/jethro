@@ -4,6 +4,14 @@ A Claude Code plugin that keeps a catalog of your claude.ai artifacts on your ow
 
 It stores a SQLite db, a `config.toml` and a static `explorer.html`. It needs Python 3.9+ and nothing else.
 
+## Screenshots
+
+Invented demo data (`python3 scripts/dev/demo_data.py DIR`, then `AE_DATA=DIR python3 scripts/ae.py build`).
+
+![Cards, light](docs/screenshots/cards-light.png)
+![Cards, dark](docs/screenshots/cards-dark.png)
+![Table](docs/screenshots/table.png)
+
 ## Install
 
 ```
