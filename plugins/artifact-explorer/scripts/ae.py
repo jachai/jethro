@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-VERSION = "0.2.6"
+VERSION = "0.2.7"
 
 
 def main(argv=None):
@@ -27,6 +27,7 @@ def main(argv=None):
     s.add_argument("--thumbs-only", action="store_true", help="only copy its screenshots into rows without a thumbnail")
     s = sub.add_parser("launch-describer", help="start a background describer run when one is due")
     s.add_argument("--test", action="store_true", help="setup's check: start one now for a single row and say what happened")
+    s.add_argument("--rows", type=int, help="start one now for at most N rows (1..60), ignoring the interval and back-off, and say what happened")
     s = sub.add_parser("doctor", help="which plugin version runs, what is installed, the data folder, the permission rule, a page check")
     s.add_argument("--expect", choices=["fresh", "installed", "any"], default="any",
                    help="fresh: fail unless the data folder is empty; installed: fail unless the installed version is the marketplace one")
@@ -83,11 +84,11 @@ def main(argv=None):
     b = bs.add_parser("manifest", help="write FOLDER/manifest.txt from the excerpts in it")
     b.add_argument("folder")
     b = bs.add_parser("recat", help="new batch folder + manifest of described rows that lack a category or topics")
-    b.add_argument("--limit", type=int, default=40)
+    b.add_argument("--limit", type=int, default=8)
     b.add_argument("--owned-only", action="store_true", help="only your own artifacts (the background run)")
     b = bs.add_parser("local", help="no Artifact tool (background run): batch of own pending rows with a local source; "
                       "the others are marked needs interactive refresh")
-    b.add_argument("--limit", type=int, default=20)
+    b.add_argument("--limit", type=int, default=8)
     b = bs.add_parser("excerpt", help="excerpt several saved pages: FOLDER ID=SAVED_FILE ... (like `excerpt SAVED_FILE --out FOLDER/ID.txt --id ID` each)")
     b.add_argument("folder")
     b.add_argument("pairs", nargs="+", metavar="ID=SAVED_FILE")
@@ -190,13 +191,13 @@ def main(argv=None):
         return 0
     import describe
     if a.cmd == "launch-describer":
-        return describe.launch(data, test=a.test)
+        return describe.launch(data, test=a.test, rows=max(1, min(60, a.rows)) if a.rows else None)
     if a.cmd == "ingest-list":
         return describe.ingest_list(data, a.file, shared_complete=a.shared_complete)
     if a.cmd == "batch":
         return {"start": lambda: describe.batch_start(data), "manifest": lambda: describe.batch_manifest(data, getattr(a, "folder", None)),
-                "recat": lambda: describe.batch_recat(data, getattr(a, "limit", 40), getattr(a, "owned_only", False)),
-                "local": lambda: describe.batch_local(data, getattr(a, "limit", 20)),
+                "recat": lambda: describe.batch_recat(data, getattr(a, "limit", 8), getattr(a, "owned_only", False)),
+                "local": lambda: describe.batch_local(data, getattr(a, "limit", 8)),
                 "excerpt": lambda: describe.batch_excerpt(data, getattr(a, "folder", None), getattr(a, "pairs", None)),
                 "save": lambda: describe.batch_save(data, getattr(a, "file", None), getattr(a, "folder", None))}[a.bcmd]()
     if a.cmd == "topics":

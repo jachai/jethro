@@ -209,12 +209,16 @@ class CapAccounting(DescBase):
 
     def test_stale_run_with_a_report_counts_its_real_cost(self):
         describe.launch(self.d)
-        json.dump({"result": "described 1", "total_cost_usd": 0.03},
+        json.dump({"result": "described 2", "total_cost_usd": 0.02},
                   open(os.path.join(self.d, describe.OUT_FILE), "w"))
+        con = self.con()  # 2 rows saved at $0.01 each: no back-off (0.2.7)
+        for aid in (A, B):
+            db.upsert_artifact(con, aid, description="d", desc_status="done")
+        con.commit()
         self.alive.return_value = False
         self.next_tick()
         describe.launch(self.d)
-        self.assertAlmostEqual(db.spend_today(self.con()), 0.03 + describe.RUN_BUDGET)
+        self.assertAlmostEqual(db.spend_today(self.con()), 0.02 + describe.RUN_BUDGET)
 
     def test_an_older_report_is_not_read_as_the_new_run(self):
         json.dump({"result": "old", "total_cost_usd": 0.01}, open(os.path.join(self.d, describe.OUT_FILE), "w"))
@@ -381,7 +385,7 @@ class Docs(unittest.TestCase):
         self.assertIn("already in ~/.claude/settings.json; nothing added", s)
         self.assertIn("Added the rule (checked)", s)
         self.assertIn("`AE launch-describer --test`", s)
-        self.assertIn("--limit 1", self.read("skills", "refresh", "SKILL.md"))
+        self.assertIn("--limit N", self.read("skills", "refresh", "SKILL.md"))
 
     def test_readme_update_and_cost(self):
         r = self.read("README.md")

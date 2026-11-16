@@ -194,14 +194,14 @@ class Requeue(Base):
 
 
 class Skill(unittest.TestCase):
-    def test_batches_of_20_and_describe_only_recat(self):
+    def test_batches_of_8_and_describe_only_recat(self):
         txt = open(os.path.join(common.ROOT, "skills", "refresh", "SKILL.md"), encoding="utf-8").read()
         self.assertNotIn("up to 8", txt)
-        self.assertIn("batches of up to 20", txt)
+        self.assertIn("batches of at most 8", txt)
         self.assertIn("Describe at most 60", txt)
-        self.assertIn("AE batch recat --owned-only --limit 20", txt)
+        self.assertIn("AE batch recat --owned-only --limit 8", txt)
         self.assertNotIn("do not run `AE batch recat` here", txt)
-        self.assertIn("20 items", open(os.path.join(common.ROOT, "agents", "describer.md"), encoding="utf-8").read())
+        self.assertIn("8 items", open(os.path.join(common.ROOT, "agents", "describer.md"), encoding="utf-8").read())
 
 
 if __name__ == "__main__":
