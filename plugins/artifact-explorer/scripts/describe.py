@@ -486,9 +486,14 @@ def _skill_tools():
     raise RuntimeError("refresh skill has no allowed-tools")
 
 
+# Tools the skill allows for the in-session refresh only: the background mode never calls them (0.2.11), and an
+# unattended run is refused any ArtifactData `out_dir`, so allowing it would only invite a refusal and a 1 h back-off.
+SESSION_ONLY_TOOLS = ("ArtifactData",)
+
+
 def allowed_tools():
-    """--allowedTools for the background run: the skill's tools plus AE_TOOL, one comma-separated value as the skill writes it."""
-    tools = [t.strip() for t in re.split(r",(?![^()]*\))", _skill_tools()) if t.strip()]
+    """--allowedTools for the background run: the skill's tools minus the session-only ones, plus AE_TOOLS, one comma-separated value as the skill writes it."""
+    tools = [t.strip() for t in re.split(r",(?![^()]*\))", _skill_tools()) if t.strip() and t.strip() not in SESSION_ONLY_TOOLS]
     for t in AE_TOOLS:
         if t not in tools:
             tools.append(t)

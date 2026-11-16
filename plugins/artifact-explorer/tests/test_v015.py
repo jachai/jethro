@@ -242,7 +242,7 @@ class Permission(DescBase):
         argv = self.det.call_args[0][0]
         tools = argv[argv.index("--allowedTools") + 1]
         self.assertIn("Bash(sh */bin/ae *)", tools)
-        self.assertTrue(tools.startswith(describe._skill_tools()))
+        self.assertTrue(tools.startswith(describe._skill_tools().replace("ArtifactData, ", "")))  # 0.2.11
         self.assertEqual(argv[argv.index("--allowedTools") + 2], "--max-budget-usd")  # one value, then a flag
         self.assertEqual(tools.count(describe.AE_TOOL), 1)
 
