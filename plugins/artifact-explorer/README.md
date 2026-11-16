@@ -6,7 +6,7 @@ It stores a SQLite db, a `config.toml` and a static `explorer.html`. It needs Py
 
 ## Screenshots
 
-Invented demo data (`python3 scripts/dev/demo_data.py DIR`, then `AE_DATA=DIR python3 scripts/ae.py build`).
+Invented demo data (`python3 scripts/dev/demo_data.py DIR` writes the data and builds `DIR/explorer.html`).
 
 ![Cards, light](docs/screenshots/cards-light.png)
 ![Cards, dark](docs/screenshots/cards-dark.png)

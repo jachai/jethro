@@ -21,10 +21,10 @@ class TileTest(unittest.TestCase):
         return json.loads(subprocess.run([NODE], input=code, capture_output=True, encoding="utf-8", check=True).stdout)
 
     def test_initials(self):
-        titles = ["Housing Twin plan", "x", "  change-orders  dashboard", "\U0001F680\U0001F680", "!!! ???", "", "日本語の資料",
+        titles = ["Garden plan", "x", "  change-orders  dashboard", "\U0001F680\U0001F680", "!!! ???", "", "日本語の資料",
                   "Бюджет 2026", "single"]
         out = self.run_js("console.log(JSON.stringify(%s.map(initials)))" % json.dumps(titles))
-        self.assertEqual(out[0], "HT")
+        self.assertEqual(out[0], "GP")
         self.assertEqual(out[1], "X")
         self.assertEqual(out[2], "CO")
         self.assertEqual(out[3:6], ["?", "?", "?"])

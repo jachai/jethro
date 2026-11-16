@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write a fully invented demo catalog (explorer.db, config.toml, SVG thumbnails) for README screenshots.
 
-    python3 scripts/dev/demo_data.py OUT_DIR && AE_DATA=OUT_DIR python3 scripts/ae.py build
+    python3 scripts/dev/demo_data.py OUT_DIR   # writes the data and builds OUT_DIR/explorer.html
 
 Everything is made up: generic hobby themes, fake people, fake ids. Nothing comes from a real catalog.
 """
@@ -27,7 +27,7 @@ ROWS = [
     ("Book club: November pick", "Docs", "Docs", ["Book club"], "Discussion questions and a reading schedule for this month's novel.", 3, 1, "", ""),
     ("Reading list 2027", "Docs", "Plans", ["Book club"], "Twenty-four candidate books voted on by the club.", 8, 1, "", ""),
     ("Book club scoreboard", "Dashboard", "Dashboards", ["Book club"], "Who read what, ratings per book, and the all-time favorites.", 15, 1, "", ""),
-    ("Meeting recap: October", "Docs", "Reports", ["Book club"], "Notes from the October meeting, including the argument about the ending.", 27, 0, "Priya Raman", "comment"),
+    ("Meeting recap: October", "Docs", "Reports", ["Book club"], "Notes from the October meeting, including the argument about the ending.", 2, 0, "Priya Raman", "comment"),
     ("Tomato bed layout", "Docs", "Plans", ["Garden"], "A raised-bed plan with spacing, companion plants and a planting calendar.", 5, 1, "", ""),
     ("Garden watering log", "Dashboard", "Dashboards", ["Garden"], "Daily rainfall and watering minutes with a simple dry-spell warning.", 7, 1, "", ""),
     ("Seed order summary", "Docs", "Reports", ["Garden"], "What was ordered, what arrived, and what to reorder in spring.", 19, 1, "", ""),
@@ -39,8 +39,11 @@ ROWS = [
     ("Weekend hike planner", "Docs", "Plans", ["Travel", "Garden"], "Trail options near town ranked by length, shade and parking.", 12, 1, "", ""),
     ("Birthday party plan", "Docs", "Plans", [], "Guest list, menu and a timeline for a small backyard party.", 16, 1, "", ""),
     ("Monthly household budget", "Dashboard", "Dashboards", [], "Income against groceries, subscriptions and fun money for the year.", 18, 1, "", ""),
-    ("Neighborhood swap shelf", "Docs", "Docs", [], "Ground rules and a sign-up sheet for the street's book and plant swap.", 34, 0, "Lena Okafor", "edit"),
+    ("Neighborhood swap shelf", "Docs", "Docs", [], "Ground rules and a sign-up sheet for the street's book and plant swap.", 5, 0, "Lena Okafor", "edit"),
 ]
+# owned rows that are not private (index into ROWS), and invented repo names for some rows
+SHARED = {0: "link", 3: "org", 8: "org", 16: "org", 18: "link", 21: "org"}
+REPOS = {16: "habit-tracker", 17: "habit-tracker", 18: "habit-tracker", 19: "habit-tracker", 2: "trip-notes", 12: "garden-notes", 13: "garden-notes", 9: "club-lists"}
 PALETTE = [("#2a9d8f", "#264653"), ("#e9c46a", "#f4a261"), ("#e76f51", "#b5838d"), ("#457b9d", "#1d3557"),
            ("#8ab17d", "#2d6a4f"), ("#b08968", "#7f5539"), ("#9d4edd", "#5a189a"), ("#f28482", "#f6bd60")]
 TOPIC_COLORS = {"Travel": "#457b9d", "Recipes": "#e76f51", "Book club": "#9d4edd", "Garden": "#2d6a4f", "Side project": "#b08968"}
@@ -76,11 +79,13 @@ def main(out):
             f.write(thumb_svg(title, i))
         t = now - ago * DAY
         db.upsert_artifact(con, a, url="https://claude.ai/artifact/" + a, title=title, kind=kind, owned=owned,
-                           creator=creator or None, sharing="private" if owned else None, created=t - DAY, modified=t,
+                           creator=creator or None, sharing=SHARED.get(i, "private") if owned else None, size=int((9 + (i * 37) % 180) * 1024 + i * 211), created=t - DAY, modified=t,
                            last_accessed=t, description=desc, desc_source="describer", desc_status="ok",
                            thumb=rel, thumb_source="demo", thumb_status="ok", category=cat, cat_source="describer",
                            topics='["%s"]' % '","'.join(topics) if topics else "[]", access=access or None,
                            other_org=0)
+        db.add_event(con, a, t, "publish", "demo", repo=REPOS.get(i))
+    db.state_set(con, "last_pass", now - 4 * 60)  # "last checked 4 minutes ago"
     con.commit()
     con.close()
     topics = "\n".join('[[topics]]\nname = "%s"\n' % n for n in TOPIC_COLORS)
@@ -88,7 +93,19 @@ def main(out):
         f.write('[page]\ntitle = "Artifact Explorer"\nupdate_check = false\n\n' + topics)
 
 
+def build(out):
+    """Build the page while this process stands in for a running watcher (the page shows it as of build)."""
+    import json
+    import subprocess
+    with open(os.path.join(out, "watcher.json"), "w", encoding="utf-8") as f:
+        json.dump({"pid": os.getpid(), "t": time.time()}, f)
+    env = dict(os.environ, AE_DATA=out, AE_UPDATE_CHECK="0")
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ae.py")
+    subprocess.check_call([sys.executable, root, "build"], env=env)
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     main(sys.argv[1])
+    build(sys.argv[1])

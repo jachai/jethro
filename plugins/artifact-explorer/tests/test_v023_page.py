@@ -34,8 +34,8 @@ class PaletteTest(unittest.TestCase):
             self.assertGreaterEqual(contrast(db_, df), 4.5)
 
     def test_slot_stable_and_normalized(self):
-        self.assertEqual(build.topic_slot("Housing Twin"), build.topic_slot("  housing   TWIN "))
-        self.assertEqual(build.topic_slot("Housing Twin"), build.topic_slot("Housing Twin"))
+        self.assertEqual(build.topic_slot("Garden plan"), build.topic_slot("  garden   PLAN "))
+        self.assertEqual(build.topic_slot("Garden plan"), build.topic_slot("Garden plan"))
         self.assertEqual(build.topic_slot("Change Orders"), build.topic_slot("change orders"))
         slots = {build.topic_slot("t%d" % i) for i in range(200)}
         self.assertEqual(slots, set(range(12)))
@@ -51,7 +51,7 @@ class CategorizeTest(unittest.TestCase):
         self.assertEqual(self.cat(kind="Docs", title="Plan"), "Docs")
 
     def test_titles(self):
-        self.assertEqual(self.cat(title="Q3 Housing deck"), "Decks")
+        self.assertEqual(self.cat(title="Q3 Garden deck"), "Decks")
         self.assertEqual(self.cat(title="Sprint Burndown"), "Dashboards")
         self.assertEqual(self.cat(title="Root-Cause Fix Plan"), "Plans")
         self.assertEqual(self.cat(title="Contributor Review"), "Reports")
@@ -74,21 +74,21 @@ class PageTest(unittest.TestCase):
     def setUp(self):
         self.d = helpers.tmp()
         con = db.connect(self.d)
-        db.upsert_artifact(con, "aaaaaaaaaa", title="Housing Twin plan", owned=1, created=100, modified=200,
-                           url="https://claude.ai/artifact/aaaaaaaaaa", description="d", topics='["Housing Twin"]')
+        db.upsert_artifact(con, "aaaaaaaaaa", title="Garden plan plan", owned=1, created=100, modified=200,
+                           url="https://claude.ai/artifact/aaaaaaaaaa", description="d", topics='["Garden plan"]')
         db.upsert_artifact(con, "bbbbbbbbbb", title="Mystery", owned=1, created=100)
         con.commit()
         con.close()
         with open(os.path.join(self.d, "config.toml"), "w") as f:
-            f.write('[[topics]]\nname = "Housing Twin"\n')
+            f.write('[[topics]]\nname = "Garden plan"\n')
 
     def test_builds_with_guessed_category_and_topic_slots(self):
         p = payload(build.build(self.d))
         rows = {r["id"]: r for r in p["rows"]}
         self.assertEqual(rows["aaaaaaaaaa"]["category"], "Plans")
         self.assertTrue(rows["aaaaaaaaaa"]["guessed"])
-        self.assertEqual(rows["aaaaaaaaaa"]["topics"], ["Housing Twin"])
-        self.assertEqual(p["config"]["topic_slots"]["Housing Twin"], build.topic_slot("Housing Twin"))
+        self.assertEqual(rows["aaaaaaaaaa"]["topics"], ["Garden plan"])
+        self.assertEqual(p["config"]["topic_slots"]["Garden plan"], build.topic_slot("Garden plan"))
         self.assertEqual(len(p["config"]["topic_palette"]), 12)
         con = db.connect(self.d)
         self.assertIsNone(con.execute("select category from artifacts where id='aaaaaaaaaa'").fetchone()[0])
