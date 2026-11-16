@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// question-walkthrough CLI. Zero dependencies.
+// fancy-questions CLI. Zero dependencies.
 //   qw build <dir> [--out file]   check + produce the page (default <dir>/index.html)
 //   qw lint <dir>                 check only
 //   qw stats <dir>                card count, minutes, cards without a visual
