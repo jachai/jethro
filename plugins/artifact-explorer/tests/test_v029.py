@@ -99,6 +99,16 @@ class Build(unittest.TestCase):
         self.assertEqual(rows["three"]["topics"], ["Pinned"])
         self.assertEqual(rows["one"]["suggested"], [])
 
+    def test_untagged_rows_get_promoted_topic(self):  # 0.2.10: topics column NULL
+        d = tempfile.mkdtemp()
+        con = db.connect(d)
+        for i in range(2):
+            db.upsert_artifact(con, "a%d" % i, title="t%d" % i, kind="Page", owned=1)
+            con.execute("UPDATE artifacts SET topic_suggest=? WHERE id=?", (sug("Pricing"), "a%d" % i))
+        con.commit(); con.close()
+        rows = build.collect(d, {})[0]
+        self.assertEqual([r["topics"] for r in rows], [["Pricing"], ["Pricing"]])
+
 
 if __name__ == "__main__":
     unittest.main()

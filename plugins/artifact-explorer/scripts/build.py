@@ -131,7 +131,7 @@ def tag_topics(trules, title, stored, suggest, alias=None):
     canon.update(alias or {})  # 0.2.9: merged spellings of a configured or promoted topic
     sug = _names(suggest)
     topics = []
-    for n in (_names(stored) if stored is not None else []) + (sug if stored is not None else []):
+    for n in (_names(stored) if stored is not None else []) + sug:  # 0.2.10: suggestions apply to untagged rows too
         c = canon.get(n.strip().lower())
         if c and c not in topics:
             topics.append(c)
