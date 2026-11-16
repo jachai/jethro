@@ -1,10 +1,22 @@
 # Changelog
 
-## Unreleased
+## [0.2.1] - 2026-11-16
 - Renamed from question-walkthrough to fancy-questions: the repo (github.com/jachai/fancy-questions), the
   marketplace and the plugin. Install with `/plugin marketplace add jachai/fancy-questions` and
   `/plugin install fancy-questions@fancy-questions`; the skills are now `/fancy-questions:build` and
   `/fancy-questions:collect`. The `qw` CLI, the page and its saved data are unchanged.
+- Bigger fireworks: a card's burst is about twice as large (70 pieces, faster, ~1.5 s); the last card adds six
+  firework shells that rise and burst into rings of sparks over the two-sided confetti (~3.5 s in all).
+- Sound, made in the browser (WebAudio, no files): a short pop for each answered card; a pop, then a whistle
+  and a bang for each shell, timed to the fireworks, on the last one. It only plays after the reader's own tap.
+- A mute button in the top bar (speaker icon); this browser remembers the choice (`qw-sound-v1`). No sound and
+  no button under `prefers-reduced-motion` or `#reduce-motion`.
+- Banner wording: a refused save (`invalid_argument`) no longer says for certain that the reader can only view
+  the page, because the platform uses that code for malformed writes too. If the platform said the reader
+  can write, the banner says "the last save was refused". If it said nothing, the banner says the page
+  refused the save and that a Viewer or Commenter should ask the author for Contributor. "Only lets you view
+  it" now appears only when `can("data.write")` is false.
+- Build skill: the publish step points ahead to sharing at Contributor or higher.
 
 ## [0.2.0] - 2026-11-15
 - More fun to answer. Answering a question pops the check mark and throws a small burst of confetti from the
