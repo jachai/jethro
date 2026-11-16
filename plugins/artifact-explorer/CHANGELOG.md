@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.4] - 2026-11-16
+
+### Fixed
+- The background describer described nothing: `claude -p` withholds the Artifact tools unless `CLAUDE_CODE_ARTIFACT` is set, so the run could not read a single page. The watcher now launches it with `CLAUDE_CODE_ARTIFACT=1` (checked on Claude Code 2.1.325).
+- The background run now categorizes rows from their existing descriptions (recat, topics) first, which needs no page read, so it is done even when no source can be read.
+- When the background run has no Artifact tool anyway (a CLI that ignores the variable, an admin policy), it describes own rows from their local source file where one exists (`ae batch local`) and marks the rest "needs interactive refresh" instead of retrying. A row whose read errors in the background gets the same mark (`ae set-desc ID --needs-interactive`). Marked rows no longer count as waiting for the background run, so the watcher stops relaunching for them every interval.
+
+### Added
+- `ae status` and the SessionStart reminder name the own rows that need an in-session `/artifact-explorer:refresh`; that refresh describes them and clears the mark.
+
 ## [0.2.3] - 2026-11-16
 
 ### Fixed
