@@ -13,7 +13,7 @@ sessions are stale, and closes them with `claude rm` after archiving their files
                                            the scheduled job (launchd, systemd or cron)
   session-sweep status                      schedule, last run and counts
 
-See https://github.com/jachai/session-sweep for how it decides.
+See https://github.com/jachai/jethro/tree/main/plugins/session-sweep for how it decides.
 """
 import argparse
 import datetime as dt
@@ -27,7 +27,7 @@ import sys
 import time
 from pathlib import Path
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 LABEL = "io.github.jachai.session-sweep"
 INTERVIEW_NAME = "session-sweep interview"
