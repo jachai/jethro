@@ -7,9 +7,8 @@ toward production in five background sessions at once, session-guide turns one m
 reads what every worker last said, routes each worker's questions to you as one interview, relays your rulings back,
 wakes itself while CI and deploys run, and tells you exactly which session needs you, and for what.
 
-[![test](https://github.com/jachai/session-guide/actions/workflows/test.yml/badge.svg)](https://github.com/jachai/session-guide/actions/workflows/test.yml)
-[![release](https://img.shields.io/github/v/release/jachai/session-guide)](https://github.com/jachai/session-guide/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/jachai/session-guide/blob/main/LICENSE)
+[![test](https://github.com/jachai/jethro/actions/workflows/test.yml/badge.svg)](https://github.com/jachai/jethro/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/jachai/jethro/blob/main/LICENSE)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757)
 
@@ -62,15 +61,21 @@ had a rule for it:
 As a Claude Code plugin:
 
 ```
-/plugin marketplace add jachai/session-guide
-/plugin install session-guide@session-guide
+/plugin marketplace add jachai/jethro
+/plugin install session-guide@jethro
 ```
 
-Or as a plain skill, without the plugin system:
+session-guide is part of the [jethro](../../README.md) suite. Installed it earlier as
+`session-guide@session-guide`, or with `install.sh`? Remove that first (`/plugin uninstall
+session-guide@session-guide`, or `./install.sh --uninstall` from the old clone), then install
+`session-guide@jethro`: with two copies enabled, Claude Code drops one copy's hooks.
+
+Or as a plain skill, without the plugin system (deprecated: use the plugin; `install.sh` stays so
+`./install.sh --uninstall` keeps working):
 
 ```sh
-git clone https://github.com/jachai/session-guide
-cd session-guide && ./install.sh          # copies the skill to ~/.claude/skills (--link to symlink instead)
+git clone https://github.com/jachai/jethro
+cd jethro/plugins/session-guide && ./install.sh          # copies the skill to ~/.claude/skills (--link to symlink instead)
 ```
 
 You need Claude Code with background sessions and cross-session messaging (`SendMessage`, `ListAgents`), and Python

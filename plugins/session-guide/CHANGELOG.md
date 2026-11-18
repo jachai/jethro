@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-11-18
+
+### Changed
+
+- Moved into the [jethro](https://github.com/jachai/jethro) suite. Install with
+  `/plugin marketplace add jachai/jethro` and `/plugin install session-guide@jethro`. The hooks
+  come from the plugin's `hooks/hooks.json`; remove any `guide_title.py` hook lines pasted into
+  `settings.json` by hand.
+- `install.sh` is deprecated; it prints a notice but still installs, and `--uninstall` works as before.
+
 ## [0.1.17] - 2026-11-09
 
 ### Added

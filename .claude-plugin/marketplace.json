@@ -15,6 +15,11 @@
       "name": "session-sweep",
       "source": "./plugins/session-sweep",
       "description": "Close stale Claude Code background sessions on demand and every 12 hours, and ask you about the unclear ones"
+    },
+    {
+      "name": "session-guide",
+      "source": "./plugins/session-guide",
+      "description": "A guide session that tracks every stream in one ledger, routes worker decisions to you, and hands off cleanly"
     }
   ]
 }
