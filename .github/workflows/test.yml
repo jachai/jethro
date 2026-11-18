@@ -1,0 +1,63 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:   # the release workflow runs one plugin's checks first
+    inputs:
+      plugin:
+        type: string
+        required: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.pick.outputs.plugins }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: pick
+        env:
+          ONE: ${{ inputs.plugin }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$ONE" ]; then list="[\"$ONE\"]"; else list=$(python3 .github/scripts/ci.py changed "$BASE"); fi
+          echo "plugins=$list" >> "$GITHUB_OUTPUT"
+      - name: every changed plugin bumps its version
+        if: github.event_name != 'workflow_call' && inputs.plugin == ''
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$BASE" ] && [ "$BASE" != "0000000000000000000000000000000000000000" ]; then
+            python3 .github/scripts/ci.py version-check "$BASE"
+          fi
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.plugins != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.changes.outputs.plugins) }}
+        os: [ubuntu-latest, macos-latest]
+        # uv ships its own Python builds, so 3.9 keeps working after runner images drop it
+        python: ["3.9", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - run: uv run --no-project --python ${{ matrix.python }} python -X dev .github/scripts/ci.py test ${{ matrix.plugin }}
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: claude plugin validate . --strict
+      - run: for d in plugins/*/; do claude plugin validate "$d" --strict; done
