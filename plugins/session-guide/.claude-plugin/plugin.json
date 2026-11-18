@@ -1,13 +1,13 @@
 {
   "name": "session-guide",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Turn one Claude Code session into the guide for your parallel sessions: one ledger, decisions routed through it, relays to workers, self-paced wakeups, and clean guide-to-guide handoffs.",
   "author": {
     "name": "Jonathan Achai",
     "url": "https://github.com/jachai"
   },
-  "homepage": "https://github.com/jachai/session-guide",
-  "repository": "https://github.com/jachai/session-guide",
+  "homepage": "https://github.com/jachai/jethro/tree/main/plugins/session-guide",
+  "repository": "https://github.com/jachai/jethro",
   "license": "MIT",
   "keywords": ["orchestration", "multi-session", "background-agents", "sendmessage", "handoff", "release"]
 }

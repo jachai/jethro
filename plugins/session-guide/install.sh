@@ -4,6 +4,8 @@
 #   ./install.sh --link      symlink it instead (for working on this repo)
 #   ./install.sh --uninstall remove the skill (your ledgers in ~/.claude/session-guide are kept)
 set -eu
+
+case "${1:-}" in --uninstall) ;; *) echo "install.sh is deprecated: install the plugin instead (/plugin install session-guide@jethro)" >&2 ;; esac
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CONFIG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 DEST="$CONFIG/skills/session-guide"
