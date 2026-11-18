@@ -22,6 +22,9 @@ Named after Jethro, who told Moses to stop judging every case himself and hand t
 | session-guide | Makes one session the guide across parallel sessions: one ledger, relayed decisions, handoffs | [plugins/session-guide](plugins/session-guide) |
 | jethro | Installs the three plugins above | [plugins/jethro](plugins/jethro) |
 
+While `jethro@jethro` is enabled, its members cannot be disabled one by one. To leave one out, uninstall
+`jethro@jethro` and install the plugins you want by name.
+
 [claude-top](https://github.com/jachai/claude-top) (`uv tool install claude-agents-top`), a live list of your
 sessions, stays in its own repo.
 
