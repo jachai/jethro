@@ -1,0 +1,17 @@
+{
+  "name": "jethro",
+  "version": "0.1.0",
+  "description": "The jethro suite in one install: session-titles, session-sweep and session-guide.",
+  "author": {
+    "name": "Jonathan Achai",
+    "url": "https://github.com/jachai"
+  },
+  "homepage": "https://github.com/jachai/jethro",
+  "repository": "https://github.com/jachai/jethro",
+  "license": "MIT",
+  "dependencies": [
+    "session-titles",
+    "session-sweep",
+    "session-guide"
+  ]
+}
