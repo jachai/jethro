@@ -6,6 +6,8 @@
 #   ./install.sh --purge      uninstall and delete the state and the log too
 # settings.json is backed up to settings.json.bak-session-titles before every change.
 set -eu
+
+case "${1:-}" in --uninstall|--purge) ;; *) echo "install.sh is deprecated: install the plugin instead (/plugin install session-titles@jethro)" >&2 ;; esac
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CONFIG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 HOME_DIR="${SESSION_TITLES_HOME:-$CONFIG/session-titles}"

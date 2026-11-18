@@ -12,7 +12,7 @@ session-titles log -n 30          # or: session-titles log -n 30 <session id pre
 - **The session started before you installed.** A session keeps the hooks it started with. Send a
   prompt in a new session, or restart the old one.
 - **Not registered.** `doctor` says `hook registered (neither plugin nor plain hook found)`. Install
-  it with `/plugin install session-titles@session-titles`, or run `./install.sh` from a clone.
+  it with `/plugin install session-titles@jethro`, or run `./install.sh` from a clone.
   `doctor` reads the `settings.json` of `$CLAUDE_CONFIG_DIR` (default `~/.claude`), so check it's
   pointed at the config you use.
 - **It's a `claude -p` run.** Those are skipped on purpose. Set `skip_print_mode` to `false` to
