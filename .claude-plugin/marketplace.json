@@ -1,6 +1,6 @@
 {
-  "name": "session-titles",
-  "description": "session-titles: Claude Code session titles that say where a session started and what it is doing now",
+  "name": "jethro",
+  "description": "jethro: Claude Code plugins for running many sessions at once: session titles, a session guide, a stale-session sweep and an artifact explorer",
   "owner": {
     "name": "Jonathan Achai",
     "url": "https://github.com/jachai"
@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "session-titles",
-      "source": "./",
+      "source": "./plugins/session-titles",
       "description": "Keep each session titled '<origin> · <focus>': a frozen origin plus a plain-words focus refreshed on every prompt"
     }
   ]

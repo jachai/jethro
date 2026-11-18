@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 from typing import Callable, Iterator, Optional
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 GUARD_ENV = "SESSION_TITLES_CHILD"  # set on our own `claude -p` calls so they never retitle themselves
 LOG_MAX_BYTES = 1_000_000

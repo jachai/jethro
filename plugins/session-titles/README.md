@@ -4,8 +4,8 @@ Claude Code session titles that say where a session started and what it's doing 
 becomes `<origin> · <focus>`: the name the session started with, which stays put, and a few plain words
 for the current work, refreshed on every prompt by a small model.
 
-[![test](https://github.com/jachai/session-titles/actions/workflows/test.yml/badge.svg)](https://github.com/jachai/session-titles/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/jachai/session-titles/blob/main/LICENSE)
+[![test](https://github.com/jachai/jethro/actions/workflows/test.yml/badge.svg)](https://github.com/jachai/jethro/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/jachai/jethro/blob/main/LICENSE)
 
 If you run several sessions at once, especially background ones in `claude agents`, their names stop
 matching the work within an hour. "fix login bug" is now writing a migration, and the name doesn't say
@@ -33,15 +33,20 @@ session 2: started with --name 'stripe webhooks'
 As a Claude Code plugin:
 
 ```
-/plugin marketplace add jachai/session-titles
-/plugin install session-titles@session-titles
+/plugin marketplace add jachai/jethro
+/plugin install session-titles@jethro
 ```
 
-Or as a plain hook, without the plugin system:
+session-titles is part of the [jethro](../../README.md) suite. Installed it earlier as
+`session-titles@session-titles`? Uninstall that first, then install `session-titles@jethro`: with both
+enabled, Claude Code drops one copy's hooks. Options are saved under the full id, so set them again.
+
+Or as a plain hook, without the plugin system (deprecated: use the plugin; `install.sh` stays so
+`./install.sh --uninstall` keeps working):
 
 ```sh
-git clone https://github.com/jachai/session-titles
-cd session-titles && ./install.sh     # copies the script to ~/.claude/session-titles/app (--link to use the clone)
+git clone https://github.com/jachai/jethro
+cd jethro/plugins/session-titles && ./install.sh     # copies the script to ~/.claude/session-titles/app (--link to use the clone)
 ```
 
 `install.sh` backs up `settings.json`, adds one UserPromptSubmit and one SessionStart hook next to
@@ -131,7 +136,7 @@ Details are in [docs/privacy-and-cost.md](docs/privacy-and-cost.md).
 - Keep titles short. Origins are capped at 48 characters and the focus at 40, so the agents view
   stays readable.
 - It relies on the `session_title` hook input and the `sessionTitle` hook output, plus the transcript
-  format. A Claude Code update could change them; [open an issue](https://github.com/jachai/session-titles/issues/new/choose)
+  format. A Claude Code update could change them; [open an issue](https://github.com/jachai/jethro/issues/new/choose)
   if titles stop updating.
 
 ## Good to know
@@ -151,7 +156,7 @@ Details are in [docs/privacy-and-cost.md](docs/privacy-and-cost.md).
 
 ## Uninstall
 
-- Plugin: `/plugin uninstall session-titles@session-titles`.
+- Plugin: `/plugin uninstall session-titles@jethro`.
 - Plain hook: `./install.sh --uninstall`, or `./install.sh --purge` to delete the state and log too.
 
 Titles already set stay as they are.
