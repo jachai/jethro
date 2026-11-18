@@ -1,0 +1,55 @@
+{
+  "name": "session-titles",
+  "displayName": "Session Titles",
+  "version": "0.1.1",
+  "description": "Honest two-part session titles: the name a session started with, plus a few plain words for what it is working on now, refreshed on every prompt by a small model.",
+  "author": {
+    "name": "Jonathan Achai",
+    "url": "https://github.com/jachai"
+  },
+  "homepage": "https://github.com/jachai/session-titles",
+  "repository": "https://github.com/jachai/session-titles",
+  "license": "MIT",
+  "keywords": ["sessions", "session-title", "rename", "background-agents", "agents-view", "hooks"],
+  "userConfig": {
+    "mode": {
+      "type": "string",
+      "title": "Update mode",
+      "description": "fresh: wait for the model on every prompt (about 5 s) so the focus matches the prompt you just sent. fast: apply the focus computed after your previous prompt instantly and refresh it in the background.",
+      "options": ["fresh", "fast"],
+      "default": "fresh"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "description": "Model alias or full name for the title calls. A small, fast model is plenty.",
+      "default": "haiku"
+    },
+    "separator": {
+      "type": "string",
+      "title": "Separator",
+      "description": "The mark between the origin and the focus. It always gets one space on each side.",
+      "default": "·"
+    },
+    "max_focus_chars": {
+      "type": "number",
+      "title": "Longest focus",
+      "description": "Characters allowed in the focus part. It is trimmed at a word boundary.",
+      "default": 40,
+      "min": 16,
+      "max": 80
+    },
+    "focus_style": {
+      "type": "string",
+      "title": "Focus style",
+      "description": "Optional. One extra instruction for the focus, for example: always name the PR number when one is open.",
+      "default": ""
+    },
+    "skip_print_mode": {
+      "type": "boolean",
+      "title": "Skip claude -p runs",
+      "description": "Leave scripted `claude -p` sessions alone, so scheduled jobs make no title calls.",
+      "default": true
+    }
+  }
+}

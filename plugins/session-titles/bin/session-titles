@@ -1,0 +1,8 @@
+#!/bin/sh
+# CLI shim: on PATH for Claude's Bash tool while the plugin is enabled; install.sh links it into ~/.local/bin.
+self="$0"
+while [ -L "$self" ]; do
+  link="$(readlink "$self")"
+  case "$link" in /*) self="$link" ;; *) self="$(dirname "$self")/$link" ;; esac
+done
+exec python3 "$(cd "$(dirname "$self")/.." && pwd)/scripts/session_titles.py" "$@"

@@ -1,0 +1,15 @@
+{
+  "name": "session-titles",
+  "description": "session-titles: Claude Code session titles that say where a session started and what it is doing now",
+  "owner": {
+    "name": "Jonathan Achai",
+    "url": "https://github.com/jachai"
+  },
+  "plugins": [
+    {
+      "name": "session-titles",
+      "source": "./",
+      "description": "Keep each session titled '<origin> · <focus>': a frozen origin plus a plain-words focus refreshed on every prompt"
+    }
+  ]
+}
