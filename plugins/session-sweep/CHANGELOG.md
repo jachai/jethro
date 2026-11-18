@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-18
+
+### Changed
+
+- Moved into the [jethro](https://github.com/jachai/jethro) suite. Install with
+  `/plugin marketplace add jachai/jethro` and `/plugin install session-sweep@jethro`.
+- `install.sh` is deprecated; it prints a notice but still installs, and `--uninstall` works as before.
+
 ## [0.1.3] - 2026-11-15
 
 ### Changed

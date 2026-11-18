@@ -2,8 +2,8 @@
 
 Keep the `claude agents` view down to the Claude Code sessions that still matter. session-sweep closes the background sessions you've moved on from: the ones that handed off to a newer session, the ones that finished a day ago, and, after asking you, the ones left waiting on an answer you're never going to give.
 
-[![test](https://github.com/jachai/session-sweep/actions/workflows/test.yml/badge.svg)](https://github.com/jachai/session-sweep/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/jachai/session-sweep/blob/main/LICENSE)
+[![test](https://github.com/jachai/jethro/actions/workflows/test.yml/badge.svg)](https://github.com/jachai/jethro/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/jachai/jethro/blob/main/LICENSE)
 
 If you work in long chains of sessions (each one writes a handoff, a fresh session picks it up), the old ones pile up as "needs input", "ready for review" or "completed". session-sweep runs every 12 hours, closes what's clearly done, and starts one short interview session when something needs your call.
 
@@ -28,15 +28,20 @@ KEEP       e5f6a7b8 working    12m  billing export wave 3                    wor
 As a Claude Code plugin:
 
 ```
-/plugin marketplace add jachai/session-sweep
-/plugin install session-sweep@session-sweep
+/plugin marketplace add jachai/jethro
+/plugin install session-sweep@jethro
 ```
 
-Or as a plain skill, without the plugin system:
+session-sweep is part of the [jethro](../../README.md) suite. Installed it earlier as
+`session-sweep@session-sweep`? Uninstall that first, then install `session-sweep@jethro`. The scheduled
+job and its data in `~/.claude/session-sweep/` carry over.
+
+Or as a plain skill, without the plugin system (deprecated: use the plugin; `install.sh` stays so
+`./install.sh --uninstall` keeps working):
 
 ```sh
-git clone https://github.com/jachai/session-sweep
-cd session-sweep && ./install.sh          # copies the skill to ~/.claude/skills (--link to symlink instead)
+git clone https://github.com/jachai/jethro
+cd jethro/plugins/session-sweep && ./install.sh          # copies the skill to ~/.claude/skills (--link to symlink instead)
 ```
 
 You need Claude Code with background sessions (`claude agents`) and Python 3.9+ on macOS or Linux. There are no dependencies.
@@ -118,7 +123,7 @@ Before `claude rm <id>`, session-sweep copies the session's `state.json` and `ti
 
 ## Notes
 
-- Session states and pids come from `claude agents --json --all`, the same source as the built-in view. Names, prompts and last messages come from Claude Code's local files (`~/.claude/jobs`), which aren't a public API. A Claude Code update can change them; please [open an issue](https://github.com/jachai/session-sweep/issues/new/choose) if something stops matching.
+- Session states and pids come from `claude agents --json --all`, the same source as the built-in view. Names, prompts and last messages come from Claude Code's local files (`~/.claude/jobs`), which aren't a public API. A Claude Code update can change them; please [open an issue](https://github.com/jachai/jethro/issues/new/choose) if something stops matching.
 - Claude Code's auto mode may refuse to let a session run `claude rm` for you. If it does, the skill tells you to run the command yourself with `!`; the scheduled job runs outside Claude Code and isn't affected.
 - Nothing leaves your machine. session-sweep writes only to `~/.claude/session-sweep/`, the job definition (`~/Library/LaunchAgents/io.github.jachai.session-sweep.plist`, `~/.config/systemd/user/session-sweep.*` or one tagged crontab line) and the `~/.local/bin/session-sweep` link.
 - Works well with [claude-top](https://github.com/jachai/claude-top), a live view of your sessions and plan usage.

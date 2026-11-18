@@ -10,6 +10,11 @@
       "name": "session-titles",
       "source": "./plugins/session-titles",
       "description": "Keep each session titled '<origin> · <focus>': a frozen origin plus a plain-words focus refreshed on every prompt"
+    },
+    {
+      "name": "session-sweep",
+      "source": "./plugins/session-sweep",
+      "description": "Close stale Claude Code background sessions on demand and every 12 hours, and ask you about the unclear ones"
     }
   ]
 }

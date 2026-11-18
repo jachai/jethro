@@ -5,6 +5,8 @@
 #   ./install.sh --uninstall remove the scheduled job and the skill (the archive in ~/.claude/session-sweep is kept)
 # The scheduled job installs itself the first time the skill runs; `session-sweep schedule install` does it now.
 set -eu
+
+case "${1:-}" in --uninstall) ;; *) echo "install.sh is deprecated: install the plugin instead (/plugin install session-sweep@jethro)" >&2 ;; esac
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CONFIG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 DEST="$CONFIG/skills/close-stale-sessions"
