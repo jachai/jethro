@@ -21,8 +21,8 @@ test('every example in visuals.md passes lint', () => {
   });
 });
 import { build } from '../scripts/qw.mjs';
-test('golden ops-11-10 and synthetic-30 build clean under 150 KB', () => {
-  for (const [d, n] of [['ops-11-10', 8], ['synthetic-30', 30]]) {
+test('minimal and synthetic-30 build clean under 150 KB', () => {
+  for (const [d, n] of [['minimal', 2], ['synthetic-30', 30]]) {
     const r = build(join(root, 'skills/build/examples', d));
     assert.deepEqual(r.errors, [], d); assert.deepEqual(r.warnings, [], d);
     assert.equal(r.data.cards.length, n, d);

@@ -7,15 +7,17 @@ options plus free text, answers saved in the artifact's shared db, a summary to 
 The page is a shipped template. A session writes only question data (`cards/*.json`), and `qw build`
 checks it and produces the page.
 
-## Install (private repo)
-
-The repo is cloned with your own git credentials: run `gh auth login` and `gh auth setup-git` (or use SSH).
-`GITHUB_TOKEN` alone is not enough.
+## Install
 
 ```
-/plugin marketplace add jachai/fancy-questions
-/plugin install fancy-questions@fancy-questions
+/plugin marketplace add jachai/jethro
+/plugin install fancy-questions@jethro
 ```
+
+fancy-questions is part of the [jethro](../../README.md) suite. Installed it earlier as
+`fancy-questions@fancy-questions`? Uninstall that first, then install `fancy-questions@jethro`.
+While the jethro repo is private, the clone uses your own git credentials: run `gh auth login` and
+`gh auth setup-git` (or use SSH). `GITHUB_TOKEN` alone is not enough.
 
 ## Use
 
@@ -37,11 +39,10 @@ bin/qw build walkthrough/my-round   # check + write walkthrough/my-round/index.h
 
 - Data contract: `skills/build/reference/schema.md` (enforced by `scripts/lint.mjs`).
 - Visual kinds with one example each: `skills/build/reference/visuals.md`.
-- Examples: `skills/build/examples/minimal` (2 cards), `ops-11-10` (the approved Ops page rebuilt from data),
-  `synthetic-30` (30 cards, every visual kind).
+- Examples: `skills/build/examples/minimal` (2 cards) and `synthetic-30` (30 cards, every visual kind).
 - Limits: 40 cards per page (split into rounds), 150 KB page warning.
 
 ## Develop
 
-`node --test` and `claude plugin validate . --strict` before every commit. CI runs the tests on Node 20 and 22,
-macOS and Ubuntu.
+`node --test` and `claude plugin validate . --strict` before every commit. The suite CI (`.github/scripts/ci.py test fancy-questions`) runs
+them on macOS and Ubuntu.
