@@ -251,7 +251,7 @@ def refresh_audit(ledger, full=False):
         found = module.run(ledger, full=full, queues=queues)
         if not found["rows"] and not found["counts"]["stale"]:
             return None  # nothing idle, unverified or stuck: say nothing
-        return module.summary(found), module.render(found, 12), module.state_paths(ledger)[1]
+        return module.summary(found), module.render(found), module.state_paths(ledger)[1]
     except Exception:
         return None
 
