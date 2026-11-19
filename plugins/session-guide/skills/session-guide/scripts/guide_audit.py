@@ -293,7 +293,7 @@ def classify(item, marks, live, waiting, now):
 
 
 def person(owner):
-    """The name an Owner cell starts with: "Jonathan (glance)" and "Jonathan, after the merge" are both Jonathan."""
+    """The name an Owner cell starts with: "Dana (glance)" and "Dana, after the merge" are both Dana."""
     name = re.split(r"\s*[(\[,;:/+]|\s+(?:after|then|when|tells?|to)\b|\s+\d", owner.strip("' "))[0].strip()[:24]
     return "the user" if name.lower() in ("ask", "user", "the user") else name or "its owner"
 
@@ -322,7 +322,7 @@ def unverified(ledger, tables, days, full, now):
         result, age = row["result"].lower().replace(" ", "-"), age_of(row["checked"], now)
         stale = result == "running" and (age is None or age > 86400)
         if key in due or result in ("proposed", "broken") or stale:
-            same = re.match(r"\W*see (\S+)", row["evidence"])  # "see #5555 (same verification)": one break, one row
+            same = re.match(r"\W*see (\S+)", row["evidence"])  # "see #131 (same verification)": one break, one row
             found.append(dict(key=item_key(key), kind="unverified", label=row["thing"].split()[0] if row["thing"] else key,
                               tier=result if result in ("proposed", "broken") else "recheck" if key in due else "unverified",
                               same=item_key(gt.thing_key(same.group(1))) if same else None,
