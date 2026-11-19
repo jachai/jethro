@@ -338,13 +338,18 @@ def closes_tag(values):
     return " · closes: " + " ".join(values) if values else ""
 
 
-def reconcile_lines(ledger, me=""):
-    """(flags, one line each) from reconcile; ([], []) when it fails: it must never break a prompt."""
+def reconcile_lines(ledger, me="", strict=False):
+    """(flags, one line each) from reconcile. ([], []) when it fails, since it must never break a prompt; `strict`
+    (the retire gate) raises instead, so a failure never reads as "nothing open"."""
     try:
         module = reconcile_module()
+        if module is None:
+            raise RuntimeError("guide_reconcile.py could not be loaded from %s" % os.path.dirname(os.path.abspath(__file__)))
         flags = module.reconcile(ledger, me=me)
         return flags, [module.describe(f, "python3 " + os.path.abspath(__file__)) for f in flags]
     except Exception:
+        if strict:
+            raise
         return [], []
 
 
@@ -453,13 +458,16 @@ def guide_context(session_id):
     ledger = os.path.expanduser(content)
     if not os.path.isfile(ledger) or not any(l.strip() == "## Sessions" for l in open(ledger, errors="replace")):
         return None  # no ledger to guide by: fail open, say nothing
-    parts = [now_line()]
-    audit = audit_context(ledger)  # first: it closes rows whose closes: tag happened and checks the due reminders
-    found, shut, held = untracked(ledger, session_id), closable(ledger), settle_closed()
-    settling = settle_status(ledger, session_id)
+    parts = [now_line()]  # the clock and reconcile first: nothing that can call gh comes before them
     reconciled = reconcile_context(ledger, session_id)
     if reconciled:
         parts.append(reconciled)
+    late = []
+    # The audit closes rows whose closes: tag happened and checks the due reminders, so it runs before settle; it
+    # (and claims, below) may ask gh, so each runs within what is left of the hook's time.
+    audit = in_time(audit_context, ledger, late=late, name="audit")
+    found, shut, held = untracked(ledger, session_id), closable(ledger), settle_closed()
+    settling = settle_status(ledger, session_id)
     if held:
         parts.append("session-guide sweep: %d closed session(s) still have a running process, so their titles stay "
                      "orange until a prompt reaches them. SendMessage each the CLOSE message: %s"
@@ -521,12 +529,68 @@ def guide_context(session_id):
                      "review with `followups --reviewed`."
                      % (time.strftime(TIME_FORMAT, time.localtime(last)) if last else "never", due,
                         os.path.abspath(__file__)))
-    claims = claims_context(ledger)
+    claims = in_time(claims_context, ledger, late=late, name="claims")
     if claims:
         parts.append(claims)
     if audit:
         parts.append(audit)
+    if late:
+        parts.append("session-guide: the %s check ran past this prompt's time budget (%g s) and was skipped; it runs "
+                     "again on the next prompt." % (" and ".join(late), hook_seconds()))
     return "\n".join(parts)
+
+
+HOOK_SECONDS = 7.0  # what the hook may spend in all (its timeout is 10 s): SESSION_GUIDE_HOOK_SECONDS
+HOOK_STARTED = [None]  # when cmd_hook began; None outside the hook (no deadline)
+
+
+def hook_seconds():
+    try:
+        return float(os.environ.get("SESSION_GUIDE_HOOK_SECONDS", HOOK_SECONDS))
+    except ValueError:
+        return HOOK_SECONDS
+
+
+def in_time(fn, *args, **kw):
+    """fn(*args) when it returns within what is left of the hook's time, else None (its name goes into `late`).
+    Outside the hook it simply runs. An exception is None too: a slow or broken gh check never costs the prompt the
+    lines already made."""
+    late, name = kw.pop("late", None), kw.pop("name", getattr(fn, "__name__", "check"))
+    if HOOK_STARTED[0] is None:
+        try:
+            return fn(*args)
+        except Exception:
+            return None
+    left = HOOK_STARTED[0] + hook_seconds() - time.time()
+    box = []
+
+    def run():
+        try:
+            box.append(fn(*args))
+        except Exception:
+            box.append(None)
+    import threading
+    worker = threading.Thread(target=run)
+    worker.daemon = True  # a check still running when the hook answers dies with the process
+    worker.start()
+    worker.join(max(0.0, left))
+    if not box:
+        if late is not None:
+            late.append(name)
+        return None
+    return box[0]
+
+
+def gh_budget():
+    """Give this process one overall gh budget (guide_gh.set_budget: SESSION_GUIDE_GH_BUDGET, default 3 s), so the
+    audit's and the claims' gh calls can't run the hook past its timeout. Ignored when guide_gh or set_budget is
+    missing."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import guide_gh
+        guide_gh.set_budget()
+    except Exception:
+        pass
 
 
 def forward_path(session_id):
@@ -638,6 +702,8 @@ def cmd_hook():
         event = json.load(sys.stdin)
         sid = event["session_id"]
         current = (event.get("session_title") or "").strip()
+        HOOK_STARTED[0] = time.time()
+        gh_budget()  # before the audit and the claims, which may call gh
         if marker_content(sid):
             sync_session_titles(sid, marker_content(sid))
         context = guide_context(sid)  # first: it refreshes the audit counts the title shows
@@ -655,6 +721,7 @@ def cmd_hook():
             json.dump({"hookSpecificOutput": output}, sys.stdout)  # ASCII-escaped: any locale
     except Exception:  # fail open: a broken guide title must never block a prompt
         pass
+    HOOK_STARTED[0] = None
     return 0
 
 
@@ -704,7 +771,15 @@ def cmd_retire(args):
                 ledger = json.load(f).get("ledger")
         except (OSError, ValueError):
             pass
-    found = zip(*reconcile_lines(ledger, caller)) if ledger else ()
+    try:
+        found = zip(*reconcile_lines(ledger, caller, strict=True)) if ledger else ()
+    except Exception as error:  # the gate can't see the rows: refuse, unless the user said --force
+        print("Reconcile failed on %s: %s: %s" % (ledger, type(error).__name__, error))
+        if args.check or not args.force:
+            print("Not retired: the open rows could not be checked. Fix the error, or run `retire --force` to retire "
+                  "without the check.")
+            return 1
+        found = ()
     pairs = [(flag, line) for flag, line in found if flag["id"] != sid[:6].lower()]  # never the guide's own row
     lines = [line for _, line in pairs]
     for line in lines:
