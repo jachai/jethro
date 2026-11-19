@@ -210,7 +210,7 @@ has its own version, `CHANGELOG.md` and release tags (`<plugin>--v<version>`).
 
 ```
 claude plugin uninstall jethro@jethro            # the bundle; its five plugins stay installed
-claude plugin prune                              # removes the auto-installed plugins nothing needs now
+claude plugin prune                              # removes the auto-installed plugins nothing needs now (asks first; -y in a script)
 claude plugin uninstall session-titles@jethro    # or one plugin by name
 claude plugin marketplace remove jethro          # after the last plugin
 ```
