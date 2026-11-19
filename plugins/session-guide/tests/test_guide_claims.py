@@ -188,6 +188,68 @@ class HookTest(ClaimsBase):
             self.assertEqual(gc.hook_lines(self.ledger, now=NOW, cache=self.cache), [])
 
 
+class RepoTest(ClaimsBase):
+    def add_scope(self, line):
+        text = self.text().replace("\n\n## Sessions", "\n%s\n\n## Sessions" % line, 1)
+        with open(self.ledger, "w") as f:
+            f.write(text)
+
+    def test_merge_claim_with_no_repo_never_asks_gh(self):
+        row = gc.add_merge(self.ledger, "#12", now=NOW)
+        with self.gh(gh_answer("MERGED", "2026-11-19T11:30:00Z")) as run:
+            lines = gc.hook_lines(self.ledger, now=NOW, cache=self.cache)
+            run.assert_not_called()  # gh in the current directory would answer for some other repo's #12
+        mine = [l for l in lines if row["key"] in l]
+        self.assertEqual(len(mine), 1)
+        self.assertIn("repo unknown: add --repo", mine[0])
+        self.assertTrue(gc.claim_rows(self.ledger)[row["key"]]["open"])
+
+    def test_scope_repo_is_used(self):
+        self.add_scope("Scope: widgets-2026 · host1 · ~/.claude · uds:/tmp/cc-socks/1.sock · repo acme/widgets")
+        row = gc.add_merge(self.ledger, "#12", now=NOW)
+        self.assertEqual(row["what"], "acme/widgets#12")
+        with self.gh(gh_answer("MERGED", "2026-11-19T11:30:00Z")) as run:
+            gc.hook_lines(self.ledger, now=NOW, cache=self.cache)
+        self.assertEqual(run.call_args[0][0][3:6], ["12", "--repo", "acme/widgets"])
+        self.assertFalse(gc.claim_rows(self.ledger)[row["key"]]["open"])
+
+    def test_adding_the_repo_replaces_the_bare_claim(self):
+        bare = gc.add_merge(self.ledger, "#12", now=NOW - HOUR)
+        full = gc.add_merge(self.ledger, "#12", "acme/widgets", now=NOW)
+        rows = gc.claim_rows(self.ledger)
+        self.assertNotIn(bare["key"], rows)
+        self.assertEqual(rows[full["key"]]["claimed"], gc.stamp(NOW - HOUR))
+
+    def test_unchecked_merge_stays_open_and_is_asked_again(self):
+        row = gc.add_merge(self.ledger, "#12", "acme/widgets", now=NOW)
+        with self.gh(subprocess.TimeoutExpired(cmd="gh", timeout=1), gh_answer("MERGED", "2026-11-19T11:30:00Z")):
+            guide_gh.set_budget(1)
+            try:
+                first = gc.hook_lines(self.ledger, now=NOW, cache=self.cache)
+            finally:
+                guide_gh.clear_budget()
+            self.assertTrue(any("not checked" in l for l in first if row["key"] in l))
+            self.assertTrue(gc.claim_rows(self.ledger)[row["key"]]["open"])
+            gc.hook_lines(self.ledger, now=NOW + 60, cache=self.cache)
+        self.assertFalse(gc.claim_rows(self.ledger)[row["key"]]["open"])
+
+
+class FindClaimTest(ClaimsBase):
+    def test_done_with_a_bare_number(self):
+        row = gc.add_merge(self.ledger, "#123", "acme/widgets", now=NOW)
+        gc.close_claim(self.ledger, "123", "merged @d4e5f6a", now=NOW)
+        self.assertFalse(gc.claim_rows(self.ledger)[row["key"]]["open"])
+
+    def test_digits_never_prefix_match_a_key(self):
+        rows = {"123abc": dict(key="123abc", kind="run", command="make x", number=None, repo=None),
+                "9f0b3d": dict(key="9f0b3d", kind="merge", command=None, number=123, repo="acme/widgets")}
+        self.assertEqual(gc.find_claim(rows, "123")["key"], "9f0b3d")
+        self.assertEqual(gc.find_claim(rows, "123abc")["key"], "123abc")
+        self.assertEqual(gc.find_claim(rows, "123a")["key"], "123abc")
+        with self.assertRaises(SystemExit):
+            gc.find_claim({"123abc": rows["123abc"]}, "123")
+
+
 class UnclaimedTest(ClaimsBase):
     def refs(self, **kw):
         return {(u["kind"], u["ref"]) for u in gc.unclaimed(self.ledger, now=NOW, **kw)}
@@ -206,6 +268,16 @@ class UnclaimedTest(ClaimsBase):
         gc.add_merge(self.ledger, "#12", now=NOW)
         gc.add_run(self.ledger, "make backfill-orders", "the user", now=NOW)
         self.assertEqual(self.refs(days=3), {("ask", "Dana tells")})
+
+    def test_bang_only_for_commands(self):
+        with open(self.ledger, "a") as f:
+            f.write("- %s 13:00 Great! the export works; use `color: red !important` and `!important` in the css\n"
+                    "- %s 13:01 the user said hi !there\n" % (TODAY, TODAY))
+            f.write("! make reindex-all\n- ! make reindex-one\n| %s | ! make reindex-cell | the user |\n" % TODAY)
+        found = {r for k, r in self.refs(days=0) if k == "cmd"}
+        self.assertNotIn("important", " ".join(found))
+        self.assertFalse([r for r in found if "there" in r or "export" in r])
+        self.assertTrue({"make reindex-all", "make reindex-one", "make reindex-cell"} <= found, found)
 
     def test_not_people(self):
         with open(self.ledger, "a") as f:

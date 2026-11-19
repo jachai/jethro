@@ -34,6 +34,10 @@ finished days before. Each fix below is a check a script runs, not a rule the gu
   "<command>" --by <who>`, `claim done <key> "<evidence>"`, `claim list`): a `## Claims` table in the ledger. The hook
   re-checks open merge claims with `gh pr view --json state,mergedAt` (`scripts/guide_gh.py`: cached 10 minutes, 5 s
   timeout, fails open, `SESSION_GUIDE_GH=0` turns it off); a merged PR closes its own claim and the hook says so once.
+  gh is asked only with a repo (the claim's own, or the one repo on the ledger's `Scope:` line; `guide_gh.repo_for`),
+  never the current folder's; a claim or `closes: pr:#N` tag with no repo stays open as "repo unknown: add --repo".
+  All of one hook run's gh calls share one budget (`guide_gh.set_budget`, `SESSION_GUIDE_GH_BUDGET`, default 3 s), so
+  the hook can't be killed by its 10 s timeout; a call cut short is unchecked and asked again on the next prompt.
   Run claims with no evidence after `SESSION_GUIDE_CLAIM_HOURS` (default 4) are listed, and ledger lines that say
   "MERGE READY #N", "<someone> runs / tells …" or hold a `!` command with no claim row are counted
   (`SESSION_GUIDE_CLAIM_DAYS`, default 3).

@@ -109,11 +109,30 @@ class OpenItemCoveredTest(CoverageCase):
         self.assertIn("Decision 7", self.one(found, "ABC-777")["evidence"][0])
 
     def test_gh_merged_pr_is_evidence(self):
-        self.write(section("## Open items", OPEN_HEAD, ["| Merge #4512 when CI is green | ASK | ASK 11-17 |"]))
+        self.write(section("## Open items", OPEN_HEAD, ["| Merge acme/widgets#4512 when CI is green | ASK | ASK 11-17 |"]))
         self.assertEqual(self.one(self.audit(), "#4512")["state"], "person")
         self.gh[4512] = {"state": "MERGED", "mergedAt": "2026-11-18T10:00:00Z"}
         row = self.one(self.audit(), "#4512")
         self.assertEqual((row["state"], row["evidence"]), ("check", ["gh: #4512 merged 2026-11-18"]))
+        self.assertIn((4512, "acme/widgets"), self.gh_calls)
+
+    def test_gh_pr_with_no_repo_is_never_asked(self):
+        """A bare #N with no repo in the row or the Scope: gh would answer for the current directory's repo."""
+        self.gh[4512] = {"state": "MERGED", "mergedAt": "2026-11-18T10:00:00Z"}
+        self.write(section("## Open items", OPEN_HEAD, ["| Merge #4512 when CI is green | ASK | ASK 11-17 |"]))
+        self.assertEqual(self.one(self.audit(), "#4512")["state"], "person")
+        self.assertEqual(self.gh_calls, [])
+
+    def test_gh_pr_takes_the_scope_repo(self):
+        self.gh[4512] = {"state": "MERGED", "mergedAt": "2026-11-18T10:00:00Z"}
+        self.write(section("## Open items", OPEN_HEAD, ["| Merge #4512 when CI is green | ASK | ASK 11-17 |"]))
+        with open(self.ledger) as f:
+            body = f.read()
+        with open(self.ledger, "w") as f:  # the Scope line goes in the ledger's head, as the template has it
+            f.write(body.replace("\n\n", "\nScope: t · host1 · ~/.claude · uds:/tmp/cc-socks/1.sock · repo "
+                                           "acme/widgets\n\n", 1))
+        self.assertEqual(self.one(self.audit(), "#4512")["state"], "check")
+        self.assertEqual(self.gh_calls, [(4512, "acme/widgets")])
 
     def test_gh_missing_is_no_evidence(self):
         self.write(section("## Open items", OPEN_HEAD, ["| Merge #4512 when CI is green | guide | ASK 11-17 |"]))
@@ -310,11 +329,28 @@ class ClosesTagTest(CoverageCase):
         self.assertNotIn("closes:` tag", ga.hook_context(self.ledger) or "")  # said once
 
     def test_pr_tag_closes_when_gh_says_merged(self):
+        self.write(section("## Open items", OPEN_HEAD, ["| Follow the merge | guide | closes: pr:acme/widgets#4512 |"]))
+        ga.run(self.ledger, full=False)
+        self.assertIn("| Follow the merge | guide | closes: pr:acme/widgets#4512 |", open(self.ledger).read())
+        self.gh[4512] = {"state": "MERGED", "mergedAt": "2026-11-18T10:00:00Z"}
+        ga.run(self.ledger, full=False)
+        self.assertIn("DONE", open(self.ledger).read().split("Follow the merge")[1].splitlines()[0])
+
+    def test_pr_tag_with_no_repo_does_not_fire(self):
+        self.gh[4512] = {"state": "MERGED", "mergedAt": "2026-11-18T10:00:00Z"}
         self.write(section("## Open items", OPEN_HEAD, ["| Follow the merge | guide | closes: pr:#4512 |"]))
         ga.run(self.ledger, full=False)
         self.assertIn("| Follow the merge | guide | closes: pr:#4512 |", open(self.ledger).read())
+        self.assertEqual(self.gh_calls, [])
+
+    def test_unchecked_pr_is_asked_again_next_audit(self):
+        """None from gh (out of budget, failing) is no evidence now, and the next audit asks again."""
+        self.write(section("## Open items", OPEN_HEAD, ["| Follow the merge | guide | closes: pr:acme/widgets#4512 |"]))
+        ga.run(self.ledger, full=False)  # the fake has no answer: unchecked
+        self.assertIn("closes: pr:acme/widgets#4512 |", open(self.ledger).read())
         self.gh[4512] = {"state": "MERGED", "mergedAt": "2026-11-18T10:00:00Z"}
         ga.run(self.ledger, full=False)
+        self.assertEqual(len(self.gh_calls), 2)
         self.assertIn("DONE", open(self.ledger).read().split("Follow the merge")[1].splitlines()[0])
 
     def test_shared_ids(self):

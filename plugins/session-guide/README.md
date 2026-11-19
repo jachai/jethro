@@ -232,7 +232,8 @@ HANDED OFF: 'reindex lead' [d4e5f6a1] ended 6 min ago and no Sessions row is its
 
 Merges and commands asked of someone are tracked the same way, as **claims** in the ledger: `guide_title.py claim
 merge #142 --repo acme/billing` or `claim run "make backfill-exports" --by Dana`. On every guide prompt the hook
-re-checks open merge claims with `gh pr view` (cached 10 minutes, 5 s timeout, never in the way when gh is missing)
+re-checks open merge claims with `gh pr view` (cached 10 minutes, at most 3 s for all of a prompt's gh calls, never
+in the way when gh is missing; the repo comes from the claim or the ledger's `Scope:` line, never the current folder)
 and closes the merged ones itself, lists commands with no evidence after 4 hours, and counts ledger lines that say
 "MERGE READY #N" or hold a `!` command with no claim. `claim done <key> "<evidence>"` closes one by hand.
 `guide_title.py settle <ledger>` shows the same list, plus what is due and what is asleep. Reminders are a one-shot wake in
@@ -387,6 +388,8 @@ Set them in the `env` block of `settings.json`, so the hooks see them too.
 | `SESSION_GUIDE_FOLLOWUP_HOURS` | 24 | How often the follow-up review is due; 0 turns it off |
 | `SESSION_GUIDE_QUEUES` | none | Extra queue files for the audit, separated like `PATH` |
 | `SESSION_GUIDE_GH` | on | `0` turns every `gh` call off (claims and the audit's merged-PR check say "not checked") |
+| `SESSION_GUIDE_GH_BUDGET` | 3 | Seconds all of one hook run's `gh` calls share; the rest wait for the next prompt |
+| `SESSION_GUIDE_HOOK_SECONDS` | 7 | Seconds the hook's audit and claims blocks may take together; a block that runs over is skipped with one line, so the clock and reconcile lines always print |
 | `SESSION_GUIDE_CLAIM_HOURS` | 4 | A run claim with no evidence this long is listed |
 | `SESSION_GUIDE_CLAIM_DAYS` | 3 | How far back the hook looks for unclaimed merge and command lines; 0 = the whole ledger |
 | `SESSION_GUIDE_CLAUDE` | `claude` | The binary `launch` runs (for tests) |
@@ -410,7 +413,8 @@ More detail: [how it works](docs/how-it-works.md).
 ## Notes
 
 - Everything stays on your machine. The only network calls are `gh pr view` for merge claims and for the audit's
-  merged-PR check (cached 10 minutes, 5 s timeout, skipped when gh is missing; `SESSION_GUIDE_GH=0` turns them off).
+  merged-PR check (cached 10 minutes, 3 s per hook run in all, skipped when gh is missing or no repo is known;
+  `SESSION_GUIDE_GH=0` turns them off).
   The only messages are between your own local sessions.
 - If you run a cost guard that caps messages to the same agent, exempt messages to other top-level sessions. A guide
   relays many times per session by design.

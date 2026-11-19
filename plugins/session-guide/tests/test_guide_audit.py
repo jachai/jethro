@@ -21,6 +21,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(ROOT, "skills", "session-guide", "scripts")
 sys.path.insert(0, SCRIPTS)
 import guide_audit as ga  # noqa: E402
+import guide_gh as real_gh  # noqa: E402
 import guide_title as gt  # noqa: E402
 
 TITLE_SCRIPT = os.path.join(SCRIPTS, "guide_title.py")
@@ -35,10 +36,22 @@ VERIF_HEAD = ["| Thing | Where | Result | Checked | Evidence / session | Re-chec
 PEOPLE = ["Alice", "Bruno", "Carla", "Dmitri", "Elena", "Farid", "Greta", "Hugo", "Imani", "Jun", "Kofi", "Lena"]
 
 
-def fake_gh(answers):
-    """A stand-in for guide_gh: pr_state answers from `answers` ({PR number: {"state", "mergedAt"}}), else None."""
+def fake_gh(answers, calls=None):
+    """A stand-in for guide_gh: pr_state answers from `answers` ({PR number: {"state", "mergedAt"}}), else None, and,
+    like the real one, None without asking when there is no repo. Each ask goes into `calls` as (number, repo).
+    repo_for is the real one; set_budget does nothing."""
     module = types.ModuleType("guide_gh")
-    module.pr_state = lambda number, repo=None, cache=None, now=None: answers.get(int(str(number).lstrip("#")))
+    calls = [] if calls is None else calls
+
+    def pr_state(number, repo=None, cache=None, now=None):
+        if not repo:
+            return None
+        calls.append((int(str(number).lstrip("#")), repo))
+        return answers.get(int(str(number).lstrip("#")))
+
+    module.pr_state = pr_state
+    module.repo_for = real_gh.repo_for
+    module.set_budget = lambda seconds=None: seconds
     return module
 
 
@@ -82,7 +95,8 @@ class AuditCase(unittest.TestCase):
             del os.environ[name]
         os.environ["SESSION_GUIDE_GH"] = "0"  # a script the tests run in a subprocess never asks the real gh
         self.gh = {}  # PR number -> {"state", "mergedAt"}: what the fake guide_gh answers
-        modules = mock.patch.dict(sys.modules, guide_gh=fake_gh(self.gh))
+        self.gh_calls = []  # (number, repo) of every PR the fake was asked about
+        modules = mock.patch.dict(sys.modules, guide_gh=fake_gh(self.gh, self.gh_calls))
         modules.start()
         self.addCleanup(modules.stop)
         self.ledger = os.path.join(self.cfg, "session-guide", "t", "ledger.md")
