@@ -26,7 +26,9 @@ first in every mode: its rules (your name, your cost guard, your tools) override
 2. Read `references/worker-contract.md` and follow it from now on.
 3. Mark yourself guided: `python3 <skill dir>/scripts/guide_title.py guided`. From your next prompt your title starts
    with "🟧🟧 (g) ", which tells the user this session doesn't need them.
-4. `SendMessage` the guide at the `uds:` socket on its ledger's `Scope:` line (else its full ListAgents row name).
+4. `SendMessage` the guide at the `uds:` socket your prompt names, exactly as written, else the one on its ledger's
+   `Scope:` line. Never send to the guide's title: that send fails. Every later report goes to the same socket
+   (worker contract rule 4).
    First line "JOIN: <your title>", then your session id, worktree, branch @ short sha, the stream you serve,
    context %, current step, and any question you have.
 5. Continue your own work. Do not wait for a reply.
@@ -220,6 +222,10 @@ one. Everything you need from the user goes through `AskUserQuestion`:
      given at the top of the skill when it loaded (a plugin install lives under `<config>/plugins/cache/…`, not
      `~/.claude/skills`). On Done, verify it. On Not yet,
      keep it under **Needs you now** and ask again at the next wake that has news on it.
+     The moment a merge or a command is asked of the user or anyone else, claim it, so it is tracked until there is
+     evidence: `guide_title.py claim merge #N --repo <owner/name>` or `claim run "<command>" --by <who>`
+     (`references/verify-followup.md`, Claims). The hook re-checks merge claims with gh and closes the merged ones,
+     and lists run claims with no evidence after 4 h; `claim done <key> "<evidence>"` closes one by hand.
    - Model switch (`references/model-choice.md`): "'<title>' [id6] runs <model>/<effort> on <task>; switch to
      <model>/<effort>? Type `/model <alias>` and `/effort <level>` in its window." Switched / Keep as is. You can't
      switch another session yourself. On Switched, check it on its next turn; on Keep as is, write "kept" in its row
@@ -284,12 +290,17 @@ Guide context: <N>k (hand off at 120k)
 ### 6. Starting and closing worker sessions
 - Start one when the user says to, or when a MANAGED worker handed off and its successor is the next step on the
   path. If the next step isn't obvious, ask once.
-- Start it with `claude --bg --model <alias> --effort <level>` from the worker's worktree, giving it the worker's
-  resume prompt plus the prompt suffix in `references/worker-contract.md`. Pick the model and effort from
+- Start it from the worker's worktree with `python3 <skill dir>/scripts/guide_title.py launch …`, giving it the
+  worker's resume prompt plus the prompt suffix in `references/worker-contract.md`, which says: send to
+  `uds:<your socket>`, never a title. Fill in the socket from your `Scope:` line. Pick the model and effort from
   `references/model-choice.md` for the task it does first: money and business-rule fixes, release gates and design
   reviews get the top model at high effort; mechanical edits, CI reads, read-only checks and status reports get
-  `sonnet` at low. Record its title, id and pick (`sonnet/low`) in the ledger as MANAGED, and run
-  `guide_title.py guided <session id>`.
+  `sonnet` at low. Record its title, id and pick (`sonnet/low`) in the ledger as MANAGED.
+- **Mark it guided before its first prompt runs.** A `claude --bg` worker marked a moment after launch got a
+  cost-guard stop on its first tool call. `launch` does it in order: it makes the session id, writes the guided
+  marker, then starts `claude --bg --session-id <uuid> --model <alias> --effort <level>`. Without it, do the same
+  by hand, in that order: make a uuid, `guide_title.py guided <uuid>`, then `claude --bg --session-id <uuid> …`
+  (`references/worker-contract.md`, Launch order).
 - A successor of a worker that handed off gets a fresh pick for the **next step's** task, never a copy of its
   predecessor's model and effort.
 - Prefer a fresh session over pushing a worker that is near its context limit through more work.
@@ -408,8 +419,11 @@ Guide context: <N>k (hand off at 120k)
    file your successor reads first, and what it still lists is what you are handing over undone, so say so in the
    handoff prompt ("12 idle decided items, oldest 4 d: see STATE.md").
 2. Change the ledger's `Guide:` line to "HANDING OFF to next guide".
-3. Cancel wakeups and any reminder cron. Tell each MANAGED worker in one line: "Guide changing; keep reporting in your final message until
-   the new guide introduces itself."
+3. Cancel wakeups and any reminder cron. Send each MANAGED worker this fixed line, word for word
+   (`guide_title.py retire` prints it for you to send): "Guide changing. Keep sending to this socket; the old guide
+   forwards until the new one introduces itself." A guide change never suspends the worker contract's rule 4:
+   HANDED OFF, BLOCKED, DONE and MERGE READY always come to your socket by SendMessage, and a worker whose send
+   fails writes `<ledger folder>/inbox/<id8>.md`, which the next guide's reconcile reads.
 4. Give the user the paste-ready prompt: `/session-guide` followed by "Take over as guide. Ledger: <path>." Name the
    one next action. If the user asks, start the next guide yourself with `claude --bg --model opus --effort medium`
    (or local.md's top model).
@@ -418,6 +432,8 @@ Guide context: <N>k (hand off at 120k)
    quotes this ledger's path; otherwise reply "not my ledger: <slug> (<ledger path>)" and carry on as guide. Then:
    `python3 <skill dir>/scripts/guide_title.py retire`, then end with a final message whose last line is
    `result: <slug> guide retired and handed over to [<new id6>]`. Your title turns faded red and your state turns done.
+   From the handoff on, a worker report that still reaches you is forwarded, unchanged, by SendMessage to the new
+   guide's `uds:` socket (its intro or RETIRE gives it); you act on nothing else.
 
 ### 9. Notes and skills
 - If you keep memory notes, keep ONE pointer per effort ("<slug> guide ledger: <path>"), updated in place and never
