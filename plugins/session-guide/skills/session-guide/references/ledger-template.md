@@ -11,6 +11,16 @@ and the guide's `uds:` socket. Its intro to workers and its RETIRE checks use it
 one must leave alone: another machine's guide seen on a Remote Control row, or a guide on this machine with a
 different ledger. Never retire, introduce yourself to or message them, or give their workers a row.
 
+**Queues** names files outside the ledger that hold approved work as markdown tables, one row per item (a fix queue
+a triage session appends to, say). The audit (`scripts/guide_audit.py`) reads their rows as decided work and lists
+the ones no session is working on, so approved work can't sit in a file the guide never opens. A finished row is
+struck (`~~…~~`) or has a cell starting DONE / DROPPED. The audit also writes two files next to the ledger: `STATE.md`
+(the live state a new guide reads first) and `audit.json` (its marks and counts); never edit either by hand.
+
+**Open items** rows carry a date (first cell, or in Status). A row with no date can't be ranked by age, so the audit
+puts it in the backlog. An Owner that names a person rather than a session ("Dana", "ASK") needs a reminder in the
+waiting table, or the audit lists it as waiting on someone nobody is asking.
+
 **Sessions** has a Model / effort column: the guide's pick for a session it started (`sonnet/low`), or what a session it
 took over runs, read from claude-top or peek. "kept <date>" records that the user turned down a switch, so the guide
 doesn't ask again until the session's task changes (`references/model-choice.md`).
@@ -48,6 +58,7 @@ lines in the Log with a date and the PR or version ("10-27 11:47 #142 ON PROD @a
 Guide: '<guide title>' [id8] since <date HH:MM>          (or: HANDING OFF to next guide)
 Scope: <slug> · <host> · <config dir> · <uds socket>
 Other guides: <title> [ref] (machine, project) · …   (or: none)
+Queues: <path to a markdown table of approved work>, …   (optional; leave the line out when there is none)
 Updated: <date HH:MM>   Usage: <plan usage, if you track it>
 
 ## Streams
@@ -93,10 +104,10 @@ Updated: <date HH:MM>   Usage: <plan usage, if you track it>
 ## Open items
 | Item | Owner | Next action | Status |
 |---|---|---|---|
-| Rounding off by 0.01 on split invoices (billing lead report: "not fixed, out of scope") | new session (proposed) | start 'billing rounding fix' from develop | ASK 13:05 |
-| Skill-edit proposal from the billing lead | the user | say yes or no to the edit | ASK 12:50 |
-| Search reindex read-only prod audit | 'search reindex lead' [d4e5f6] | run the audit after traffic dips | waiting, next check ~15:00 |
-| Stale feature flag in config | ASK | — | ASK 13:05 |
+| Rounding off by 0.01 on split invoices (billing lead report: "not fixed, out of scope") | new session (proposed) | start 'billing rounding fix' from develop | ASK 10-27 13:05 |
+| Skill-edit proposal from the billing lead | the user | say yes or no to the edit | ASK 10-27 12:50 |
+| Search reindex read-only prod audit | 'search reindex lead' [d4e5f6] | run the audit after traffic dips | waiting since 10-27, next check ~15:00 |
+| Stale feature flag in config | ASK | — | ASK 10-27 13:05 |
 
 ## Verifications
 | Thing | Where | Result | Checked | Evidence / session | Re-check |

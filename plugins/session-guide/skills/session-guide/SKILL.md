@@ -61,8 +61,11 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
 
 ### 2. Start (fresh guide or takeover)
 1. Create or open `<config>/session-guide/<slug>/ledger.md` (template: `references/ledger-template.md`). The slug is
-   a short kebab-case name for the effort. When taking over, the ledger already exists: read it, and nothing older.
-   Read its **Waiting on the user** table and its **Results for you** table first: they hold the questions the
+   a short kebab-case name for the effort. When taking over, the ledger already exists: read `STATE.md` next to it
+   first (a few KB the scripts keep current: open sessions, reminders, results with no verdict, and the audit's top
+   rows of work that is not done or not verified; `python3 <skill dir>/scripts/guide_audit.py state <ledger>`
+   refreshes and prints it), then the ledger's tables, and nothing older. A ledger grown past ~50 KB is read by table,
+   never whole. Read its **Waiting on the user** table and its **Results for you** table first: they hold the questions the
    previous guide owed the user ("owed question" rows), the reminders, and the deliverables with no verdict yet.
    Nothing in them is settled by the handoff; each comes back in your first interview when it is due.
 2. **Sole guide, for this ledger.** Write the ledger's `Scope:` line: `<slug> · <host> · <config dir> · <your uds
@@ -96,15 +99,18 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
    (claude-top's MODEL and EFFORT columns, or peek's first line) into its Sessions row, and check them against
    `references/model-choice.md` for the task it is on: a misfit goes into your first interview as a switch question
    (§4). Then run `python3 <skill dir>/scripts/guide_title.py settle <ledger>` and handle what it lists (§7):
-   unsettled sessions, due reminders, owed questions, and results with no verdict. Reminders only fire while a guide
-   runs, so a new guide is what restarts them.
+   unsettled sessions, due reminders, owed questions, results with no verdict, and the audit's table of decided
+   work nobody is moving (§7, Audit). Reminders only fire while a guide runs, so a new guide is what restarts them.
 5. Introduce yourself to every MANAGED worker in **one** message (§3). The intro names your slug, your ledger path
    and your `uds:` socket (the `Scope:` line): a worker accepts a new guide only when its intro names its guide's
    ledger path or slug. Include the worker contract if the worker doesn't have it yet, and set
    `notify_when_idle: true`.
 6. Pin your title: `python3 <skill dir>/scripts/guide_title.py mark <ledger path>`. From your next prompt the title
-   hook keeps it at "🟥🟥 Sessions Manager · <slug> (2 managed · 1 watched · 3 active · 1 new) 🟥🟥" (your ledger's
-   slug, the rows at each level, and the live count of sessions with no row) and undoes any rename. If the session-titles plugin is installed, also
+   hook keeps it at "🟥🟥 Sessions Manager · <slug> (2 managed · 1 watched · 3 active · 1 new · 15 idle 4d) 🟥🟥" (your
+   ledger's slug, the rows at each level, the live count of sessions with no row, and how many decided items have no
+   worker with the oldest one's age) and undoes any rename. `mark` also runs the **full audit** (§7) and prints its
+   table: a takeover starts from the whole body of work, not from the reminders. Every row it prints goes into your
+   first interview or gets a `guide_audit.py set` mark this turn. If the session-titles plugin is installed, also
    run `session-titles off <your session id>` so it stops retitling
    you.
 7. Reply to the user in the status shape (§5), then open the interview (§4).
@@ -208,8 +214,11 @@ one. Everything you need from the user goes through `AskUserQuestion`:
    - Something only the user can do (a merge, a `!` command, a dialog open in another session's window, which a relay
      can't answer): the question carries the link or command, with Done / Not yet.
      To approve in that session's own window: "Open a new terminal tab and run
-     `python3 ~/.claude/skills/session-guide/scripts/guide_approve.py <id8> \"<approval>\"` (or `claude attach <id8>`).
-     Check the header names '<title>' before typing. Never `! claude attach` inside a Claude window." On Done, verify it. On Not yet,
+     `python3 <skill dir>/scripts/guide_approve.py <id8> \"<approval>\"` (or `claude attach <id8>`).
+     Check the header names '<title>' before typing. Never `! claude attach` inside a Claude window." Write
+     `<skill dir>` out in full, since the user pastes the line into a terminal: it is this skill's base directory,
+     given at the top of the skill when it loaded (a plugin install lives under `<config>/plugins/cache/…`, not
+     `~/.claude/skills`). On Done, verify it. On Not yet,
      keep it under **Needs you now** and ask again at the next wake that has news on it.
    - Model switch (`references/model-choice.md`): "'<title>' [id6] runs <model>/<effort> on <task>; switch to
      <model>/<effort>? Type `/model <alias>` and `/effort <level>` in its window." Switched / Keep as is. You can't
@@ -240,6 +249,8 @@ one. Everything you need from the user goes through `AskUserQuestion`:
 - <session title [id6]>: <what it needs from the user>, reminder at HH:MM
 **Streams**
 - <stream>: <where it is> → next: <action> (<session title [id6]> or you)
+**Decided, not moving**
+- <audit row>, idle <age> → <start it / ask <who> / drop> (<key>)
 **Proposed actions**
 1. <action> on <session title [id6]>, or: start a new session '<title>' for <item>
 **Running on its own**
@@ -253,6 +264,9 @@ Guide context: <N>k (hand off at 120k)
   question in the interview that follows (§4, Results for you).
 - "Asleep" lists the reminders the user put off, and the results the user hasn't looked at yet with their re-ask time;
   leave the heading out when there are none. Due reminders and due owed questions belong in "Needs you now".
+- "Decided, not moving" is the audit's table (§7, Audit), top rows first, each with the one action you propose; each
+  is a question in the interview that follows. Leave the heading out only when the audit lists nothing. A status
+  reply that says "nothing is due" while this list has rows is wrong: those rows are what is due.
 - "Needs you now" lists only the user's actions, most urgent first. A merge comes with its PR link and what you
   checked (checks green, mergeable, deploy queue clear).
 - Every Streams line ends with "→ next: <action> (owner)". A stream with no next action is DONE or gets one.
@@ -328,6 +342,27 @@ Guide context: <N>k (hand off at 120k)
   comes due re-check it, asking the user only if they are now needed. Not sure which: ask the user.
   `settle` also lists the results with no verdict and the owed questions that are due (§4): each one is a question in
   this turn's interview, every time, until it is answered.
+- **Audit on every quiet wake**: decided work must not sit with no worker because no reminder names it. The scripts
+  keep a ranked table of work that is not done or not verified (`python3 <skill dir>/scripts/guide_audit.py audit
+  <ledger>`): Open items and queue rows (the ledger's `Queues:` line) with no live worker, items waiting on a person
+  nobody is asking, landings with no verification, reminders open over a day, recent decisions nothing refers to, and
+  sessions that ended without finishing. It prints the 10 rows most worth your attention by value x age, each with one
+  next action; rows that share an action are collapsed (`--group <key>` opens one).
+  - `settle` ends with the quick audit (the ledger and queue files, about 2 s). **A wake with nothing due works this
+    table instead of going back to sleep**: for each row, start it yourself if a FINAL decision already covers it,
+    else put it in this turn's interview, recommended option first ("start it now / keep waiting for <what> / drop").
+  - Record what you did, or the row comes back: `guide_audit.py set <key> started --session <id>` (it counts as
+    moving while that session runs), `set <key> asked` (holds 12 h), `set <key> parked --hours N --note "<why>"`,
+    `set <key> done` or `dropped` (and fix the Open items row's Status). Several keys go comma-separated; a
+    collapsed key (`3fa9c1+5`) marks every item in its row.
+  - The hook nags on your prompt when an idle item is older than `SESSION_GUIDE_IDLE_HOURS` (default 12) with no
+    question to the user, and your title shows the idle count and the oldest age. Both come off only when the items
+    move, are asked about, parked or dropped.
+  - The **full audit** (plain `audit`, about 6 s: it also reads the last 5 days of your sessions' transcripts for
+    what each was meant to do and how it ended) is due every `SESSION_GUIDE_AUDIT_HOURS` (default 12; 0 turns the
+    audit off); the hook says when. `mark` runs it on a takeover.
+  - The backlog row (Open items with no date, or older than 10 days) is one interview question: close, drop or
+    re-queue them in bulk. New Open items rows get a date so they never land there unseen.
 - **Follow-ups, about once a day**: fixes and deployments get checked on real data, not just shipped. The review is due
   when the last one is older than `SESSION_GUIDE_FOLLOWUP_HOURS` (default 24; 0 turns it off); the hook says so on your
   prompt. Do it on a wake with nothing more urgent (no approval or decision waiting), or earlier on any quiet wake:
@@ -369,7 +404,9 @@ Guide context: <N>k (hand off at 120k)
 ### 8. Handoff (at 120k context, or when the user asks)
 1. Make the ledger current: every section, not just the log. Every question you still owe the user is a `waiting
    ask` row, and every deliverable with no verdict a Results for you row: a successor reads those tables, not your
-   intentions.
+   intentions. Then run `python3 <skill dir>/scripts/guide_audit.py audit <ledger>`: it rewrites `STATE.md`, the
+   file your successor reads first, and what it still lists is what you are handing over undone, so say so in the
+   handoff prompt ("12 idle decided items, oldest 4 d: see STATE.md").
 2. Change the ledger's `Guide:` line to "HANDING OFF to next guide".
 3. Cancel wakeups and any reminder cron. Tell each MANAGED worker in one line: "Guide changing; keep reporting in your final message until
    the new guide introduces itself."
