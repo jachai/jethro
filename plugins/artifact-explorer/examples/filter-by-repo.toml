@@ -1,0 +1,21 @@
+# Example DATA/config.toml: show only artifacts that were touched from one repo,
+# add a category of your own, and override one artifact.
+
+[filter]
+include_repos = ["artifact-explorer"]   # folder names of the repos to keep
+include_shared = false                  # also hide artifacts shared with you
+
+# Categories replace the defaults when you define them, so list every one you want.
+[[categories]]
+name = "Design notes"
+keywords = ["design","architecture","adr"]
+
+[[categories]]
+name = "Reports"
+keywords = ["report","audit","review"]
+
+# Override one artifact by id (the part after /artifact/ in its URL).
+[overrides."AbC123xyzExampleId"]
+category = "Design notes"
+description = "Why the catalog is a SQLite file and a static page."
+hidden = false
