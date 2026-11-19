@@ -34,7 +34,8 @@ is undone on the next turn:
 managed, watched and active count those rows in the ledger's `## Sessions` table; new is the live count of sessions
 active in the last 12 hours with no row there (see sweep). To pick your own format, set SESSION_GUIDE_TITLE (for
 hooks: in settings.json "env") with {managed}, {watched}, {active}, {new} and {tracked} (managed + watched)
-placeholders, plus {slug} (the ledger's folder name) and {host} (this machine's short host name), which tell two
+placeholders, {idle_note} (" · 15 idle 4d" when the last audit found decided work with no worker, else empty; or
+{idle} and {oldest} on their own), plus {slug} (the ledger's folder name) and {host} (this machine's short host name), which tell two
 guides apart when Remote Control shows another machine's sessions too. A format without them still works. Avoid `*`: some title tools strip markdown. Keep
 the "🟥🟥 Sessions Manager" start if you use claude-top: it falls back to it for a session without a marker. The
 marker is
@@ -77,6 +78,11 @@ table, whose Remind at says when to ask again; `sleep` moves it) or it is closed
 settle lists the sessions quiet for --idle-hours that are neither, and the reminders that are due; the hook gives a guide
 both on every prompt. A running session, and one whose reminder sleeps, is left alone.
 
+Decided work must not sit idle either: guide_audit.py (next to this script; its docstring is the spec) lists the Open
+items and queue rows with no worker, the landings nobody verified and the sessions that never finished, ranked, 10
+rows at a time. `mark` runs its full audit and prints the table, `settle` ends with it, `retire` refreshes its
+STATE.md, the title shows its idle count, and the hook nags a guide whose idle items got no question to the user.
+
 A question the guide owes the user ("ask this afternoon") is a reminder too: `waiting ask "<question>"` writes a row
 keyed "owed question [<6 hex chars of the question>]" in the same table, due now or at --hours / --at, so a new guide's
 `settle` finds it after a handoff. `sleep` and `unwait` take that key like a session id.
@@ -111,7 +117,7 @@ import sys
 import time
 
 TITLE = ("\U0001f7e5\U0001f7e5 Sessions Manager \u00b7 {slug} ({managed} managed \u00b7 {watched} watched"
-         " \u00b7 {active} active \u00b7 {new} new) \U0001f7e5\U0001f7e5")
+         " \u00b7 {active} active \u00b7 {new} new{idle_note}) \U0001f7e5\U0001f7e5")
 RETIRED_TITLE = ("\U0001f39f\ufe0f\U0001f39f\ufe0f Sessions Manager (retired)"
                  " \U0001f39f\ufe0f\U0001f39f\ufe0f")
 GUIDED_PREFIX = "\U0001f7e7\U0001f7e7 (g) "
@@ -209,8 +215,51 @@ def counts(ledger, session_id=""):
         active += level == "ACTIVE"
     if not seen:
         return None
+    idle, oldest = idle_counts(ledger)
     return dict(managed=managed, watched=watched, active=active, new=len(untracked(ledger, session_id)),
-                tracked=managed + watched)
+                tracked=managed + watched, idle=idle, oldest=oldest,
+                idle_note=" \u00b7 %d idle %s" % (idle, oldest) if idle else "")
+
+
+def audit_module():
+    """guide_audit, which lives next to this script and imports it back; None when it can't be loaded."""
+    try:
+        sys.modules.setdefault("guide_title", sys.modules[__name__])
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import guide_audit
+        return guide_audit
+    except Exception:
+        return None
+
+
+def idle_counts(ledger):
+    """(how many decided items sit idle, the oldest one's age as "9h" / "4d") from the last audit; (0, "") with none."""
+    try:
+        found = audit_module().cached(ledger)
+        age = found.get("oldest")
+        return found.get("idle", 0), "" if age is None else "%dh" % (age // 3600) if age < 36 * 3600 else "%dd" % (age // 86400)
+    except Exception:
+        return 0, ""
+
+
+def audit_context(ledger):
+    try:
+        return audit_module().hook_context(ledger)
+    except Exception:  # fail open, like the rest of the hook
+        return None
+
+
+def refresh_audit(ledger, full=False):
+    """Run the audit (quick unless `full`), which rewrites STATE.md, and return its one-line summary, or None."""
+    try:
+        module = audit_module()
+        queues = (module.load_state(ledger).get("quick") or {}).get("queues") or ()
+        found = module.run(ledger, full=full, queues=queues)
+        if not found["rows"] and not found["counts"]["stale"]:
+            return None  # nothing idle, unverified or stuck: say nothing
+        return module.summary(found), module.render(found), module.state_paths(ledger)[1]
+    except Exception:
+        return None
 
 
 def transcript_facts(path):
@@ -329,6 +378,9 @@ def guide_context(session_id):
                      "review with `followups --reviewed`."
                      % (time.strftime(TIME_FORMAT, time.localtime(last)) if last else "never", due,
                         os.path.abspath(__file__)))
+    audit = audit_context(ledger)
+    if audit:
+        parts.append(audit)
     return "\n".join(parts) or None
 
 
@@ -391,11 +443,11 @@ def cmd_hook():
         current = (event.get("session_title") or "").strip()
         if marker_content(sid):
             sync_session_titles(sid, marker_content(sid))
+        context = guide_context(sid)  # first: it refreshes the audit counts the title shows
         title = title_for(sid, current)
         if marker_content(sid) == UNGUIDED and current and not title:
             os.remove(marker(sid))  # the prefix is off: nothing left to undo
         output = {"hookEventName": event.get("hook_event_name", "UserPromptSubmit")}
-        context = guide_context(sid)
         if title:
             output["sessionTitle"] = title
         if context:
@@ -416,7 +468,11 @@ def cmd_mark(args):
         raise SystemExit("%s is %s; a new guide needs a fresh session"
                          % (sid[:8], "a retired guide" if marker_content(sid) == RETIRED else "closed"))
     write_marker(sid, ledger)
+    found = refresh_audit(ledger, full=True)  # a takeover starts from the whole body of work, not from the reminders
     print("%s is a guide; title from its next prompt: %s" % (sid[:8], title_for(sid)))
+    if found:
+        print("Audit: %s\n%s\nLive state (read this, not the ledger's log): %s\nPut the table into your first "
+              "interview; `guide_audit.py audit` prints all of it." % found)
     return 0
 
 
@@ -432,8 +488,13 @@ def cmd_unmark(args):
 
 def cmd_retire(args):
     sid = resolve_session(args.session)
+    old = marker_content(sid)
     write_marker(sid, RETIRED)
     print("%s is retired; title from its next prompt: %s" % (sid[:8], title_for(sid)))
+    if old and old not in WORKER_MARKERS + (RETIRED, DONE) and os.path.isfile(os.path.expanduser(old)):
+        found = refresh_audit(os.path.expanduser(old))  # the handoff leaves the live state current
+        if found:
+            print("Handed over: %s\nLive state for the next guide: %s" % (found[0], found[2]))
     return 0
 
 
@@ -710,6 +771,12 @@ def cmd_settle(args):
     print("%d unsettled, %d due, %d asleep" % (len(found["unsettled"]), len(found["due"]), len(found["asleep"]))
           + (", %d result(s) unanswered" % len(results["due"]) if results["due"] else ""))
     print_next_reminder(ledger, found, results)
+    audit = refresh_audit(ledger)
+    if audit:  # a wake with nothing due still has this to work on
+        print("Audit: %s\n%s" % audit[:2])
+        if not found["due"] and not found["unsettled"] and not results["due"]:
+            print("Nothing is due, so this wake works the table above: propose a start for each idle item, and run "
+                  "`guide_audit.py audit` when the full look back is due.")
     return 0
 
 

@@ -18,7 +18,9 @@ The guide never builds and never merges. Workers build. You decide and merge.
 
 ## A guide's turn
 
-1. **Read the ledger.** It is the only state. Notes and status files are hints at best.
+1. **Read the ledger.** It is the only state. Notes and status files are hints at best. `STATE.md` next to it is the
+   scripts' few-KB digest of it (open sessions, reminders, results with no verdict, the audit's top rows), which is
+   what a new guide reads first.
 2. **Peek** at the 4–5 most active sessions (`peek.py`): last reply, any unanswered question, context size.
 3. **Read CI**: PR checks, workflow runs, deploy jobs. One read per wake, never a watch loop.
 4. **Reconcile.** Answer workers' questions from the Decisions list where possible. Batch the rest into one
@@ -27,7 +29,10 @@ The guide never builds and never merges. Workers build. You decide and merge.
    rows without one go into the same interview as a recommended owner + action, at most 4 at a time.
 5. **Reply** to you in the "Needs you now / Streams / Proposed actions / Running on its own / Decision pending"
    shape. Every stream line ends with its next action and owner; every proposed action is a yes/no.
-6. **Update the ledger** in place and schedule the next wake: +5 for imminent events, +10 for long runs, backing off
+6. **Work the audit when nothing is due.** `guide_audit.py audit` ranks the work that is decided but not moving, or
+   landed but not verified, and prints the top 10 rows with one next action each. A quiet wake proposes a start for
+   each instead of sleeping; `set <key> started | asked | parked | done | dropped` records the outcome.
+7. **Update the ledger** in place and schedule the next wake: +5 for imminent events, +10 for long runs, backing off
    when only you can unblock things.
 
 ## Decisions
