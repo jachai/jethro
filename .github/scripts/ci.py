@@ -48,6 +48,12 @@ PLUGINS = {
         "json": ["hooks/hooks.json", "monitors/monitors.json"],
         "version": "scripts/ae.py",
     },
+    "fancy-questions": {
+        "node": True,  # node --test instead of unittest and pyflakes
+        "sh": ["bin/qw"],
+        "json": [],
+        "version_cmd": ["sh", "bin/qw", "--version"],
+    },
 }
 BUNDLE = "jethro"  # plugin.json only; no checks beyond the version bump
 
@@ -88,10 +94,14 @@ def test(name):
         return
     cfg, d = PLUGINS[name], ROOT / "plugins" / name
     py = sys.executable
-    run([py] + cfg["unittest"] + ["-m", "unittest", "discover", "-s", "tests", "-v"], d)
-    if (d / "scripts/demo.py").is_file():
-        run([py, "scripts/demo.py"], d)
-    run(["uvx", "pyflakes"] + cfg["pyflakes"], d)
+    if cfg.get("node"):
+        run(["node", "--test"], d)
+        run(cfg["version_cmd"], d)
+    else:
+        run([py] + cfg["unittest"] + ["-m", "unittest", "discover", "-s", "tests", "-v"], d)
+        if (d / "scripts/demo.py").is_file():
+            run([py, "scripts/demo.py"], d)
+        run(["uvx", "pyflakes"] + cfg["pyflakes"], d)
     for s in cfg["sh"]:
         run(["sh", "-n", s], d)
     for j in [".claude-plugin/plugin.json"] + cfg["json"]:
@@ -133,9 +143,10 @@ def release_check(tag):
     name, version = split_tag(tag)
     d = ROOT / "plugins" / name
     plugin = json.loads((d / ".claude-plugin/plugin.json").read_text())["version"]
-    script = PLUGINS.get(name, {}).get("version")
-    found = subprocess.run([sys.executable, script, "--version"], cwd=str(d), check=True,
-                           capture_output=True, text=True).stdout.split()[-1] if script else plugin
+    cfg = PLUGINS.get(name, {})
+    cmd = cfg.get("version_cmd") or ([sys.executable, cfg["version"], "--version"] if cfg.get("version") else None)
+    found = subprocess.run(cmd, cwd=str(d), check=True,
+                           capture_output=True, text=True).stdout.split()[-1] if cmd else plugin
     print("tag=%s plugin=%s script=%s" % (version, plugin, found))
     if not version == plugin == found:
         sys.exit("tag, plugin.json and script versions differ")
