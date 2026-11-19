@@ -188,8 +188,10 @@ class ReconcileTest(ReconcileBase):
     def test_a_job_blocked_on_input_or_waiting_on_the_guide_is_blocked(self):
         self.job(CLEANUP, state="blocked", result="", detail="reply `ok` to go ahead", alive=True)
         self.assertEqual(self.kinds(), [("blocked", "b8b8b8")])
-        self.job(CLEANUP, result="staging deploy green; the one quote is waiting on the guide")
+        self.job(CLEANUP, result="BLOCKED on the guide's pick of the quote")
         self.assertEqual(self.kinds(), [("blocked", "b8b8b8")])
+        self.job(CLEANUP, result="staging deploy green; the one quote is waiting on the guide")
+        self.assertEqual(self.kinds(), [("ended", "b8b8b8")])  # loose words: still flagged, as an end to read
 
     def test_a_working_job_is_not_flagged_but_one_whose_process_is_gone_is(self):
         self.job(CLEANUP, state="working", detail="Reading the diff", alive=True, ago=7200)
@@ -378,6 +380,131 @@ class WiringTest(ReconcileBase):
                     with open(os.path.join(top, name), errors="replace") as f:
                         self.assertNotIn(OLD_SENTENCE, f.read().lower(), os.path.join(top, name))
         self.assertIn("Keep sending to this socket", gt.GUIDE_CHANGE)
+
+
+class ReviewFixesTest(ReconcileBase):
+    """The findings of the review of 0.1.20, each from its reproduction."""
+    def test_loose_words_are_not_a_block(self):
+        self.job(CLEANUP, result="DONE: nothing needs you")
+        self.assertEqual(self.kinds(), [("ended", "b8b8b8")])
+        for result in ("DONE: nothing needs you", "Waiting for CI was slow; DONE", "Needs no follow-up", "stopped early",
+                       "DONE; blocked on nothing"):
+            self.assertFalse(gr.is_blocked(result), result)
+        for result in ("BLOCKED: needs a ruling", "**BLOCKED** on the export format", "NEEDS input: pick one",
+                       "result: WAITING on the user's merge"):
+            self.assertTrue(gr.is_blocked(result), result)
+        self.assertTrue(gr.is_blocked("DONE", state="blocked"))
+
+    def test_handed_off_to_the_guide_with_a_resume_prompt_is_a_handoff(self):
+        self.job(RELAY, result="HANDED OFF to the guide at 150k; resume /x/resume.md")
+        flags = self.flags()
+        self.assertEqual([(f["kind"], f["id"]) for f in flags], [("handoff", "a7a7a7")])
+        self.assertTrue(gr.is_handoff("plan handed off to the guide; resume prompt at ~/work/next.md"))
+        self.assertFalse(gr.is_handoff("plan handed off to the guide"))
+
+    def test_a_successor_named_in_the_title_cell_clears_the_handoff_and_keeps_its_own_id(self):
+        self.mark_guide()
+        self.handed_off_relay()
+        self.write_ledger(LEDGER.replace("| ledger cleanup [b8b8b8]",
+                                         "| 'build 2' [e1e1e1] successor of [a7a7a7] | MANAGED | plan rewrite | uds |\n"
+                                         "| ledger cleanup [b8b8b8]"))
+        self.assertEqual(gr.own_id("'build 2' [e1e1e1] successor of [a7a7a7]"), "e1e1e1")
+        self.assertEqual(self.kinds(), [])
+        self.assertEqual(self.script("retire", GUIDE, "--check").returncode, 0)  # the gate opens
+        self.job("e1e1e1e1-0000-4000-8000-000000000009", result="DONE: rewrite merged")
+        self.assertEqual(self.kinds(), [("ended", "e1e1e1")])  # the successor's own row, not its predecessor's
+
+    def test_an_ended_row_with_a_waiting_row_is_left_to_settle(self):
+        self.job(CLEANUP, result="DONE: merged, the user still has to deploy")
+        self.assertEqual(self.kinds(), [("ended", "b8b8b8")])
+        self.write_ledger(LEDGER.replace("|---|---|---|---|\n\n## Open items",
+                                         "|---|---|---|---|\n| ledger cleanup [b8b8b8] | Deploy the cleanup | "
+                                         "2026-11-02 10:00 | 2026-11-02 12:00 |\n\n## Open items"))
+        self.assertEqual(self.kinds(), [])
+
+    def test_the_retire_gate_refuses_when_reconcile_fails_and_the_hook_does_not(self):
+        import contextlib
+        import io
+        self.mark_guide()
+        with mock.patch.object(gr, "reconcile", side_effect=RuntimeError("job folder unreadable")):
+            for argv, code in ((["retire", GUIDE], 1), (["retire", GUIDE, "--check"], 1)):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(gt.main(argv), code)
+                self.assertIn("Reconcile failed", out.getvalue())
+                self.assertIn("job folder unreadable", out.getvalue())
+                self.assertEqual(gt.marker_content(GUIDE), self.ledger)  # not retired
+            self.assertIsNone(gt.reconcile_context(self.ledger))  # the hook stays fail-open
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(gt.main(["retire", GUIDE, "--force"]), 0)
+        self.assertEqual(gt.marker_content(GUIDE), "retired")
+
+    def test_any_delivered_send_after_the_last_prompt_counts(self):
+        path = self.transcript(CLEANUP, [user("go"), send("t1", "uds:/tmp/cc-socks/1.sock", "DONE: merged"), sent("t1"),
+                                         send("t2", "atlas guide", "and one more thing"), sent("t2", ok=False)])
+        self.job(CLEANUP, result="DONE: merged", transcript=path)
+        self.assertEqual(self.kinds(), [("ended", "b8b8b8")])
+
+    def test_no_undelivered_flag_when_the_last_prompt_is_older_than_the_tail(self):
+        filler = [{"type": "assistant", "message": {"content": [{"type": "text", "text": "x" * 500}]}}] * 12
+        path = self.transcript(CLEANUP, [user("go")] + filler)
+        self.job(CLEANUP, result="DONE: merged", transcript=path)
+        with mock.patch.object(gr, "TRANSCRIPT_TAIL", 2048):
+            self.assertEqual(self.kinds(), [("ended", "b8b8b8")])
+        self.assertEqual(self.kinds(), [("ended", "b8b8b8"), ("undelivered", "b8b8b8")])  # the whole file: it can tell
+
+    def mark_guide(self):
+        r = self.script("mark", self.ledger, "--session", GUIDE)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def run_hook(self):
+        import contextlib
+        import io
+        out = io.StringIO()
+        stdin = io.StringIO(json.dumps({"session_id": GUIDE, "hook_event_name": "UserPromptSubmit"}))
+        with mock.patch.object(sys, "stdin", stdin), contextlib.redirect_stdout(out):
+            self.assertEqual(gt.cmd_hook(), 0)
+        return json.loads(out.getvalue())["hookSpecificOutput"]["additionalContext"]
+
+    def test_the_hook_sets_the_gh_budget_before_anything_that_can_call_gh(self):
+        import types
+        self.mark_guide()
+        self.handed_off_relay()
+        calls = []
+        fake = types.ModuleType("guide_gh")
+        fake.set_budget = lambda seconds=None: calls.append(("set_budget", seconds))
+
+        def recorder(name, real):
+            def wrapped(*args):
+                calls.append((name,))
+                return real(*args)
+            return wrapped
+        with mock.patch.dict(sys.modules, {"guide_gh": fake}), \
+                mock.patch.object(gt, "reconcile_context", recorder("reconcile", gt.reconcile_context)), \
+                mock.patch.object(gt, "audit_context", recorder("audit", gt.audit_context)), \
+                mock.patch.object(gt, "claims_context", recorder("claims", gt.claims_context)):
+            context = self.run_hook()
+        self.assertEqual(calls, [("set_budget", None), ("reconcile",), ("audit",), ("claims",)])
+        self.assertTrue(context.startswith("Now: "))
+        self.assertIn("HANDED OFF: 'atlas plan rewrite (2)'", context)
+
+    def test_a_slow_gh_check_cannot_lose_the_clock_or_reconcile(self):
+        self.mark_guide()
+        self.handed_off_relay()
+
+        def slow(ledger):
+            time.sleep(3)
+            return "session-guide audit: too late"
+        started = time.time()
+        with mock.patch.object(gt, "audit_context", slow), \
+                mock.patch.object(gt, "claims_context", side_effect=RuntimeError("gh broke")), \
+                mock.patch.dict(os.environ, SESSION_GUIDE_HOOK_SECONDS="0.3"):
+            context = self.run_hook()
+        self.assertLess(time.time() - started, 2.5)
+        self.assertTrue(context.startswith("Now: "))
+        self.assertIn("HANDED OFF: 'atlas plan rewrite (2)'", context)
+        self.assertNotIn("too late", context)
+        self.assertIn("the audit check ran past this prompt's time budget", context)
 
 
 ARTIFACT_ID = "AbCdEfGhIjKlMnOpQrStUv"  # 22 characters, as an artifact id is

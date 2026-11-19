@@ -50,15 +50,18 @@ GRACE_MINUTES = 3  # a job that ended this recently is left alone (SESSION_GUIDE
 TRANSCRIPT_TAIL = 300 * 1024  # how much of an ended worker's transcript is read for its last SendMessage
 TIMELINE_TAIL = 64 * 1024
 OPEN_LEVELS = ("MANAGED", "WATCHED")
-# The protocol word, upper case anywhere in the result line, or any case as its first word.
+FIRST = r"^[\W_]*(?:result:[\W_]*)?"  # a result line's first token, past markdown and a "result:" label
+# The protocol word, upper case anywhere in the result line, or any case as its first token.
 HANDED = re.compile(r"\bHAND(?:ED|ING)[ -]?OFF\b")
-HANDED_FIRST = re.compile(r"^\W*hand(?:ed|ing)[ -]?off\b", re.I)
-# "handed off to the guide" passes a deliverable on: no successor is owed.
+HANDED_FIRST = re.compile(FIRST + r"HAND(?:ED|ING)[ -]?OFF\b")
+HANDED_LEAD = re.compile(FIRST + r"hand(?:ed|ing)[ -]?off\b", re.I)
+# "... handed off to the guide" passes a deliverable on, unless the line also names a resume prompt.
 HANDED_TO = re.compile(r"hand(?:ed|ing)[ -]?off\s+(?:\S+\s+){0,3}?to\s+(?:the\s+)?(?:guide|user|you)\b", re.I)
-BLOCKED_FIRST = re.compile(r"^\W*(?:blocked|needs?|waiting|waits|stopped|paused|question)\b", re.I)
-BLOCKED = re.compile(r"\bBLOCKED\b|\bNEEDS (?:INPUT|YOU)\b|\bneeds? (?:input|you|your|the guide|the user|a (?:ruling|"
-                     r"decision|answer|reply))\b|\b(?:waiting|waits) (?:on|for) (?:the guide|you|the user|your|a "
-                     r"(?:ruling|decision|answer|reply))\b|\bblocked (?:on|by)\b", re.I)
+RESUME = re.compile(r"(?:~|/)[\w.@+-]*(?:/[\w.@+-]+)*/[\w.@+-]*(?:resume|prompt|handoff)[\w.@+-]*"
+                    r"|\bresume\b\W{0,3}(?:prompt\W{0,3})?(?:at|in|from)?\W{0,3}(?:~|/)\S+", re.I)
+# Blocked: the job is blocked on input, or the result's first token is the upper-case protocol word. Loose words
+# ("DONE: nothing needs you", "waiting for CI was slow") are not a block.
+BLOCKED_FIRST = re.compile(FIRST + r"(?:BLOCKED|NEEDS|WAITING)\b")
 SUCCESSOR = re.compile(r"successor (?:of|to)\b[^\[\]|]{0,60}\[([0-9a-fA-F]{6,36})\]", re.I)
 REPORT_WORD = re.compile(r"\b(HAND(?:ED|ING)[ -]?OFF|BLOCKED|MERGE READY|DONE|READY|NEEDS?|WAITING)\b")
 PATH = re.compile(r"(?:~|/)[\w.@+-]*(?:/[\w.@+-]+)+\.(?:md|txt)\b")
@@ -150,14 +153,18 @@ def job_facts(session_id):
 
 
 def is_handoff(result):
-    """True when a result line says the session HANDED OFF its work, so a successor is owed."""
+    """True when a result line says the session HANDED OFF its work, so a successor is owed: the upper-case word as
+    its first token always; otherwise the word (upper case anywhere, any case first) unless it passes something on
+    "to the guide / user / you" and names no resume prompt."""
+    if HANDED_FIRST.match(result):
+        return True
     if HANDED_TO.search(result):
-        return False
-    return bool(HANDED.search(result) or HANDED_FIRST.match(result))
+        return bool(RESUME.search(result))  # a pass-on, unless it names where the successor resumes
+    return bool(HANDED.search(result) or HANDED_LEAD.match(result))
 
 
 def is_blocked(result, state=""):
-    return state == "blocked" or bool(BLOCKED_FIRST.match(result) or BLOCKED.search(result))
+    return state == "blocked" or bool(BLOCKED_FIRST.match(result))
 
 
 def session_rows(ledger):
@@ -168,11 +175,18 @@ def session_rows(ledger):
             inside = line.strip() == "## Sessions"
         elif inside and line.lstrip().startswith("|"):
             cells = gt.split_row(line)
-            rid = gt.row_id(cells[0]) if len(cells) > 1 else None
+            rid = own_id(cells[0]) if len(cells) > 1 else None
             if rid:
                 rows.append(dict(id=rid, name=row_name(cells[0]), level=re.match(r"[A-Za-z]*", cells[1]).group(),
                                  cells=cells, text=line))
     return rows
+
+
+def own_id(cell):
+    """A Sessions row's own id6: the first [id] in its first cell that is not a "successor of [x]" reference. ("'build
+    2' [bbbbbb] successor of [aaaaaa]" is bbbbbb, the successor of aaaaaa.)"""
+    ids = re.findall(r"\[([0-9a-fA-F]{6,36})\]", SUCCESSOR.sub("", cell))
+    return ids[0][:6].lower() if ids else None
 
 
 def row_name(cell):
@@ -222,13 +236,18 @@ def send_ok(block, line):
 
 
 def undelivered(facts, result):
-    """Why this ended session's last report never reached the guide, or None when it did (or there is no transcript
-    to tell). Reads the last TRANSCRIPT_TAIL bytes only."""
+    """Why this ended session's last report never reached the guide, or None when it did, or when the transcript can't
+    tell. Reads the last TRANSCRIPT_TAIL bytes only. Any successful send to a uds: socket after the last prompt (a new
+    turn) counts as delivered; when that prompt is not inside the bytes read, nothing is flagged."""
     path = facts.get("transcript")
     if not path or not os.path.isfile(path):
         hits = glob.glob(os.path.join(gt.config_dir(), "projects", "*", facts["session_id"] + ".jsonl"))
         path = max(hits, key=os.path.getmtime) if hits else None
     if not path:
+        return None
+    try:
+        cut = os.path.getsize(path) > TRANSCRIPT_TAIL
+    except OSError:
         return None
     prompt, sends, results = -1, [], {}
     for n, raw in enumerate(tail_lines(path, TRANSCRIPT_TAIL)):
@@ -255,7 +274,12 @@ def undelivered(facts, result):
     def reached(send):
         return str(send[2].get("to") or "").startswith("uds:") and results.get(send[1]) is True
 
-    last = next((s for s in reversed(sends) if s[0] > prompt), None)
+    after = [s for s in sends if s[0] > prompt]
+    if any(reached(s) for s in after):
+        return None
+    if prompt < 0 and cut:
+        return None  # its last prompt is older than the tail read: no evidence either way
+    last = after[-1] if after else None
     if last is None:
         word = REPORT_WORD.search(result)
         earlier = sends[-1] if sends else None
@@ -326,6 +350,8 @@ def reconcile(ledger, now=None, grace_minutes=None, me=""):
                 continue
             kind = "blocked"
         elif row["level"] == "MANAGED":
+            if rid in waiting:  # it waits on the user: `settle` asks, and `done` would drop that reminder
+                continue
             kind = "ended"
         else:
             continue
