@@ -90,13 +90,18 @@ Evidence is `—` while the claim is open. Closed rows stay, like Verifications 
 - `claim merge #N [--repo owner/name] [--by <who>]`: someone (default: the user) was asked to merge a PR. `#N`, `N`,
   `owner/name#N` or the PR link all work.
 - `claim run "<command>" --by <who>`: someone was asked to run a command; give it exactly as given to them.
-- `claim done <key | #N> "<evidence>"`: closes a claim with what shows it happened (a merge sha, the output, a link).
+- `claim done <key | #N | N> "<evidence>"` (all digits is a PR number): closes a claim with what shows it happened (a merge sha, the output, a link).
 - `claim list [--all] [--days 3]`: the open claims (merge claims re-checked with gh), and the ledger lines from the
   last 3 days (0 = all) that ask for a merge or a command with no claim row; `--all` adds the closed claims.
 
-On every prompt the hook re-checks each open merge claim with `gh pr view <N> --json state,mergedAt` (cached 10
-minutes, 5 s timeout; it fails open and says "not checked" when gh is off with `SESSION_GUIDE_GH=0`, missing or
-failing). A merged PR closes its own claim with gh's merge time as evidence, and the hook says so once. A PR still
+On every prompt the hook re-checks each open merge claim with `gh pr view <N> --repo <owner/name> --json
+state,mergedAt` (cached 10 minutes, 5 s per call, and all of the hook's gh calls share `SESSION_GUIDE_GH_BUDGET`,
+default 3 s). It fails open and says "not checked" when gh is off with `SESSION_GUIDE_GH=0`, missing, failing or out
+of time; an unchecked claim stays open and is asked about again on the next prompt. The repo is the claim's own
+(`--repo`, `owner/name#N`, a PR link), else the one repo the ledger's `Scope:` line names (add it there, for example
+`Scope: billing · host1 · ~/.claude · uds:/tmp/cc-socks/1.sock · repo acme/billing`). With neither, gh is never asked
+(it would answer for whatever repository the current folder is in) and the claim is listed as "repo unknown: add
+--repo". A merged PR closes its own claim with gh's merge time as evidence, and the hook says so once. A PR still
 open, or closed without merging, stays listed until it merges or you `claim done` it. A run claim with no evidence
 after `SESSION_GUIDE_CLAIM_HOURS` (default 4) is listed until it has some: ask for the output. The hook also counts
 the unclaimed lines: "MERGE READY #N", "<someone> runs / tells …" and `! command` lines from the last

@@ -63,10 +63,11 @@ deliverable on and is no handoff.
 
 A merge handed to you, or a command someone was asked to run, is a row in the ledger's Claims table
 (`guide_title.py claim merge #N` / `claim run "<command>" --by <who>`). The hook re-checks merge claims with
-`gh pr view --json state,mergedAt` (cached 10 minutes in `<config>/session-guide/gh-cache.json`, 5 s timeout, fails
-open), closes the merged ones itself and says so once, and lists run claims with no evidence after 4 hours. Ledger
+`gh pr view --repo <owner/name> --json state,mergedAt` (cached 10 minutes in `<config>/session-guide/gh-cache.json`,
+5 s per call within one 3 s budget for the whole hook, fails open), closes the merged ones itself and says so once, and lists run claims with no evidence after 4 hours. Ledger
 lines that say "MERGE READY #N", "<someone> runs / tells …" or hold a `!` command with no claim are counted, so a
-merge nobody claimed is seen too.
+merge nobody claimed is seen too. gh is only asked with a repo: the claim's own, or the one repo the ledger's
+`Scope:` line names. A bare `#N` with neither is "repo unknown", never the current folder's repository.
 
 ## Decisions
 

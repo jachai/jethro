@@ -118,6 +118,8 @@ FUTURE_SLACK = 15 * 60  # a written time this far past now is a clock error
 # The ids a row is matched on: tickets and monitor ids ("ABC-123", "P-401"), PRs ("#5835"), artifact ids (22 letters and
 # digits, with an upper-case letter, a lower-case one and a digit).
 WORK_ID = re.compile(r"(?<![\w-])[A-Z][A-Z0-9]{0,9}-\d{2,6}(?![\w-])|(?<![\w&])#\d{2,6}(?![\w-])")
+REPO_PR = re.compile(r"(?:(?<![\w./~@:-])[A-Za-z0-9][\w.-]*/[\w.-]*[A-Za-z0-9_]#|github\.com/[\w.-]+/[\w.-]+/pull/)"
+                     r"(\d{2,6})(?![\w-])")
 ARTIFACT = re.compile(r"(?<![\w-])[A-Za-z0-9]{22}(?![\w-])")
 CLOSING = re.compile(r"\b(?:done|closed?|merged|dropped|superseded|shipped|satisfied|already|moot|resolved|answered)\b",
                      re.I)
@@ -375,7 +377,7 @@ def span(seconds):
 
 def work_ids(text):
     """The ids a row can be matched on to later rows: tickets, monitor ids, PRs and artifact ids."""
-    found = set(WORK_ID.findall(text))
+    found = set(WORK_ID.findall(text)) | {"#" + n for n in REPO_PR.findall(text)}  # owner/name#N and PR links name #N
     return found | {a for a in ARTIFACT.findall(text) if re.search(r"\d", a) and re.search(r"[a-z]", a)
                     and re.search(r"[A-Z]", a)}
 
@@ -467,25 +469,38 @@ def evidence_index(ledger, tables, lines, now):
                 for cells in table(tables, "## Verifications") if len(cells) >= 5 and cells[2].lower().startswith("verified")]
     waiting = {rid: dict(row, ids=work_ids(row["what"])) for rid, row in gt.waiting_rows(ledger).items()}
     return dict(sessions=sessions, results=results, decisions=found, verified=verified, waiting=waiting,
-                gh=[GH_LOOKUPS])
+                gh=[GH_LOOKUPS], ledger=ledger)
 
 
-def pr_state(number, repo=None):
-    """guide_gh's {"state", "mergedAt"} for a PR, or None when gh can't say (no guide_gh, gh off, missing or slow)."""
+def pr_state(number, repo):
+    """guide_gh's {"state", "mergedAt"} for a PR of `repo`, or None when gh can't say (no repo, no guide_gh, gh off,
+    missing, slow or out of the hook's budget). None is "unchecked": no evidence now, asked again next audit."""
     try:
         import guide_gh
-        return guide_gh.pr_state(number, repo=repo)
+        return guide_gh.pr_state(number, repo=repo) if repo else None
     except Exception:  # an ImportError or a broken gh is "no evidence", never a failed audit
         return None
 
 
+def pr_repo(ledger, text, number):
+    """The repo PR `number` belongs to: the row's own owner/name#N or link, else the ledger Scope's one repo; None
+    when it can't be told. Never the current directory's repo."""
+    try:
+        import guide_gh
+        return guide_gh.repo_for(ledger, text, number)
+    except Exception:
+        return None
+
+
 def merged(pr, text, index, since=0):
-    """"gh: #N merged <date>" when gh says the PR merged after `since`, or None. At most GH_LOOKUPS asks per audit."""
-    if index["gh"][0] <= 0:
+    """"gh: #N merged <date>" when gh says the PR merged after `since`, or None. At most GH_LOOKUPS asks per audit. A
+    PR whose repo is unknown is never asked about: no evidence, and a `closes: pr:#N` tag on it doesn't fire."""
+    number = int(pr.lstrip("#"))
+    repo = pr_repo(index.get("ledger"), text, number)
+    if not repo or index["gh"][0] <= 0:
         return None
     index["gh"][0] -= 1
-    repo = re.search(r"([\w.-]+/[\w.-]+)%s(?!\d)" % re.escape(pr), text)
-    found = pr_state(int(pr.lstrip("#")), repo.group(1) if repo else None)
+    found = pr_state(number, repo)
     if not found or found.get("state") != "MERGED":
         return None
     at = iso_time(found.get("mergedAt"))

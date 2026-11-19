@@ -57,7 +57,8 @@ user is a row here too, written by `waiting ask "<question>" --hours N` (or `--a
 session with no row here that has gone quiet has to settle (SKILL §7).
 
 **`closes:` tags.** An Open items row or a reminder that ends with a known event says so when it is written:
-`closes: pr:#N` (gh says the PR merged), `closes: result:<artifact id>` (its Results row is satisfied), `closes:
+`closes: pr:owner/name#N` or `closes: pr:#N` (gh says the PR merged; a bare `#N` needs the one repo on the `Scope:`
+line, else the tag never fires), `closes: result:<artifact id>` (its Results row is satisfied), `closes:
 ticket:<ID>` (a satisfied Results row or a closing Decision names it) or `closes: session:<id8>` (its Sessions row is
 DONE); several tags mean all of them. Put it in the Status cell of an Open items row; `waiting` and `waiting ask` take
 `--closes <tag>`. When the event happens the audit closes the row itself (Status DONE, or the reminder leaves the
@@ -67,7 +68,9 @@ table) and the next hook line says so.
 merge #N [--repo owner/name] [--by <who>]` and `claim run "<command>" --by <who>`: the kind and a key made from the
 PR or the command, what (`owner/name#N`, or the command), who, when it was claimed, and the evidence: `—` while it
 is open, then "done <time>: <evidence>" (`claim done <key> "<evidence>"`) or "merged <time> (gh, checked <time>)"
-when gh says the PR is merged. The hook re-checks open merge claims with gh and lists run claims with no evidence
+when gh says the PR is merged. gh is asked only with a repo: the claim's own, or the one repo the `Scope:` line
+names (`· repo acme/billing`); with neither the claim is listed as "repo unknown: add --repo". The hook re-checks
+open merge claims with gh and lists run claims with no evidence
 after 4 hours (`references/verify-followup.md`, Claims). Closed rows stay, like Verifications rows.
 
 **Verifications** is a table with one row per fix or deployment the guide proposed to check, written by `guide_title.py
@@ -80,7 +83,7 @@ lines in the Log with a date and the PR or version ("10-27 11:47 #142 ON PROD @a
 ```markdown
 # <slug> — guide ledger
 Guide: '<guide title>' [id8] since <date HH:MM>          (or: HANDING OFF to next guide)
-Scope: <slug> · <host> · <config dir> · <uds socket>
+Scope: <slug> · <host> · <config dir> · <uds socket> · repo <owner/name>   (the repo part only when the effort has one)
 Other guides: <title> [ref] (machine, project) · …   (or: none)
 Queues: <path to a markdown table of approved work>, …   (optional; leave the line out when there is none)
 Updated: <date HH:MM>   Usage: <plan usage, if you track it>

@@ -73,7 +73,8 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
    Nothing in them is settled by the handoff; each comes back in your first interview when it is due.
 2. **Sole guide, for this ledger.** Write the ledger's `Scope:` line: `<slug> · <host> · <config dir> · <your uds
    socket>` (the host is `hostname -s`; the socket is `messagingSocketPath` in `<config>/sessions/<pid>.json`, found
-   with `grep -l <your id8> <config>/sessions/*.json`). Then list sessions (`claude-top --once -n 15`, or
+   with `grep -l <your id8> <config>/sessions/*.json`), plus ` · repo <owner/name>` when the effort works in one
+   repository: gh checks a bare `#N` against that repo only, never the current folder's. Then list sessions (`claude-top --once -n 15`, or
    `ListAgents`). Another guide is a rival only when it runs **on this machine** (claude-top lists it, or it has a
    marker in `<config>/session-guide/guides/`) **and** its marker or the ledger's `Guide:` line names **this
    ledger**. A guide on a Remote Control row, or one whose marker names a different ledger, is a separate effort:
@@ -183,7 +184,8 @@ item as "whenever you want" or FYI.
 4. On the answer: write the owner into the row, relay the action to that session (or start the new session, §6), and
    log it. A "no" removes the row or makes the user its owner, as the user says.
 5. **Say what closes it, when you write it.** An Open items row or a reminder that ends with a known event carries a
-   `closes:` tag: `closes: pr:#N` (gh says merged), `result:<artifact id>` (its Results row is satisfied),
+   `closes:` tag: `closes: pr:owner/name#N` (gh says merged; a bare `#N` only works when the `Scope:` line names one
+   repo), `result:<artifact id>` (its Results row is satisfied),
    `ticket:<ID>` (a satisfied Results row or a closing Decision names it) or `session:<id8>` (its Sessions row is
    DONE). In a row you write it in the Status cell; `waiting` and `waiting ask` take `--closes <tag>`. When the event
    happens the audit closes the row itself and the hook says so. When a script writes a Waiting or Results row, or closes a

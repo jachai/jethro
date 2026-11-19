@@ -3,7 +3,7 @@
 
     python3 guide_claims.py claim merge <#N | N | PR link> [--repo owner/name] [--by <who>] [--ledger <path>]
     python3 guide_claims.py claim run "<command>" --by <who> [--ledger <path>]
-    python3 guide_claims.py claim done <key | #N> "<evidence>" [--ledger <path>]
+    python3 guide_claims.py claim done <key | #N | N> "<evidence>" [--ledger <path>]
     python3 guide_claims.py claim list [--all] [--days 3] [--ledger <path>]
 
 The same commands run as `guide_title.py claim …` once that script mounts this one (add_parser / cmd_claim).
@@ -22,9 +22,11 @@ owed question's key in the waiting table, so the same PR or command always gives
 "merged <mergedAt> (gh, checked <time>)" when gh says the PR is merged. Closed rows stay, like Verifications rows.
 
 hook_lines(ledger) is what the guide's hook prints on every prompt:
-- every open merge claim, re-checked with guide_gh.pr_state (gh, cached 10 minutes, 5 s timeout, fails open). A merged
-  PR closes its own claim with the evidence and the hook says so once; an open, closed-unmerged or unchecked one stays
-  listed until it is merged or `claim done`;
+- every open merge claim, re-checked with guide_gh.pr_state (gh, cached 10 minutes, 5 s timeout and the hook's
+  overall budget, fails open). A merged PR closes its own claim with the evidence and the hook says so once; an open,
+  closed-unmerged or unchecked one stays listed until it is merged or `claim done`. The repo is the claim's own
+  (--repo, owner/name#N, a PR link), else the one repo the ledger's Scope names (guide_gh.repo_for); with neither the
+  claim is listed as "repo unknown: add --repo" and gh is never asked, so another repository's PR #N can't close it;
 - every run claim with no evidence after SESSION_GUIDE_CLAIM_HOURS (default 4) hours;
 - one line counting the ledger lines from the last SESSION_GUIDE_CLAIM_DAYS (default 3; 0 = the whole ledger) days
   that ask for a merge or a command and have no claim row (unclaimed()).
@@ -60,7 +62,9 @@ ASKED = re.compile(r"\b(?:(?:the )?user|you|[A-Z][a-z]+)\s+(?:runs|will run|shou
 NOT_PEOPLE = {"CI", "It", "This", "That", "Which", "What", "Who", "Guide", "Worker", "Workers", "Lead", "Session",
               "Sessions", "Script", "Hook", "Job", "Cron", "Audit", "Deploy", "Test", "Tests", "Pipeline", "Build",
               "Battery", "Check", "Migration", "Task", "Agent", "Helper", "Then", "Next", "Also", "Nobody", "Nothing"}
-BANG = re.compile(r"`!\s?([^`]+)`|(?:^|(?<=[\s(]))!\s?([a-z.~/$][^|`\n]*)")
+# A command for someone to type: `! cmd` in backticks, or a `!` that starts a line (after any bullet) or a table cell,
+# followed by a space and the command. Never a "!" in prose ("done!") or CSS ("!important").
+BANG = re.compile(r"`!\s+([^`\s][^`]*)`|(?:^\s*(?:[-*+]\s+)?|\|\s*)!\s+([a-z.~/$][^|`\n]*)")
 
 
 def title_module():
@@ -172,8 +176,16 @@ def add_merge(ledger, pr, repo=None, by=USER, now=None):
     if not parsed:
         raise SystemExit("say which PR: #N, N, owner/name#N or its link")
     repo, number = parsed
+    repo = repo or gh_module().repo_for(ledger, str(pr), number)  # the PR's own text, else the ledger's Scope
     key = merge_key(number, repo)
-    old = claim_rows(ledger).get(key)
+    rows = claim_rows(ledger)
+    old = rows.get(key)
+    if repo:  # a claim made before the repo was known is the same claim: it gives way to this one
+        bare = [r for r in rows.values() if r["kind"] == "merge" and r["number"] == number and not r["repo"]
+                and r["key"] != key]
+        for r in bare:
+            write_claim(ledger, r["key"], None)
+        old = old or (bare[0] if bare else None)
     row = dict(key=key, kind="merge", what=what_of_merge(repo, number), by=norm(by) or USER,
                claimed=old["claimed"] if old else stamp(now), evidence=OPEN)
     write_claim(ledger, key, row_cells(row))
@@ -202,8 +214,9 @@ def find_claim(rows, given):
     want = (given or "").strip().strip("[]")
     if want.lower() in rows:
         return rows[want.lower()]
-    hits = [r for k, r in rows.items() if len(want) >= 3 and k.startswith(want.lower())]
-    pr = None if hits else parse_pr(want) if (want.startswith("#") or "#" in want or "/pull/" in want) else None
+    digits = want.isdigit()  # "123" with no exact key is PR #123, never a key prefix
+    hits = [r for k, r in rows.items() if not digits and len(want) >= 3 and k.startswith(want.lower())]
+    pr = None if hits else parse_pr(want) if (digits or "#" in want or "/pull/" in want) else None
     if pr:
         hits = [r for r in rows.values() if r["kind"] == "merge" and r["number"] == pr[1]
                 and (not pr[0] or not r["repo"] or pr[0].lower() == r["repo"].lower())]
@@ -237,7 +250,9 @@ def describe(row):
 def check(ledger, now=None, cache=None):
     """Every open claim with its status: merge claims are re-checked with gh, and a merged PR's claim is closed here
     with gh's evidence. [dict(row, status=…, pr=gh answer or None)]; status is `merged` (closed just now), `open`,
-    `closed` (closed without merging), `unknown` (gh off or failed) for merges, `stale` or `fresh` for runs."""
+    `closed` (closed without merging), `unknown` (gh off, failed or out of budget: unchecked, asked again next time)
+    or `norepo` (no repo in the claim, nor one in the ledger's Scope: gh is never asked) for merges, `stale` or
+    `fresh` for runs."""
     now = time.time() if now is None else now
     hours = env_number("SESSION_GUIDE_CLAIM_HOURS", RUN_HOURS)
     gt, out = title_module(), []
@@ -251,7 +266,13 @@ def check(ledger, now=None, cache=None):
         if row["number"] is None:
             out.append(dict(row, status="unknown", pr=None))
             continue
-        pr = gh_module().pr_state(row["number"], row["repo"], cache=cache, now=now)
+        gh = gh_module()
+        repo = row["repo"] or gh.repo_for(ledger, row["what"], row["number"])
+        if not repo:
+            out.append(dict(row, status="norepo", pr=None))
+            continue
+        row = dict(row, repo=repo)
+        pr = gh.pr_state(row["number"], repo, cache=cache, now=now)
         status = "unknown" if not pr else {"MERGED": "merged", "CLOSED": "closed"}.get(pr["state"], "open")
         if status == "merged":
             text = "merged %s (gh, checked %s)" % (pr.get("mergedAt") or "", stamp(now))
@@ -272,8 +293,11 @@ def describe_check(row):
         return ("Claim: %s: the PR was closed without merging. Find out why, then `claim done %s \"<what happened>\"`."
                 % (what, key))
     if row["status"] == "unknown":
-        return ("Claim: %s: not checked (gh off, missing or failing). Check it by hand, then `claim done %s "
-                "\"<evidence>\"`." % (what, key))
+        return ("Claim: %s: not checked (gh off, missing, failing or out of time this prompt; asked again next time). "
+                "Check it by hand if it stays so, then `claim done %s \"<evidence>\"`." % (what, key))
+    if row["status"] == "norepo":
+        return ("Claim: %s: repo unknown: add --repo (`claim merge #%s --repo owner/name`), or name the one repo on the "
+                "ledger's Scope line. Until then gh is not asked." % (what, row["number"]))
     return ("Claim: %s: no evidence after %g h. Ask %s for the output, then `claim done %s \"<evidence>\"`."
             % (what, row["hours"], row["by"], key))
 
@@ -380,6 +404,9 @@ def cmd_claim(args):
               "`claim done %s \"<evidence>\"` closes it by hand."
               % (row["key"], row["number"], " (%s)" % row["repo"] if row["repo"] else "", row["by"], row["claimed"],
                  " (reopened)" if row["old"] and not row["old"]["open"] else "", row["key"]))
+        if not row["repo"]:
+            print("repo unknown: add --repo owner/name (or name the one repo on the ledger's Scope line); until then gh "
+                  "is not asked about it.")
     elif sub == "run":
         row = add_run(ledger, args.command, args.by)
         print("claim [%s]: %s runs `%s`, claimed %s. The hook lists it after %g h with no evidence; `claim done %s "
@@ -425,7 +452,8 @@ def add_parser(subparsers):
     run.add_argument("command", help="the command, exactly as given to them")
     run.add_argument("--by", required=True, help="who runs it: the user, a person's name, or a session 'title [id6]'")
     done = sub.add_parser("done", help="close a claim with its evidence")
-    done.add_argument("key", help="the claim's key, #N for a merge claim, or the exact command")
+    done.add_argument("key", help="the claim's key, #N or N for a merge claim (all digits is a PR number), or the "
+                                  "exact command")
     done.add_argument("evidence", help="what shows it happened: a merge sha, the output, a link")
     show = sub.add_parser("list", help="open claims (merges re-checked with gh) and unclaimed ledger lines")
     show.add_argument("--all", action="store_true", help="closed claims too")
