@@ -1,0 +1,86 @@
+# Artifact Explorer defaults. Your own DATA/config.toml is merged over this file:
+# tables are merged key by key, arrays (categories, columns, filter lists) are replaced whole.
+
+[page]
+title = "Artifact Explorer"     # heading and browser tab title
+accent = "#0f6b5c"              # accent color (links, active chips, focus rings)
+# Columns shown in table view, in order. Choose from:
+# title category sharing modified last_accessed created size description repos
+columns = ["title","category","sharing","modified","last_accessed","created","size","description","repos"]
+# Ask GitHub (at most once a day) whether a newer release is out and show an "update available" badge. false = never ask.
+update_check = true
+
+# Categories. The describer picks one per artifact; for rows it has not described, the first category whose
+# `kinds` has the row's kind wins, then the first whose keywords match.
+#   keywords = case-insensitive regexes tried on title + description
+#   kinds    = artifact kinds (Page, Docs, Slides, ...) matched case-insensitively
+#   color, color_dark = optional "#rrggbb" for the category pill (light and dark theme). Without them a category
+#              takes a palette color by its position in this list (the 9th and later get a neutral gray).
+# Rows that match nothing fall into "Uncategorized" (always gray).
+[[categories]]
+name = "Reports"
+keywords = ["report","audit","review","post-?mortem","summary","analysis","findings"]
+
+[[categories]]
+name = "Plans"
+keywords = ["plan","roadmap","proposal","spec\\b","design","strategy","milestone"]
+
+[[categories]]
+name = "Dashboards"
+keywords = ["dashboard","metrics","burn-?down","tracker","status board"]
+kinds = ["Dashboard"]
+
+[[categories]]
+name = "Decks"
+keywords = ["\\bdeck\\b","slides?\\b","presentation","pitch"]
+kinds = ["Deck","Slides"]
+
+[[categories]]
+name = "Docs"
+keywords = ["guide","manual","docs?\\b","how-?to","reference","readme","notes"]
+kinds = ["Docs"]
+
+[[categories]]
+name = "Personal"
+keywords = ["personal","travel","trip","recipe","home","family","budget"]
+
+# Topics: your own labels, a row can have several (the describer tags up to 3 from this list; unlisted rows are
+# matched on title keywords). Topics are personal, so none ship by default: add yours to your config.toml, e.g.
+# [[topics]]
+# name = "Housing Twin"
+# keywords = ["housing", "twin"]     # optional regexes on the TITLE; default is the name itself
+# `ae topics` lists them and the describer's suggestions; `ae topics --accept NAME` adds one.
+
+# Suggested topics (0.2.9): a describer suggestion used on at least `min_uses` artifacts is promoted to a topic on
+# every build (0 = off). Near-duplicates merge first (case, plural, 'change order backlog' -> 'change orders' when
+# the longer one has fewer uses). Promoted topics are remembered. To drop or rename one, in config.toml:
+#   [topic_promote]
+#   demote = ["Test Suite"]
+#   [topic_promote.rename]
+#   "Pricing" = "Pricing Model"
+# A topic you list under [[topics]] is never changed by promotion.
+[topic_promote]
+min_uses = 2
+
+# Only artifacts touched in the last `days` are described and get a thumbnail; older ones sit in a collapsed
+# "older artifacts" group on the page. key = "modified" (else created, else first seen) or "created".
+# days = 0 describes everything. `/artifact-explorer:refresh older` widens the window by 30 days each time.
+# first_load (0.2.11): on the very first refresh only the newest N artifacts are described (default 100, 0 = all);
+# `/artifact-explorer:refresh older` lifts it.
+[window]
+days = 60
+first_load = 100
+key = "modified"
+
+# Which rows to show. Empty lists mean "show everything".
+[filter]
+include_repos = []      # show only rows touched from one of these repos (rows with no repo are then hidden)
+exclude_repos = []      # hide rows touched from any of these repos
+exclude_ids = []        # hide these artifact ids
+include_shared = true   # false hides artifacts shared with you by others
+
+# Per-artifact overrides go in your own config.toml, for example:
+# [overrides."AbC123"]
+# category = "Plans"
+# description = "One sentence that replaces the stored description."
+# hidden = false

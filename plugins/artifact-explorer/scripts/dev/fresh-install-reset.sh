@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# Put this machine in the state of someone who never installed Artifact Explorer, keeping a backup.
+# Undo with scripts/dev/fresh-install-restore.sh <backup dir>.
+#
+#   scripts/dev/fresh-install-reset.sh [--dry-run]
+#
+# Paths follow CLAUDE_CONFIG_DIR (default ~/.claude). CLAUDE_BIN overrides the `claude` command.
+# --dry-run changes nothing: it prints what it would do, including the settings.json diff.
+set -euo pipefail
+
+DRY=0
+[ "${1:-}" = "--dry-run" ] && DRY=1
+CONFIG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CLAUDE="${CLAUDE_BIN:-claude}"
+DATA="$CONFIG/plugins/data/artifact-explorer-artifact-explorer"
+SETTINGS="$CONFIG/settings.json"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP="$CONFIG/plugins/data/artifact-explorer-backup-$STAMP"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+
+run() {  # run a command, or only show it in a dry run
+  if [ "$DRY" = 1 ]; then echo "  would run: $*"; else echo "  running: $*"; "$@"; fi
+}
+
+echo "Artifact Explorer fresh-install reset$([ "$DRY" = 1 ] && echo ' (dry run: nothing is changed)')"
+echo "  config dir: $CONFIG"
+
+# 1. Refuse while a watcher uses this data folder: it would recreate files while we move them.
+. "$HERE/watchers.sh"
+WATCHERS="$(ae_watchers | sort -u -k1,1)"
+if [ -n "$WATCHERS" ]; then
+  echo
+  echo "Refusing: an Artifact Explorer watcher is running on $DATA."
+  while read -r pid ppid cmd; do
+    # walk up to the claude session that started it
+    p="$ppid"; owner=""
+    while [ -n "$p" ] && [ "$p" -gt 1 ]; do
+      case "$(ps -o comm= -p "$p" 2>/dev/null || true)" in
+        claude*|*/claude*) owner="$p ($(ps -o command= -p "$p" | cut -c1-100))"; break ;;
+      esac
+      p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ' || true)"
+    done
+    echo "  watcher pid $pid, session process ${owner:-unknown}"
+  done <<< "$WATCHERS"
+  echo "Close those sessions first: type /exit in each window, or \`claude stop <id>\` for a background session"
+  echo "(\`claude agents\` lists them). Then run this again."
+  # no kill hint: a claimed bg-spare keeps its `bg-spare` command line, so it may be a live session
+  [ "$DRY" = 1 ] || exit 1
+  echo "  (dry run: continuing to show the remaining steps)"
+fi
+
+# Check settings.json can be changed before anything moves (a file we cannot parse stops here).
+NEW=""
+trap '[ -z "$NEW" ] || rm -f "$NEW"' EXIT
+if [ -f "$SETTINGS" ]; then
+  NEW="$(mktemp)"
+  if ! python3 "$HERE/settings_rule.py" remove "$SETTINGS" "$NEW"; then
+    echo "Refusing: could not read $SETTINGS (fix it, then run this again). Nothing was changed." >&2
+    exit 1
+  fi
+fi
+
+# 2. Back up the data folder (catalog, page, thumbnails, config.toml).
+echo
+if [ -d "$DATA" ]; then
+  echo "Data: $DATA -> $BACKUP"
+  run mv "$DATA" "$BACKUP"
+else
+  echo "Data: none at $DATA (nothing to back up)"
+  BACKUP=""
+fi
+
+# 3. Uninstall the plugin and remove its marketplace.
+echo
+echo "Plugin:"
+run "$CLAUDE" plugin uninstall artifact-explorer@artifact-explorer || echo "  (uninstall failed or not installed; continuing)"
+run "$CLAUDE" plugin marketplace remove artifact-explorer || echo "  (marketplace not present; continuing)"
+
+# 4. Remove only the plugin's allow rule from settings.json (a backup copy is kept next to it).
+echo
+if [ -n "$NEW" ] && [ -f "$SETTINGS" ]; then
+  python3 "$HERE/settings_rule.py" remove "$SETTINGS" "$NEW"  # again: a claude plugin step may have edited it
+  echo "Settings: removing the Artifact Explorer allow rule from $SETTINGS"
+  diff -u "$SETTINGS" "$NEW" | sed 's/^/  /' || true
+  if [ "$DRY" = 1 ]; then
+    echo "  would back up to $SETTINGS.ae-backup-$STAMP and write the change"
+  else
+    cp -p "$SETTINGS" "$SETTINGS.ae-backup-$STAMP"
+    cat "$NEW" > "$SETTINGS"
+    echo "  backup: $SETTINGS.ae-backup-$STAMP"
+  fi
+fi
+
+# 5. Check what the steps did, from the files themselves (0.1.5: the 0.1.4 test went on after a refused reset).
+echo
+echo "What reset did:"
+FAIL=0
+check() {  # check <status> <message>: status 0 is ok
+  if [ "$1" = 0 ]; then echo "  ok:     $2"; else echo "  FAILED: $2"; FAIL=1; fi
+}
+if [ "$DRY" = 1 ]; then
+  echo "  (dry run: nothing was changed, so nothing to check)"
+else
+  if [ -n "$BACKUP" ]; then
+    if [ -d "$BACKUP" ]; then r=0; else r=1; fi; check $r "data folder moved to $BACKUP"
+  fi
+  if [ ! -e "$DATA" ]; then r=0; else r=1; fi; check $r "no data folder at $DATA (a session that still has the plugin loaded recreates it)"
+  INST="$(python3 -c 'import json,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: d={}
+e=(d.get("plugins") or {}).get("artifact-explorer@artifact-explorer")
+print(", ".join(str(x.get("version")) for x in e) if isinstance(e,list) else "")' "$CONFIG/plugins/installed_plugins.json")"
+  if [ -z "$INST" ]; then r=0; else r=1; fi; check $r "plugin not in installed_plugins.json${INST:+ (still lists $INST)}"
+  if [ ! -d "$CONFIG/plugins/marketplaces/artifact-explorer" ]; then r=0; else r=1; fi; check $r "marketplace clone removed"
+  if grep -qF -e 'Bash(sh */artifact-explorer/*/bin/ae *)' -e '/artifact-explorer/*/bin/ae\" *)' "$SETTINGS" 2>/dev/null; then r=1; else r=0; fi
+  check $r "allow rule not in settings.json"  # (a failing command outside an if would end the script: set -e)
+  if [ -z "$(ae_watchers)" ]; then r=0; else r=1; fi; check $r "no watcher running"
+fi
+if [ "$FAIL" = 1 ]; then
+  echo
+  echo "Refusing to go on: the machine is not in the fresh state (see FAILED above). Do not install yet."
+  echo "Close every Claude Code session (\`claude agents\` lists them; /exit or \`claude stop <id>\`), then run this again."
+  echo "Backup so far: ${BACKUP:-none} (undo with scripts/dev/fresh-install-restore.sh ${BACKUP:-<backup dir>})"
+  exit 1
+fi
+
+cat <<EOF
+
+Done$([ "$DRY" = 1 ] && echo ' (dry run)'). Backup: ${BACKUP:-none}
+Undo later with: scripts/dev/fresh-install-restore.sh ${BACKUP:-<backup dir>}
+
+Fresh install, as a new user would do it:
+  1. claude plugin marketplace add jachai/artifact-explorer
+  2. claude plugin install artifact-explorer@artifact-explorer
+  3. $HERE/fresh-install-check.sh   (must end RESULT: OK: installed = marketplace version, data fresh)
+  4. Open a NEW Claude Code window (plugins, hooks and the watcher load at start).
+  5. Run /artifact-explorer:setup; its first step prints the version it runs and whether the data is fresh.
+  6. Publish one test artifact (ask Claude for a small page artifact), then run /artifact-explorer:open
+     and check that it is on the page.
+EOF

@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Artifact Explorer</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="__FAVICON_SVG__">
+<style>
+:root{--bg:#f6f6f3;--panel:#fff;--ink:#1d2321;--muted:#5f6764;--line:#e2e4df;--chip:#eceeea;--accent:#0f6b5c;--accent-ink:#fff;--link:var(--accent);--shadow:0 1px 2px rgba(0,0,0,.05);--warn:#c4741f;--ok:#2f9e5b;--neutral:#898781;--mine:var(--accent);--other:#7b8da3}
+@media (prefers-color-scheme:dark){:root{--bg:#141716;--panel:#1c201f;--ink:#e6e9e7;--muted:#9aa39f;--line:#2c3331;--chip:#262c2a;--link:color-mix(in srgb,var(--accent) 45%,#fff);--shadow:none;--ok:#4cc27e;--other:#8fa2b8}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}
+.wrap{max-width:1500px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin-bottom:12px}
+h1{font-size:20px;margin:0;font-weight:650;letter-spacing:-.01em}
+.ver{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.meta,#built{color:var(--muted);font-size:12.5px}
+.upd{background:color-mix(in srgb,var(--accent) 10%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:13px}
+.upd[hidden]{display:none}
+.upd b{font-weight:600}
+.upd pre{margin:6px 0;padding:6px 10px;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow-x:auto;font-size:12.5px;user-select:all;white-space:pre}
+.upd button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:4px 10px;font:inherit;cursor:pointer}
+.upd .note{color:var(--muted);margin-left:8px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+#q{flex:1 1 220px;min-width:0;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit}
+#q:focus,button:focus-visible,a:focus-visible,select:focus-visible,th:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+.seg button{border:0;background:none;color:var(--muted);padding:7px 12px;font:inherit;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
+select{padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:inherit;max-width:100%}
+.chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px}
+.chips:empty{display:none}
+.chips .cl{font-size:12px;color:var(--muted);margin-right:2px;min-width:56px}
+#tchips{margin-bottom:14px}
+.chip{border:1px solid transparent;background:var(--chip);color:var(--ink);border-radius:999px;padding:4px 11px;font:inherit;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip span{color:var(--muted)}
+.chip[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
+.chip[aria-pressed=true] span{color:inherit;opacity:.8}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+.chip[aria-pressed=true] i{box-shadow:0 0 0 1.5px var(--accent-ink)}
+.chip.tc2{border-color:var(--line)}
+.chip.tpc{--tb:var(--tbl,var(--chip));--tf:var(--tfl,var(--ink));background:var(--tb);color:var(--tf)}
+.chip.tpc span{color:inherit;opacity:.7}
+.chip.tpc[aria-pressed=true]{background:var(--tb);color:var(--tf);border-color:var(--tf);font-weight:650;box-shadow:inset 0 0 0 1px var(--tf)}
+@media (prefers-color-scheme:dark){.chip.tpc{--tb:var(--tbd,var(--chip));--tf:var(--tfd,var(--ink))}}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);overflow-x:auto;max-width:100%}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr{position:relative}
+tbody tr:hover{background:color-mix(in srgb,var(--chip) 55%,var(--panel))}
+tr:last-child td{border-bottom:0}
+th{font-weight:600;font-size:12px;color:var(--muted);white-space:nowrap;cursor:pointer;user-select:none;background:var(--panel)}
+th[aria-sort]{color:var(--ink)}
+th[aria-sort=ascending]::after{content:" \25B2";font-size:9px}
+th[aria-sort=descending]::after{content:" \25BC";font-size:9px}
+td.t{min-width:220px;font-weight:550}
+td.d{min-width:280px;max-width:520px}
+td.n,td.w{white-space:nowrap}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.dim{color:var(--muted)}
+.pend{color:var(--muted);font-style:italic}
+a{color:var(--link)}
+a.shot,a.av{display:block;cursor:pointer}
+a.shot:hover,a.av:hover{filter:brightness(1.04)}
+a.shot:focus-visible,a.av:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.ttl{user-select:text}
+a.open{display:inline-block;padding:3px 11px;border-radius:6px;border:1px solid var(--line);background:var(--chip);color:var(--ink);text-decoration:none;font-size:12.5px;font-weight:500;white-space:nowrap}
+a.open:hover{border-color:var(--accent);color:var(--accent)}
+.sec{position:relative}
+.repo{display:inline-block;background:var(--chip);border-radius:4px;padding:0 6px;margin:0 4px 2px 0;font-size:12px}
+.pill,.chip,.av,.shot{--c:var(--cl,var(--neutral))}
+@media (prefers-color-scheme:dark){.pill,.chip,.av,.shot{--c:var(--cd,var(--neutral))}}
+.pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:1px 9px 1px 7px;border-radius:999px;font-size:12px;font-weight:500;color:var(--ink);white-space:nowrap;background:color-mix(in srgb,var(--c) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--c) 45%,var(--line))}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+.tps{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.tp{--tb:var(--tbl,var(--chip));--tf:var(--tfl,var(--ink));display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;padding:0 7px;border-radius:5px;font:inherit;font-size:11.5px;font-weight:450;color:var(--tf);background:var(--tb);border:1px solid transparent;white-space:nowrap;vertical-align:top}
+button.tp{cursor:pointer;line-height:inherit}
+button.tp:hover{border-color:var(--tf)}
+button.tp[aria-pressed=true]{border-color:var(--tf);font-weight:650}
+@media (prefers-color-scheme:dark){.tp{--tb:var(--tbd,var(--chip));--tf:var(--tfd,var(--ink))}}
+.bd{display:inline-block;padding:0 7px;border-radius:5px;font-size:11.5px;font-weight:500;color:var(--ink);background:var(--chip);border:1px solid var(--line);white-space:nowrap}
+.bd.org{border-style:dashed}
+.bd.gone{background:color-mix(in srgb,var(--warn) 16%,var(--panel));border-color:color-mix(in srgb,var(--warn) 55%,var(--line))}
+.shr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:12px;font-weight:400}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow);min-width:0}
+.card{border-left:4px solid var(--other)}
+.card.mine{border-left-color:var(--mine)}
+tbody tr>td:first-child{box-shadow:inset 4px 0 0 var(--other)}
+tbody tr.mine>td:first-child{box-shadow:inset 4px 0 0 var(--mine)}
+.card:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
+.shot{aspect-ratio:16/9;background:var(--chip);overflow:hidden}
+.shot img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.shot svg,.av svg{width:100%;height:100%;display:block}
+.cb{padding:11px 13px 13px;display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
+.cb h3{margin:0;font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.cb p{margin:0;font-size:13px}
+.row2{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.foot{margin-top:auto;display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;font-size:12px;color:var(--muted);align-items:center}
+.foot .fk{opacity:.75}
+.foot .fd > span:last-child:not(.dim){color:var(--ink)}
+.status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;font-size:12.5px;color:var(--muted);margin:-4px 0 14px}
+.status:empty{display:none}
+.status b{font-weight:600;color:var(--ink)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--muted)}
+.dot.on{background:var(--ok)}
+.stale{flex-basis:100%;background:color-mix(in srgb,var(--warn) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--warn) 50%,var(--line));color:var(--ink);border-radius:8px;padding:7px 11px}
+.tt{display:flex;align-items:flex-start;gap:10px}
+.tt>div{min-width:0}
+.av{flex:none;width:42px;height:28px;border-radius:5px;overflow:hidden;background:var(--chip);border:1px solid var(--line)}
+.av img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.older{margin-top:22px}
+.oh{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:12px}
+.oh button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+.oh button.tog{font-weight:600}
+.oh button.tog::before{content:"\25B8  ";color:var(--muted)}
+.oh button.tog[aria-expanded=true]::before{content:"\25BE  "}
+.oh .note{color:var(--muted);font-size:12.5px}
+.oh code{background:var(--chip);border-radius:4px;padding:1px 6px;font-size:12.5px;user-select:all}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+@media (max-width:600px){.grid{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1 id="h"></h1><span class="ver" id="ver"></span><span class="meta" id="meta"></span><span id="built"></span></header>
+<div class="upd" id="upd" hidden></div>
+<div class="status" id="status" role="status" aria-live="polite"></div>
+<div class="bar">
+<input id="q" type="search" placeholder="Search title, description, repo" aria-label="Search">
+<select id="sortsel" aria-label="Sort cards"></select>
+<div class="seg" role="group" aria-label="View"><button id="vt" aria-pressed="true">Table</button><button id="vc" aria-pressed="false">Cards</button></div>
+</div>
+<div class="chips" id="chips" role="group" aria-label="Filter by category"></div>
+<div class="chips" id="tchips" role="group" aria-label="Filter by topic"></div>
+<div id="out"></div>
+</div>
+<script>
+const DATA = /*__DATA__*/null;
+(function(){
+"use strict";
+const cfg = DATA.config, rows = DATA.rows;
+rows.forEach(r => {
+ r.topics = r.topics || []; r.suggested = r.suggested || []; r.repos = r.repos || [];
+ r.sharing = r.sharing || ""; r.access = r.access || ""; r.category = r.category || "Uncategorized";
+ r.description = r.description || ""; r.title = r.title || "";
+});
+const COLS = {
+ title:{h:"Title",k:r=>r.title.toLowerCase(),cls:"t"},
+ category:{h:"Category",k:r=>r.category.toLowerCase(),cls:"w"},
+ sharing:{h:"Sharing",k:r=>(r.revoked ? "z" : "") + (r.access || r.sharing).toLowerCase(),cls:"w"},
+ modified:{h:"Modified",k:r=>r.recent||0,cls:"w",date:"modified"},
+ last_accessed:{h:"Last accessed",k:r=>r.accessed||0,cls:"w",date:"accessed"},
+ created:{h:"Created",k:r=>dateOf(r,"created")[0]||0,cls:"w",date:"created"},
+ size:{h:"Size",k:r=>r.size||0,cls:"n"},
+ description:{h:"Description",k:r=>r.description.toLowerCase(),cls:"d"},
+ repos:{h:"Repos",k:r=>r.repos.join(" ").toLowerCase()},
+ open:{h:"",cls:"w"}
+};
+const cols = (cfg.columns||[]).filter(c=>COLS[c]);  // unknown keys are ignored
+if (cols.indexOf("title") < 0) cols.unshift("title");  // the title is always shown
+if (cols.indexOf("open") < 0) cols.push("open");  // every row keeps its Open button
+const $ = id => document.getElementById(id);
+if (cfg.accent) document.documentElement.style.setProperty("--accent", cfg.accent);
+document.title = cfg.title || "Artifact Explorer";
+$("h").textContent = document.title;
+if (cfg.version) $("ver").textContent = "v" + String(cfg.version).replace(/^v/, "");
+
+// Categories: name -> colors (light, dark). Anything not in the config takes the neutral.
+const HEX = /^#[0-9a-f]{3,8}$/i, NEUTRAL = "#898781";
+const CAT = {}, catNames = [];
+(cfg.categories||[]).forEach(c => {
+ const o = typeof c === "string" ? {name:c} : c;
+ CAT[o.name] = {color: HEX.test(o.color||"") ? o.color : NEUTRAL, dark: HEX.test(o.dark||"") ? o.dark : (HEX.test(o.color||"") ? o.color : NEUTRAL)};
+ catNames.push(o.name);
+});
+rows.forEach(r => { if (catNames.indexOf(r.category) < 0) catNames.push(r.category); });
+const topicNames = (cfg.topics||[]).map(t => typeof t === "string" ? t : t.name);
+function tint(e, cat){
+ const c = CAT[cat] || {color:NEUTRAL, dark:NEUTRAL};
+ e.style.setProperty("--cl", c.color); e.style.setProperty("--cd", c.dark);
+ return e;
+}
+
+let st = {view:"table", sort:"modified", dir:-1, cat:"", topics:[]};
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem("ae-view")||"null"); } catch(e) {}
+if (saved) Object.assign(st, saved); else if (window.matchMedia("(max-width:600px)").matches) st.view = "cards";
+if (!COLS[st.sort] || !COLS[st.sort].k) st.sort = "modified";
+if (catNames.indexOf(st.cat) < 0) st.cat = "";
+st.topics = Array.isArray(st.topics) ? st.topics.filter(t => topicNames.indexOf(t) >= 0) : [];
+const save = () => { try { localStorage.setItem("ae-view", JSON.stringify(st)); } catch(e) {} };
+
+const DAY = 86400;
+function dur(a){
+ const u = a<3600 ? [60,"minute"] : a<DAY ? [3600,"hour"] : a<30*DAY ? [DAY,"day"] : a<365*DAY ? [30*DAY,"month"] : [365*DAY,"year"];
+ const n = Math.max(1, Math.round(a/u[0]));
+ return n+" "+u[1]+(n>1?"s":"");
+}
+function rel(t){
+ const d = Date.now()/1000 - t;
+ if (Math.abs(d) < 45) return "just now";
+ return d>=0 ? dur(d)+" ago" : "in "+dur(-d);
+}
+// Tiles for rows without a thumbnail: 2-letter initials on a two-color gradient chosen from a hash of the artifact id
+// (same id, same tile on every build), with a stripe in the category color. White text on dark-enough colors reads in both themes.
+/*TILE-START*/
+function hash32(s){
+ let h = 2166136261;
+ for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+ return h >>> 0;
+}
+function escXml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]); }
+function initials(title){
+ const w = String(title || "").match(/[\p{L}\p{N}]+/gu) || [];
+ if (!w.length) return "?";
+ const ch = Array.from(w[0]);
+ const s = w.length > 1 ? ch[0] + Array.from(w[1])[0] : ch.slice(0, 2).join("");
+ return s.toUpperCase();
+}
+function tileColors(id){
+ const h = hash32("tile:" + String(id)), h1 = (h % 3600) / 10, h2 = (h1 + 40 + ((h >>> 12) % 800) / 10) % 360;
+ return ["hsl(" + h1.toFixed(1) + " 58% 38%)", "hsl(" + h2.toFixed(1) + " 62% 26%)"];
+}
+function initialsTile(id, title, color){
+ const c = tileColors(id), gid = "g" + hash32(String(id)).toString(36);
+ return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">' +
+  '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + escXml(c[0]) + '"/><stop offset="1" stop-color="' + escXml(c[1]) + '"/></linearGradient></defs>' +
+  '<rect width="160" height="90" fill="url(#' + gid + ')"/>' +
+  '<text x="80" y="57" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="38" font-weight="700" fill="#fff">' + escXml(initials(title)) + '</text>' +
+  '<rect y="82" width="160" height="8" style="fill:' + escXml(color || "#898781") + '"/></svg>';
+}
+/*TILE-END*/
+/*LINK-START*/
+function openURL(r){ return r.url && r.url.startsWith("https://claude.ai/") ? r.url : ""; }
+function winName(r){ return "ae-" + String(r.id || r.url).replace(/[^\w-]/g, "_"); }
+function aim(a, r){ a.href = openURL(r); a.target = winName(r); a.rel = "noopener"; return a; }
+function openBtn(r){ return openURL(r) ? aim(el("a", "open", "Open"), r) : null; }
+/*LINK-END*/
+function picture(r, cls){
+ const link = openURL(r), box = tint(el(link ? "a" : "div", cls), r.category);
+ if (link) { aim(box, r); box.setAttribute("aria-label", "Open " + (r.title || "artifact")); }
+ if (r.thumb && !r.older) { const i = el("img"); i.src = r.thumb; i.alt = ""; i.loading = "lazy"; box.appendChild(i); }
+ else box.innerHTML = initialsTile(r.id, r.title, "var(--c)");  // only escaped text and generated numbers
+ return box;
+}
+// Rows older than the window (DATA.window) sit in a collapsed group, rendered only when opened.
+/*OLD-START*/
+function splitOlder(list){
+ const recent = [], older = [];
+ list.forEach(r => (r.older ? older : recent).push(r));
+ return {recent, older};
+}
+function olderLabel(n){ return n + " older artifact" + (n === 1 ? "" : "s"); }
+function windowNote(w){
+ return w && w.days ? "Not touched in the last " + w.days + " days. Shown without thumbnails; new ones are described only after Describe older." : "";
+}
+/*OLD-END*/
+const OLDER_CMD = "/artifact-explorer:refresh older";
+let olderOpen = location.hash === "#older";
+function olderGroup(list){
+ const sec = el("section", "older"), head = el("div", "oh"), tog = el("button", "tog", olderLabel(list.length));
+ sec.id = "older";
+ tog.setAttribute("aria-expanded", String(olderOpen));
+ tog.setAttribute("aria-controls", "older-body");
+ tog.onclick = () => { olderOpen = !olderOpen; render(); };
+ head.appendChild(tog);
+ head.appendChild(el("span", "note", windowNote(DATA.window)));
+ const btn = el("button", "", "Describe older"), msg = el("span", "note");
+ btn.title = "Copies " + OLDER_CMD + ": run it in Claude Code to widen the window by 30 days and describe those rows";
+ btn.onclick = () => {
+  const show = ok => {  // the command stays visible: a file:// page may have no clipboard access
+   msg.textContent = ok ? "Copied. Paste in Claude Code: " : "Run in Claude Code: ";
+   const c = el("code", "", OLDER_CMD); msg.appendChild(c);
+  };
+  try { navigator.clipboard.writeText(OLDER_CMD).then(() => show(true), () => show(false)); } catch(e) { show(false); }
+ };
+ head.appendChild(btn); head.appendChild(msg);
+ sec.appendChild(head);
+ if (olderOpen) {
+  const body = st.view === "cards" ? cards(list) : table(list);
+  body.id = "older-body";
+  sec.appendChild(body);
+ }
+ return sec;
+}
+function bytes(n){
+ if (!n) return "";
+ const u = ["B","KB","MB","GB"]; let i = 0;
+ while (n >= 1024 && i < 3) { n /= 1024; i++; }
+ return (i && n < 10 ? n.toFixed(1) : Math.round(n)) + " " + u[i];
+}
+function el(tag, cls, text){
+ const e = document.createElement(tag);
+ if (cls) e.className = cls;
+ if (text != null) e.textContent = text;
+ return e;
+}
+// created / modified always show a date: the artifact's own when known, else when this explorer first saw it or
+// last saw it opened, labelled as such
+function dateOf(r, d){
+ if (d === "created") return r.created ? [r.created, ""] : r.seen ? [r.seen, "first seen"] : [0, ""];
+ if (d === "modified") return r.modified ? [r.modified, ""] : r.accessed ? [r.accessed, "last accessed"] : r.seen ? [r.seen, "first seen"] : [0, ""];
+ return [r[d], ""];
+}
+function when(t, by, label){
+ if (!t) return el("span", "dim", "unknown");
+ const s = el("span", "sec", (label ? label + " " : "") + rel(t));  // sec: above the row link, so the full-date tooltip shows
+ s.title = new Date(t*1000).toLocaleString() + (by ? " (" + by + ")" : "");
+ return s;
+}
+function desc(r){
+ if (r.pending) return el("span", "pend", "description pending");
+ if (r.unread){ const s = el("span", "dim sec", "shared with you, not read"); s.title = "claude.ai asks consent for each read of someone else's artifact, so it is described only when you run /artifact-explorer:refresh"; return s; }
+ if (r.skipped){ const s = el("span", "dim sec", "no description"); s.title = r.skipped; return s; }
+ return el("span", r.description ? "" : "dim", r.description);
+}
+
+// Titles and descriptions are plain, selectable text. Only the thumbnail (cards and table) and the table's
+// Open button are links. Each link targets a window named after the artifact ("ae-<id>"), so the first click
+// opens a new tab and a later click on the same artifact goes back to that tab instead of opening another.
+function titleText(r){ return el("span", "ttl", r.title); }
+function catPill(r){
+ const p = tint(el("span", "pill"), r.category);
+ p.appendChild(el("i")); p.appendChild(document.createTextNode(r.category));
+ if (r.guessed && r.category !== "Uncategorized") p.title = "guessed";
+ return p;
+}
+const TSLOT = cfg.topic_slots || {}, TPAL = cfg.topic_palette || [];
+function topicTint(e, t){
+ const c = TPAL[TSLOT[t]];
+ if (c) { e.style.setProperty("--tbl", c[0]); e.style.setProperty("--tfl", c[1]); e.style.setProperty("--tbd", c[2]); e.style.setProperty("--tfd", c[3]); }
+ return e;
+}
+function topicPill(t, tag){ return topicTint(el(tag, "tp", t), t); }
+function topicPills(r){
+ if (!r.topics.length && !r.suggested.length) return null;
+ const box = el("div", "tps");
+ r.topics.forEach(t => {
+  const e = topicPill(t, "button"), on = st.topics.indexOf(t) >= 0;
+  e.type = "button"; e.setAttribute("aria-pressed", String(on)); e.title = (on ? "Stop filtering by " : "Filter by ") + t;
+  e.onclick = () => { if (topicNames.indexOf(t) < 0) return; st.topics = on ? st.topics.filter(x => x !== t) : st.topics.concat(t); save(); render(); };
+  box.appendChild(e);
+ });
+ // 0.2.11: the describer's other topics are applied as they are (no "suggested" state); they are not in the
+ // Topic filter until used on artifacts from at least two title families (or listed in config.toml)
+ r.suggested.forEach(t => box.appendChild(topicPill(t, "span")));
+ return box;
+}
+function sharingNode(r){
+ const box = el("span", "shr"), own = r.mine && !r.access && !r.revoked;
+ if (own) { if (!r.sharing) return null; box.appendChild(el("span", "dim", r.sharing)); return box; }
+ if (r.revoked) {
+  box.appendChild(el("span", "bd gone", "No longer shared"));
+  if (r.copy && /^copies\/[\w.-]+$/.test(r.copy)) {
+   const a = el("a", "sec", "Save local copy"); a.href = r.copy; a.setAttribute("download", ""); box.appendChild(a);
+  } else box.appendChild(el("span", "dim", "No longer shared, no copy"));
+ } else if (r.access) box.appendChild(el("span", "bd", r.access));
+ return box.childNodes.length ? box : null;
+}
+function addAll(parent, nodes){ nodes.forEach(n => n && parent.appendChild(n)); return parent; }
+
+function cell(c, r){
+ const td = el("td", COLS[c].cls || ""), d = COLS[c].date;
+ if (c === "title") {
+  const w = el("div", "tt"), b = el("div"), x = el("div", "row2");
+  w.appendChild(picture(r, "av")); b.appendChild(titleText(r));
+  if (cols.indexOf("category") < 0) x.appendChild(catPill(r));
+  if (cols.indexOf("sharing") < 0) { const s = sharingNode(r); if (s) x.appendChild(s); }
+  if (x.childNodes.length) b.appendChild(x);
+  const tp = topicPills(r); if (tp) b.appendChild(tp);
+  w.appendChild(b); td.appendChild(w);
+ }
+ else if (c === "category") td.appendChild(catPill(r));
+ else if (c === "sharing") { const s = sharingNode(r); if (s) td.appendChild(s); }
+ else if (d) { const v = dateOf(r, d); td.appendChild(when(v[0], d === "accessed" ? r.accessed_by : "", v[1])); }
+ else if (c === "size") td.textContent = bytes(r.size);
+ else if (c === "description") td.appendChild(desc(r));
+ else if (c === "open") { const o = openBtn(r); if (o) td.appendChild(o); }
+ else if (c === "repos") r.repos.forEach(x => td.appendChild(el("span", "repo", x)));
+ else td.textContent = r[c] || "";
+ return td;
+}
+
+function match(r, q){
+ return !q || (r.title+" "+r.description+" "+r.category+" "+r.topics.join(" ")+" "+r.repos.join(" ")).toLowerCase().indexOf(q) >= 0;
+}
+function sorted(list){
+ const k = COLS[st.sort].k;
+ return list.slice().sort((a, b) => {
+  const x = k(a), y = k(b), c = x < y ? -1 : x > y ? 1 : 0;
+  return c ? c * st.dir : a.title.localeCompare(b.title);
+ });
+}
+
+const catOK = r => !st.cat || r.category === st.cat;
+const topicOK = r => !st.topics.length || st.topics.some(t => r.topics.indexOf(t) >= 0);  // any-of
+function chips(q){
+ const base = rows.filter(r => match(r, q)), box = $("chips"), tbox = $("tchips");
+ box.textContent = ""; tbox.textContent = "";
+ const add = (parent, label, n, on, fn, cat, topic) => {
+  const b = el("button", "chip");
+  if (cat != null) { tint(b, cat); b.appendChild(el("i")); }
+  else if (topic != null) { b.classList.add("tpc"); topicTint(b, topic); }
+  b.appendChild(document.createTextNode(label)); b.appendChild(el("span", "", n));
+  b.setAttribute("aria-pressed", String(on)); b.onclick = () => { fn(); save(); render(); };
+  parent.appendChild(b);
+ };
+ box.appendChild(el("span", "cl", "Category"));
+ const forCat = base.filter(topicOK);
+ add(box, "All", forCat.length, !st.cat, () => { st.cat = ""; });
+ catNames.forEach(c => { const n = forCat.filter(r => r.category === c).length; if (n || st.cat === c) add(box, c, n, st.cat === c, () => { st.cat = c; }, c); });
+ if (topicNames.length) {
+  tbox.appendChild(el("span", "cl", "Topic"));
+  const forTopic = base.filter(catOK);
+  topicNames.forEach(t => {
+   const n = forTopic.filter(r => r.topics.indexOf(t) >= 0).length, on = st.topics.indexOf(t) >= 0;
+   if (n || on) add(tbox, t, n, on, () => { st.topics = on ? st.topics.filter(x => x !== t) : st.topics.concat(t); }, null, t);
+  });
+  if (st.topics.length) add(tbox, "Clear topics", "", false, () => { st.topics = []; });
+ }
+ return base.filter(r => catOK(r) && topicOK(r));
+}
+
+function table(list){
+ const box = el("div", "box"), t = el("table"), tr = el("tr");
+ cols.forEach(c => {
+  const th = el("th", "", COLS[c].h);
+  if (COLS[c].k) {
+   th.tabIndex = 0;
+   if (st.sort === c) th.setAttribute("aria-sort", st.dir > 0 ? "ascending" : "descending");
+   const go = () => { st.dir = st.sort === c ? -st.dir : (COLS[c].cls === "n" || COLS[c].date ? -1 : 1); st.sort = c; save(); render(); };
+   th.onclick = go;
+   th.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+  }
+  tr.appendChild(th);
+ });
+ t.appendChild(el("thead")).appendChild(tr);
+ const tb = el("tbody");
+ list.forEach(r => { const row = el("tr", r.mine ? "mine" : "other"); cols.forEach(c => row.appendChild(cell(c, r))); tb.appendChild(row); });
+ t.appendChild(tb); box.appendChild(t);
+ return box;
+}
+
+function cards(list){
+ const g = el("div", "grid");
+ list.forEach(r => {
+  const c = el("div", r.mine ? "card mine" : "card other"), s = picture(r, "shot"), b = el("div", "cb"), f = el("div", "foot");
+  b.appendChild(el("h3")).appendChild(titleText(r));
+  const meta = addAll(el("div", "row2"), [catPill(r)]);
+  b.appendChild(meta);
+  const tp = topicPills(r); if (tp) b.appendChild(tp);
+  b.appendChild(el("p")).appendChild(desc(r));
+  const sh = sharingNode(r); if (sh) b.appendChild(sh);
+  // both dates, labelled, so created and modified are told apart at a glance
+  [["Created", "created"], ["Modified", "modified"]].forEach(([k, n]) => {
+   const v = dateOf(r, n), d = el("span", "fd"); d.appendChild(el("span", "fk", k + " ")); d.appendChild(when(v[0], "", v[1])); f.appendChild(d);
+  });
+  b.appendChild(f); c.appendChild(s); c.appendChild(b); g.appendChild(c);
+ });
+ return g;
+}
+
+function render(){
+ const list = sorted(chips($("q").value.trim().toLowerCase()));
+ $("meta").textContent = list.length + " of " + rows.length + " artifacts";
+ $("vt").setAttribute("aria-pressed", String(st.view === "table"));
+ $("vc").setAttribute("aria-pressed", String(st.view === "cards"));
+ $("sortsel").style.display = st.view === "cards" ? "" : "none";
+ $("sortsel").value = st.sort + ":" + st.dir;
+ const out = $("out"), parts = splitOlder(list);
+ out.textContent = "";
+ if (!list.length) out.appendChild(el("div", "empty", rows.length ? "Nothing matches." : "No artifacts yet. They appear here once you publish or open one."));
+ if (parts.recent.length) out.appendChild(st.view === "cards" ? cards(parts.recent) : table(parts.recent));
+ if (parts.older.length) out.appendChild(olderGroup(parts.older));
+}
+
+// Update badge: only when the build found a newer release.
+function updateBadge(){
+ const U = DATA.update, box = $("upd");
+ if (!U || !U.latest) { box.hidden = true; return; }
+ const cmds = (U.cmds || []).map(String);
+ box.appendChild(el("b", "", "Update " + U.latest + " available"));
+ box.appendChild(document.createTextNode(cmds.length ? ". Run in Claude Code:" : "."));
+ if (cmds.length) {
+  const pre = el("pre", "", cmds.join("\n")); box.appendChild(pre);
+  const btn = el("button", "", "Copy"), msg = el("span", "note");
+  btn.onclick = () => {  // the commands stay visible: a file:// page may have no clipboard access
+   try { navigator.clipboard.writeText(cmds.join("\n")).then(() => { msg.textContent = "Copied"; }, () => { msg.textContent = "Select the text and copy it"; }); }
+   catch(e) { msg.textContent = "Select the text and copy it"; }
+  };
+  box.appendChild(btn); box.appendChild(msg);
+ }
+ box.hidden = false;
+}
+
+// Status: the page is a static file, so everything but "now" is as of the build; the times refresh while it is open.
+function builtLine(){
+ const S = DATA.status, e = $("built");
+ if (!S || !S.built) { e.textContent = ""; return; }
+ const exact = new Date(S.built*1000).toLocaleString(undefined, {month:"short", day:"numeric", year:"numeric", hour:"numeric", minute:"2-digit"});
+ e.textContent = "Built " + exact + " (" + rel(S.built).replace(/ minutes?/, " min") + ")";
+}
+function statusLine(){
+ const S = DATA.status, box = $("status");
+ box.textContent = "";
+ builtLine();
+ if (!S) return;
+ const now = Date.now()/1000, item = (label, t, extra) => {
+  const s = el("span", "", label + " ");
+  const b = el("b", "", t ? rel(t) : "never"); if (t) b.title = new Date(t*1000).toLocaleString();
+  s.appendChild(b); if (extra) s.appendChild(document.createTextNode(extra));
+  box.appendChild(s);
+ };
+ item("Last checked", S.last_pass, " (as of build)");
+ const w = el("span"), W = S.watcher || {};
+ w.appendChild(el("span", "dot" + (W.running ? " on" : "")));
+ w.appendChild(document.createTextNode(W.running ? "Watcher running (pid " + W.pid + ", as of build)" : "No watcher running at build time"));
+ box.appendChild(w);
+ const age = now - S.built;
+ if (age > S.stale_after) {
+  box.appendChild(el("div", "stale", "Page may be stale: no watcher has rebuilt it for " + dur(age) +
+   ". The watcher runs while a Claude Code session is open; `ae build` rebuilds it now."));
+ }
+}
+
+const sel = $("sortsel");
+[["modified",-1,"Modified, newest"],["last_accessed",-1,"Last accessed, newest"],["created",-1,"Created, newest"],["title",1,"Title A-Z"],["size",-1,"Size, largest"]]
+ .forEach(o => { const e = el("option", "", o[2]); e.value = o[0] + ":" + o[1]; sel.appendChild(e); });
+sel.onchange = () => { const p = sel.value.split(":"); st.sort = p[0]; st.dir = +p[1]; save(); render(); };
+$("vt").onclick = () => { st.view = "table"; save(); render(); };
+$("vc").onclick = () => { st.view = "cards"; save(); render(); };
+$("q").oninput = render;
+updateBadge();
+render();
+statusLine();
+setInterval(statusLine, 20000);
+})();
+</script>
+</body>
+</html>
