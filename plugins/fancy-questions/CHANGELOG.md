@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.2] - 2026-11-19
+- Moved into the [jethro](https://github.com/jachai/jethro) suite: install with `/plugin marketplace add jachai/jethro`
+  and `/plugin install fancy-questions@jethro`. Its own marketplace.json and CI are gone; the suite's CI runs
+  `node --test` for it. License is MIT, like the rest of the suite.
+- The `ops-11-10` example (a real page) is removed; the build test now covers `minimal` and `synthetic-30`.
+
 ## [0.2.1] - 2026-11-16
 - Renamed from question-walkthrough to fancy-questions: the repo (github.com/jachai/fancy-questions), the
   marketplace and the plugin. Install with `/plugin marketplace add jachai/fancy-questions` and

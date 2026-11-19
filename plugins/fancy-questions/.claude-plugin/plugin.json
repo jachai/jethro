@@ -1,15 +1,15 @@
 {
   "name": "fancy-questions",
   "displayName": "Fancy Questions",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Turn open questions for Ops, a PM or a customer into a one-card-at-a-time claude.ai artifact: recommendation first, a visual per question, answers saved in the artifact's shared db.",
   "author": {
     "name": "Jonathan Achai",
     "url": "https://github.com/jachai"
   },
-  "homepage": "https://github.com/jachai/fancy-questions",
-  "repository": "https://github.com/jachai/fancy-questions",
-  "license": "UNLICENSED",
+  "homepage": "https://github.com/jachai/jethro/tree/main/plugins/fancy-questions",
+  "repository": "https://github.com/jachai/jethro",
+  "license": "MIT",
   "keywords": [
     "artifacts",
     "questions",
