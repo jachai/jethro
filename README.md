@@ -20,7 +20,8 @@ Named after Jethro, who told Moses to stop judging every case himself and hand t
 | session-titles | Titles each session `<origin> · <focus>`: where it started, plus a few words for what it is doing now | [plugins/session-titles](plugins/session-titles) |
 | session-sweep | Closes background sessions that are done, handed off or abandoned, after asking about the unclear ones | [plugins/session-sweep](plugins/session-sweep) |
 | session-guide | Makes one session the guide across parallel sessions: one ledger, relayed decisions, handoffs | [plugins/session-guide](plugins/session-guide) |
-| jethro | Installs the three plugins above | [plugins/jethro](plugins/jethro) |
+| artifact-explorer | A catalog of your claude.ai artifacts on your own machine: one local page to search, sort and reopen everything you made or were sent | [plugins/artifact-explorer](plugins/artifact-explorer) |
+| jethro | Installs the four plugins above | [plugins/jethro](plugins/jethro) |
 
 While `jethro@jethro` is enabled, its members cannot be disabled one by one. To leave one out, uninstall
 `jethro@jethro` and install the plugins you want by name.

@@ -1,7 +1,7 @@
 {
   "name": "jethro",
-  "version": "0.1.0",
-  "description": "The jethro suite in one install: session-titles, session-sweep and session-guide.",
+  "version": "0.1.1",
+  "description": "The jethro suite in one install: session-titles, session-sweep, session-guide and artifact-explorer.",
   "author": {
     "name": "Jonathan Achai",
     "url": "https://github.com/jachai"
@@ -12,6 +12,7 @@
   "dependencies": [
     "session-titles",
     "session-sweep",
-    "session-guide"
+    "session-guide",
+    "artifact-explorer"
   ]
 }
