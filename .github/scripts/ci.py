@@ -41,6 +41,13 @@ PLUGINS = {
         "version": "skills/session-guide/scripts/peek.py",
         "install_roundtrip": "skills/session-guide/SKILL.md",
     },
+    "artifact-explorer": {
+        "unittest": [],
+        "pyflakes": ["scripts", "tests"],
+        "sh": ["bin/ae"],
+        "json": ["hooks/hooks.json", "monitors/monitors.json"],
+        "version": "scripts/ae.py",
+    },
 }
 BUNDLE = "jethro"  # plugin.json only; no checks beyond the version bump
 

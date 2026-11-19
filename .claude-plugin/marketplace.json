@@ -22,9 +22,14 @@
       "description": "A guide session that tracks every stream in one ledger, routes worker decisions to you, and hands off cleanly"
     },
     {
+      "name": "artifact-explorer",
+      "source": "./plugins/artifact-explorer",
+      "description": "A catalog of your claude.ai artifacts on your own machine: one local page to search, sort and reopen everything you made or were sent."
+    },
+    {
       "name": "jethro",
       "source": "./plugins/jethro",
-      "description": "Installs the whole suite: session-titles, session-sweep and session-guide"
+      "description": "Installs the whole suite: session-titles, session-sweep, session-guide and artifact-explorer"
     }
   ]
 }
