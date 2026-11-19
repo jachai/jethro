@@ -160,7 +160,8 @@ def is_handoff(result):
         return True
     if HANDED_TO.search(result):
         return bool(RESUME.search(result))  # a pass-on, unless it names where the successor resumes
-    return bool(HANDED.search(result) or HANDED_LEAD.match(result))
+    return bool(HANDED.search(result) or HANDED_LEAD.match(result)
+                or (re.search(r"hand(?:ed|ing)[ -]?off", result, re.I) and RESUME.search(result)))
 
 
 def is_blocked(result, state=""):
@@ -191,7 +192,8 @@ def own_id(cell):
 
 def row_name(cell):
     """A Sessions row's title, without its [id], quotes and level prefixes, lower case and single spaced."""
-    name = re.sub(r"\s*\[[0-9a-fA-F]{6,36}\].*", "", cell)
+    name = SUCCESSOR.sub("", cell)
+    name = re.sub(r"\s*\[[0-9a-fA-F]{6,36}\].*", "", name)
     name = re.sub(r"^(?:[^\w(']+)?(?:\(g\)\s*)?", "", name).strip("'\" ")
     return " ".join(name.lower().split())
 

@@ -402,6 +402,15 @@ class ReviewFixesTest(ReconcileBase):
         self.assertTrue(gr.is_handoff("plan handed off to the guide; resume prompt at ~/work/next.md"))
         self.assertFalse(gr.is_handoff("plan handed off to the guide"))
 
+    def test_lowercase_handed_off_mid_sentence_with_a_resume_path_is_a_handoff(self):
+        for result in ("Context full so I handed off; resume prompt at ~/Dev/x/resume-prompt.md for the next one",
+                       "stopping here and handing off, resume prompt is /tmp/jj/resume.md"):
+            self.assertTrue(gr.is_handoff(result), result)
+        self.assertFalse(gr.is_handoff("DONE: the PR was handed off to Max"))
+
+    def test_row_name_skips_a_leading_successor_reference(self):
+        self.assertEqual(gr.row_name("successor of [12345678] 'other' [fedcba98]"), "other")
+
     def test_a_successor_named_in_the_title_cell_clears_the_handoff_and_keeps_its_own_id(self):
         self.mark_guide()
         self.handed_off_relay()
