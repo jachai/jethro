@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 from unittest import mock
 
@@ -32,6 +33,13 @@ SESSIONS_HEAD = [
 WAITING_HEAD = ["| Session [id6] | What the user needs to do | Asked | Remind at |", "|---|---|---|---|"]
 VERIF_HEAD = ["| Thing | Where | Result | Checked | Evidence / session | Re-check |", "|---|---|---|---|---|---|"]
 PEOPLE = ["Alice", "Bruno", "Carla", "Dmitri", "Elena", "Farid", "Greta", "Hugo", "Imani", "Jun", "Kofi", "Lena"]
+
+
+def fake_gh(answers):
+    """A stand-in for guide_gh: pr_state answers from `answers` ({PR number: {"state", "mergedAt"}}), else None."""
+    module = types.ModuleType("guide_gh")
+    module.pr_state = lambda number, repo=None, cache=None, now=None: answers.get(int(str(number).lstrip("#")))
+    return module
 
 
 def day(n):
@@ -72,6 +80,11 @@ class AuditCase(unittest.TestCase):
         self.addCleanup(patcher.stop)
         for name in [k for k in os.environ if k.startswith("SESSION_GUIDE_") or k == "CLAUDE_CODE_SESSION_ID"]:
             del os.environ[name]
+        os.environ["SESSION_GUIDE_GH"] = "0"  # a script the tests run in a subprocess never asks the real gh
+        self.gh = {}  # PR number -> {"state", "mergedAt"}: what the fake guide_gh answers
+        modules = mock.patch.dict(sys.modules, guide_gh=fake_gh(self.gh))
+        modules.start()
+        self.addCleanup(modules.stop)
         self.ledger = os.path.join(self.cfg, "session-guide", "t", "ledger.md")
         os.makedirs(os.path.dirname(self.ledger))
 
