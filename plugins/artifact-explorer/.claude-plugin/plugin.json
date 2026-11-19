@@ -1,14 +1,14 @@
 {
   "name": "artifact-explorer",
   "displayName": "Artifact Explorer",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "A catalog of your claude.ai artifacts on your own machine: one local page to search, sort and reopen everything you made or were sent.",
   "author": {
     "name": "Jonathan Achai",
     "url": "https://github.com/jachai"
   },
-  "homepage": "https://github.com/jachai/artifact-explorer",
-  "repository": "https://github.com/jachai/artifact-explorer",
+  "homepage": "https://github.com/jachai/jethro",
+  "repository": "https://github.com/jachai/jethro",
   "license": "MIT",
   "keywords": ["artifacts", "claude-ai", "catalog", "explorer", "history", "hooks", "monitors"],
   "userConfig": {

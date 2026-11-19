@@ -3,8 +3,6 @@ truth about rows with no thumbnail, the page carries a build/watcher status, and
 generated placeholder."""
 import json
 import os
-import shutil
-import subprocess
 import sys
 import time
 import unittest

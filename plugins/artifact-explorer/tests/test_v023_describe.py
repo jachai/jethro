@@ -14,8 +14,8 @@ import common  # noqa: E402
 import db  # noqa: E402
 import describe  # noqa: E402
 
-PLUGIN = "/Users/x/.claude/plugins/cache/artifact-explorer/artifact-explorer/0.2.3"
-DATA = "/Users/x/.claude/plugins/data/artifact-explorer-artifact-explorer"
+PLUGIN = "/Users/x/.claude/plugins/cache/jethro/artifact-explorer/0.2.3"
+DATA = "/Users/x/.claude/plugins/data/artifact-explorer-jethro"
 
 
 def skill_ae():

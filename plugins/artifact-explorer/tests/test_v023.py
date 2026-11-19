@@ -16,7 +16,7 @@ import update  # noqa: E402
 import watch  # noqa: E402
 
 GIT = shutil.which("git")
-KEY = common.PLUGIN_KEY
+KEY = common.DEFAULT_KEY
 
 
 def git(cwd, *args):
@@ -57,7 +57,7 @@ def config_dir(installed=(), market=None):
     ents = [{"scope": "user", "version": v, "installPath": p} for v, p in installed]
     json.dump({"version": 2, "plugins": {KEY: ents} if ents else {}},
               open(os.path.join(plugins, "installed_plugins.json"), "w"))
-    json.dump({"artifact-explorer": {"installLocation": market}} if market else {},
+    json.dump({"jethro": {"installLocation": market}} if market else {},
               open(os.path.join(plugins, "known_marketplaces.json"), "w"))
     return cfg
 
@@ -111,7 +111,7 @@ class CloneFallback(Env):
         with mock.patch.object(update, "fetch_release", return_value=None):
             html = open(build.build(d, max_age=0), encoding="utf-8").read()
         self.assertIn('"latest": "v9.1.0"', html)
-        self.assertIn("/plugin update artifact-explorer@artifact-explorer", html)
+        self.assertIn("/plugin update artifact-explorer@jethro", html)
         self.assertEqual(json.load(open(os.path.join(d, "update.json")))["latest"], "v9.1.0")
 
 

@@ -12,7 +12,7 @@ DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
 CONFIG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CLAUDE="${CLAUDE_BIN:-claude}"
-DATA="$CONFIG/plugins/data/artifact-explorer-artifact-explorer"
+DATA="$CONFIG/plugins/data/artifact-explorer-jethro"
 SETTINGS="$CONFIG/settings.json"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP="$CONFIG/plugins/data/artifact-explorer-backup-$STAMP"
@@ -70,11 +70,11 @@ else
   BACKUP=""
 fi
 
-# 3. Uninstall the plugin and remove its marketplace.
+# 3. Uninstall the plugin (the shared jethro marketplace stays).
 echo
 echo "Plugin:"
-run "$CLAUDE" plugin uninstall artifact-explorer@artifact-explorer || echo "  (uninstall failed or not installed; continuing)"
-run "$CLAUDE" plugin marketplace remove artifact-explorer || echo "  (marketplace not present; continuing)"
+run "$CLAUDE" plugin uninstall artifact-explorer@jethro || echo "  (uninstall failed or not installed; continuing)"
+# the jethro marketplace is shared with the other plugins of the suite: it is left in place
 
 # 4. Remove only the plugin's allow rule from settings.json (a backup copy is kept next to it).
 echo
@@ -108,10 +108,9 @@ else
   INST="$(python3 -c 'import json,sys
 try: d=json.load(open(sys.argv[1]))
 except Exception: d={}
-e=(d.get("plugins") or {}).get("artifact-explorer@artifact-explorer")
-print(", ".join(str(x.get("version")) for x in e) if isinstance(e,list) else "")' "$CONFIG/plugins/installed_plugins.json")"
+e=[x for k,v in (d.get("plugins") or {}).items() if k.startswith("artifact-explorer@") and isinstance(v,list) for x in v]
+print(", ".join(str(x.get("version")) for x in e))' "$CONFIG/plugins/installed_plugins.json")"
   if [ -z "$INST" ]; then r=0; else r=1; fi; check $r "plugin not in installed_plugins.json${INST:+ (still lists $INST)}"
-  if [ ! -d "$CONFIG/plugins/marketplaces/artifact-explorer" ]; then r=0; else r=1; fi; check $r "marketplace clone removed"
   if grep -qF -e 'Bash(sh */artifact-explorer/*/bin/ae *)' -e '/artifact-explorer/*/bin/ae\" *)' "$SETTINGS" 2>/dev/null; then r=1; else r=0; fi
   check $r "allow rule not in settings.json"  # (a failing command outside an if would end the script: set -e)
   if [ -z "$(ae_watchers)" ]; then r=0; else r=1; fi; check $r "no watcher running"
@@ -130,8 +129,8 @@ Done$([ "$DRY" = 1 ] && echo ' (dry run)'). Backup: ${BACKUP:-none}
 Undo later with: scripts/dev/fresh-install-restore.sh ${BACKUP:-<backup dir>}
 
 Fresh install, as a new user would do it:
-  1. claude plugin marketplace add jachai/artifact-explorer
-  2. claude plugin install artifact-explorer@artifact-explorer
+  1. claude plugin marketplace add jachai/jethro
+  2. claude plugin install artifact-explorer@jethro
   3. $HERE/fresh-install-check.sh   (must end RESULT: OK: installed = marketplace version, data fresh)
   4. Open a NEW Claude Code window (plugins, hooks and the watcher load at start).
   5. Run /artifact-explorer:setup; its first step prints the version it runs and whether the data is fresh.

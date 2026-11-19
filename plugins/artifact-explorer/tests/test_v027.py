@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import common  # noqa: E402
 import db  # noqa: E402
 import describe  # noqa: E402
-from test_describer_v012 import Base, A, B, C, U  # noqa: E402
+from test_describer_v012 import Base, A, B, C  # noqa: E402
 from test_v026 import write_out  # noqa: E402
 
 SKILL = os.path.join(common.ROOT, "skills", "refresh", "SKILL.md")

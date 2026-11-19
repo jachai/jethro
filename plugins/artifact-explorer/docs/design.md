@@ -7,7 +7,7 @@ SQLite db + `config.toml` + a static `explorer.html`. Python 3.9+ standard libra
 ## Paths
 
 - `ROOT` = `${CLAUDE_PLUGIN_ROOT}` (changes on every update; never write here).
-- `DATA` = `${CLAUDE_PLUGIN_DATA}` = `~/.claude/plugins/data/artifact-explorer-artifact-explorer/`.
+- `DATA` = `${CLAUDE_PLUGIN_DATA}` = `~/.claude/plugins/data/artifact-explorer-jethro/` (`<plugin>-<marketplace>`, other characters as `-`; the folder follows the install id found in `installed_plugins.json`). Installs made under the old `artifact-explorer@artifact-explorer` id keep `artifact-explorer-artifact-explorer`. On first run with no `explorer.db` in DATA, `common.migrate_data` copies a sibling `artifact-explorer-*` folder that has one (never moves it; skips `*-wal`, `*-shm`, lock and pid files) and logs one line.
   Every script takes `--data DIR`. When it is not given, use env `AE_DATA`, then that default path.
 - Files in DATA: `explorer.db`, `config.toml`, `explorer.html`, `thumbs/<id>.png|.webp|.jpg`,
   `watch.lock`, `ingest.lock`, `watch.log` (kept under 1 MB, one rotation), `inbox/` (batch folders under `inbox/batch/<n>`), `copies/<id>.html` (local copies of others' pages), `update.json` (update-check cache), `favicon.ico`.
@@ -19,7 +19,7 @@ SQLite db + `config.toml` + a static `explorer.html`. Python 3.9+ standard libra
 
 `watch_interval` (minutes, 10), `browser_history` (true), `transcript_reads` (true),
 `chrome_screenshots` (false), `share_harvest` (false), `describe_model` ("haiku"), `describe_daily_cap` (1.0 USD).
-**One way to read them:** `common.options()` reads `~/.claude/settings.json` → `pluginConfigs["artifact-explorer@artifact-explorer"].options`
+**One way to read them:** `common.options()` reads `~/.claude/settings.json` → `pluginConfigs["artifact-explorer@*"].options` (the install id found by `common.find_plugin_key`: the key whose `installPath` is the running code, else `artifact-explorer@jethro`, else any; an options block under the old id is read when there is none under the new one)
 (monitors don't get `CLAUDE_PLUGIN_OPTION_*`, so nothing uses env), merged over the defaults above.
 `CLAUDE_CONFIG_DIR` overrides `~/.claude` when it is set.
 
@@ -38,7 +38,7 @@ SQLite db + `config.toml` + a static `explorer.html`. Python 3.9+ standard libra
 | `build.py` | `ae build` → DATA/explorer.html |
 | `importer.py` | `ae import [--from DIR]`: a pre-plugin catalog, default `~/.claude/artifact-explorer` (reads only) |
 | `doctor.py` | `ae doctor [--expect fresh\|installed]`: running vs installed vs marketplace version, data folder, rule, page check (writes nothing) |
-| `update.py` | the daily GitHub release check, cached in `update.json` |
+| `update.py` | the daily GitHub update check (newest `artifact-explorer--v*` tag of `jachai/jethro`), cached in `update.json` |
 | `describe.py` | `ae launch-describer` (watcher side), `ae ingest-list FILE [--shared-complete]`, `ae batch start\|manifest\|recat\|excerpt FOLDER ID=FILE...\|save`, `ae set-kind ID=KIND...`, `ae topics [--accept NAME\|--reject NAME]`, `ae set-desc ID --file F`, `ae set-sharing ID --file F`, `ae excerpt FILE --out F [--id ID --type T]` (a typed artifact or < 50 visible characters marks the row skipped), `ae rows --json [--owned] [--desc-status S] [--thumb-status S] [--limit N]`, `ae pending [--owned-only] [--json]`, `ae status [--json]` (counts only). Free text that comes from a page (descriptions, sharing phrases) only ever travels in a file, never on a command line |
 | `ae open` | opens explorer.html with `webbrowser` (in `ae.py`) |
 

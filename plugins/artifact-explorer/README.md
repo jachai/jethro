@@ -15,8 +15,8 @@ Invented demo data (`python3 scripts/dev/demo_data.py DIR` writes the data and b
 ## Install
 
 ```
-/plugin marketplace add jachai/artifact-explorer
-/plugin install artifact-explorer@artifact-explorer
+/plugin marketplace add jachai/jethro
+/plugin install artifact-explorer@jethro
 /artifact-explorer:setup
 ```
 
@@ -25,20 +25,36 @@ Setup first prints the version it runs and whether your data folder is empty, th
 ## Update
 
 ```
-claude plugin marketplace update artifact-explorer
-claude plugin update artifact-explorer@artifact-explorer
+claude plugin marketplace update jethro
+claude plugin update artifact-explorer@jethro
 ```
 
 Then open a new Claude Code window: a running session keeps the version it started with. Updating the marketplace alone does not move the installed plugin. the command below (or the first step of `/artifact-explorer:setup`) prints the version this window runs, the installed version and the marketplace version, and says MISMATCH when they differ.
 
 ```sh
-sh ~/.claude/plugins/cache/artifact-explorer/artifact-explorer/"$(python3 -c 'import json,os,sys
+sh ~/.claude/plugins/cache/"$(python3 -c 'import json,os,sys
 p=os.path.expanduser("~/.claude/plugins/installed_plugins.json")
-try: print(os.path.basename(json.load(open(p))["plugins"]["artifact-explorer@artifact-explorer"][0]["installPath"]))
-except Exception: sys.exit("artifact-explorer is not listed in "+p+"; run: claude plugin install artifact-explorer@artifact-explorer")')"/bin/ae doctor
+try:
+    d=json.load(open(p))["plugins"]; k=sorted(k for k in d if k.startswith("artifact-explorer@"))[0]
+    print(d[k][0]["installPath"].replace(chr(92),"/").split("/")[-3 if sys.argv[1]=="m" else -1])
+except Exception: sys.exit("artifact-explorer is not listed in "+p+"; run: claude plugin install artifact-explorer@jethro")' m)"/artifact-explorer/"$(python3 -c 'import json,os,sys
+p=os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+try:
+    d=json.load(open(p))["plugins"]; k=sorted(k for k in d if k.startswith("artifact-explorer@"))[0]
+    print(d[k][0]["installPath"].replace(chr(92),"/").split("/")[-3 if sys.argv[1]=="m" else -1])
+except Exception: sys.exit("artifact-explorer is not listed in "+p+"; run: claude plugin install artifact-explorer@jethro")' v)"/bin/ae doctor
 ```
 
-Do not use a `*` version glob there: old versions stay in the cache, and the glob expands to the oldest one first (0.1.2 on one machine). The command above takes the version folder from the `installPath` of the `artifact-explorer@artifact-explorer` entry in `~/.claude/plugins/installed_plugins.json` and prints an error if there is no such entry. It still matches the setup allow rule `Bash(sh */artifact-explorer/*/bin/ae *)`: the literal cache path supplies `/artifact-explorer/`, the resolved version folder fills the middle `*`, and `/bin/ae ` follows with a space.
+Do not use a `*` version glob there: old versions stay in the cache, and the glob expands to the oldest one first (0.1.2 on one machine). The command above takes the version folder from the `installPath` of the first `artifact-explorer@*` entry (any marketplace name works) in `~/.claude/plugins/installed_plugins.json` and prints an error if there is no such entry. It still matches the setup allow rule `Bash(sh */artifact-explorer/*/bin/ae *)`: the literal cache path supplies `/artifact-explorer/`, the resolved version folder fills the middle `*`, and `/bin/ae ` follows with a space.
+
+## Moving from artifact-explorer@artifact-explorer
+
+Artifact Explorer now lives in the [jethro](https://github.com/jachai/jethro) suite, so its install id is `artifact-explorer@jethro`. To move over:
+
+1. `claude plugin uninstall artifact-explorer@artifact-explorer --keep-data`
+2. `/plugin marketplace add jachai/jethro`, then `/plugin install artifact-explorer@jethro`
+
+On its first run the new install copies the catalog (everything in the old `artifact-explorer-artifact-explorer` data folder except lock and wal files) into `artifact-explorer-jethro`; the old folder is left as it was. Options are saved under the full install id, but the plugin reads an options block under the old id when there is none under the new one, so you need not set them again. Every part of the plugin accepts any `artifact-explorer@*` id, so an install left on the old id keeps working too, but it no longer gets updates from the old repository.
 
 ## The page
 
@@ -53,7 +69,7 @@ Do not use a `*` version glob there: old versions stay in the cache, and the glo
 
 ## Update check
 
-At most once a day the build asks GitHub for the latest release of `jachai/artifact-explorer`, caches the answer in `update.json` in the data folder, and shows "update vX available" with the update commands when it is newer than the running version. Offline or rate-limited means no badge and no error. Turn it off with `update_check = false` under `[page]` in `config.toml`. This is the only request the plugin makes outside your claude.ai account.
+At most once a day the build asks GitHub for the tags of `jachai/jethro` and takes the newest `artifact-explorer--vX.Y.Z`, caches the answer in `update.json` in the data folder, and shows "update vX available" with the update commands when it is newer than the running version. Offline or rate-limited means no badge and no error. Turn it off with `update_check = false` under `[page]` in `config.toml`. This is the only request the plugin makes outside your claude.ai account.
 
 ## Cost
 
@@ -107,7 +123,7 @@ Only Claude's own calls: the Artifact list and read calls against your claude.ai
 
 ## config.toml
 
-It lives in the plugin data folder (`~/.claude/plugins/data/artifact-explorer-artifact-explorer/`). It sets the page title and accent, the columns, the categories (with colors), topics, the category rules, a filter (for example show only some repos) and per-artifact overrides (category, description, hidden). See [docs/design.md](docs/design.md) and the samples in [examples/](examples/), such as `examples/filter-by-repo.toml`.
+It lives in the plugin data folder (`~/.claude/plugins/data/artifact-explorer-jethro/`; installs made under the old `artifact-explorer@artifact-explorer` id keep `artifact-explorer-artifact-explorer`). It sets the page title and accent, the columns, the categories (with colors), topics, the category rules, a filter (for example show only some repos) and per-artifact overrides (category, description, hidden). See [docs/design.md](docs/design.md) and the samples in [examples/](examples/), such as `examples/filter-by-repo.toml`.
 
 ## License
 
