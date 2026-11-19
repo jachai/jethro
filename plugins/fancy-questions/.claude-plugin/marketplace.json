@@ -1,0 +1,8 @@
+{
+  "name": "fancy-questions",
+  "description": "fancy-questions: decision walkthrough pages for claude.ai artifacts",
+  "owner": {"name": "Jonathan Achai", "url": "https://github.com/jachai"},
+  "plugins": [
+    {"name": "fancy-questions", "source": "./", "description": "Build a one-card-at-a-time question walkthrough artifact from a small JSON data file, then collect the answers"}
+  ]
+}

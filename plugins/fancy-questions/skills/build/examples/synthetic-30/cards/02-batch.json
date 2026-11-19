@@ -1,0 +1,521 @@
+[
+  {
+    "id": "syn-09",
+    "section": "people",
+    "short": "Onboarding buddy",
+    "question": "Should every new hire get a buddy for a month?",
+    "recommend": "Yes, pair each hire for a month.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, pair each hire for a month."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "pair",
+      "a": {
+        "kind": "bars",
+        "rows": [
+          {
+            "label": "Today",
+            "value": 4,
+            "text": "4 days",
+            "tone": "no"
+          }
+        ]
+      },
+      "b": {
+        "kind": "bars",
+        "rows": [
+          {
+            "label": "After",
+            "value": 1,
+            "text": "1 day",
+            "tone": "yes"
+          }
+        ]
+      }
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, pair each hire for a month.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-10",
+    "section": "people",
+    "short": "Training budget",
+    "question": "Should each person get a yearly training budget?",
+    "recommend": "Yes, set one fixed amount.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, set one fixed amount."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "stack",
+      "items": [
+        {
+          "kind": "flow",
+          "steps": [
+            {
+              "label": "Ask"
+            },
+            {
+              "label": "Approve",
+              "tone": "yes"
+            }
+          ]
+        },
+        {
+          "kind": "bars",
+          "rows": [
+            {
+              "label": "Today",
+              "value": 3,
+              "text": "3 steps",
+              "tone": "no"
+            },
+            {
+              "label": "After",
+              "value": 2,
+              "text": "2 steps",
+              "tone": "yes"
+            }
+          ]
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, set one fixed amount.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-11",
+    "section": "people",
+    "short": "Holiday requests",
+    "question": "How early should holiday requests be sent?",
+    "recommend": "Two weeks ahead.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Two weeks ahead."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "svg",
+      "svg": "<svg class=\"ico\" viewBox=\"0 0 320 110\" role=\"img\" aria-label=\"Mail arrives at the front desk, then goes to the shared tray; unsorted mail is flagged.\"><rect class=\"soft\" x=\"8\" y=\"30\" width=\"90\" height=\"44\" rx=\"8\"/><text x=\"20\" y=\"57\">Front desk</text><path d=\"M98 52h50m-7-7 7 7-7 7\"/><rect x=\"154\" y=\"30\" width=\"90\" height=\"44\" rx=\"8\"/><text x=\"166\" y=\"57\">Shared tray</text><path class=\"ok\" d=\"M244 52h40\"/><circle class=\"ok\" cx=\"296\" cy=\"52\" r=\"10\"/><path class=\"bad\" d=\"M199 74v22\"/><text class=\"sm redt\" x=\"130\" y=\"106\">unsorted: flagged</text></svg>"
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Two weeks ahead.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-12",
+    "section": "people",
+    "short": "Team lunch",
+    "question": "Should the team lunch happen monthly?",
+    "recommend": "Yes, once a month.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, once a month."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "bars",
+      "rows": [
+        {
+          "label": "Today",
+          "value": 40,
+          "text": "$40",
+          "tone": "no"
+        },
+        {
+          "label": "Option A",
+          "value": 25,
+          "text": "$25",
+          "tone": "yes"
+        },
+        {
+          "label": "Option B",
+          "value": 32,
+          "text": "$32"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, once a month.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "Only some months",
+        "sub": "Tick the months that get a lunch.",
+        "picks": {
+          "label": "Which months",
+          "min": 1,
+          "hint": "Tick at least one.",
+          "always": true,
+          "items": [
+            "January",
+            "April",
+            "July",
+            "October"
+          ]
+        }
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-13",
+    "section": "people",
+    "short": "Sick days",
+    "question": "Should a short sick day need a note?",
+    "recommend": "No note for one or two days.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "No note for one or two days."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "split",
+      "parts": [
+        {
+          "label": "office",
+          "value": 50,
+          "text": "50%",
+          "tone": "yes"
+        },
+        {
+          "label": "remote",
+          "value": 30,
+          "text": "30%"
+        },
+        {
+          "label": "travel",
+          "value": 20,
+          "text": "20%",
+          "tone": "muted"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "No note for one or two days.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-14",
+    "section": "people",
+    "short": "Reviews",
+    "question": "Should reviews happen twice a year?",
+    "recommend": "Yes, twice a year.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, twice a year."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "flow",
+      "steps": [
+        {
+          "label": "Request",
+          "note": "by form"
+        },
+        {
+          "label": "Review",
+          "note": "one owner",
+          "tone": "discuss"
+        },
+        {
+          "label": "Done",
+          "tone": "yes"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, twice a year.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-15",
+    "section": "money",
+    "short": "Expense limit",
+    "question": "What is the limit for spending without approval?",
+    "recommend": "Set the limit at a fixed amount.",
+    "urgent": true,
+    "badge": "Needed this week",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Set the limit at a fixed amount."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "tree",
+      "root": {
+        "ask": "Is it under the limit?",
+        "branches": [
+          {
+            "when": "yes",
+            "then": {
+              "label": "Approve at once",
+              "tone": "yes"
+            }
+          },
+          {
+            "when": "no",
+            "then": {
+              "ask": "Is it urgent?",
+              "branches": [
+                {
+                  "when": "yes",
+                  "then": {
+                    "label": "Ask a lead today",
+                    "tone": "discuss"
+                  }
+                },
+                {
+                  "when": "no",
+                  "then": {
+                    "label": "Weekly review",
+                    "tone": "muted"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Set the limit at a fixed amount.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-16",
+    "section": "money",
+    "short": "Travel booking",
+    "question": "Should travel go through one booking tool?",
+    "recommend": "Yes, use one tool.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, use one tool."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "beforeAfter",
+      "before": {
+        "label": "Today",
+        "lines": [
+          {
+            "text": "Handled by hand",
+            "tone": "no"
+          },
+          "No written rule"
+        ]
+      },
+      "after": {
+        "label": "Recommended",
+        "lines": [
+          {
+            "text": "One written rule",
+            "tone": "yes"
+          },
+          "Owner named"
+        ]
+      }
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, use one tool.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  }
+]

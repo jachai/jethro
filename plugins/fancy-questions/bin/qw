@@ -1,0 +1,4 @@
+#!/bin/sh
+# fancy-questions CLI: build | lint | stats | new | version
+here=$(cd "$(dirname "$0")/.." && pwd)
+exec node "$here/scripts/qw.mjs" "$@"

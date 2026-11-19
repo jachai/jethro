@@ -1,0 +1,34 @@
+{
+  "slug": "synthetic-30",
+  "title": "Office Policies Walkthrough",
+  "eyebrow": "Office policies · demo",
+  "audience": "Alex",
+  "lead": "A made-up round for a small company. Each screen has a recommendation, what happens today, and a worked example.",
+  "discussWith": "Jordan",
+  "sections": [
+    {
+      "id": "office",
+      "label": "Office"
+    },
+    {
+      "id": "people",
+      "label": "People"
+    },
+    {
+      "id": "money",
+      "label": "Spending"
+    },
+    {
+      "id": "tools",
+      "label": "Tools"
+    }
+  ],
+  "stats": [
+    {
+      "value": 30,
+      "what": "questions",
+      "how": "made up for the demo"
+    }
+  ],
+  "minutesPerCard": 0.5
+}
