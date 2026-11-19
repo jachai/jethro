@@ -3,8 +3,8 @@
 The guide starts this read-only session when the user says yes to a follow-up (SKILL §7, Follow-ups). It checks that a
 fix or deployment that reached production or staging does what it was meant to do, using the code, the intended
 behaviour, the database and the logs. Fill in the `<...>` fields, then start it from the repository the change lives
-in with `guide_title.py launch` at `sonnet` / `medium` (`model-choice.md`), which marks it guided before its first
-prompt runs (SKILL §6). The title is `verify <thing>`, for example `verify #142`.
+in with `guide_title.py launch -- --model sonnet --effort medium …` (`model-choice.md`), which marks it guided the
+moment it starts (SKILL §6). The title is `verify <thing>`, for example `verify #142`.
 
 Tools are named by role. If `<config>/session-guide/local.md` names your real ones (your read-only production database
 tool, your log search tool, your staging database tool), put those names into the brief.

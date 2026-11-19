@@ -54,6 +54,11 @@ had a rule for it:
 | The guide sits idle while a deploy finishes, or wakes every 10 minutes all night. | +5 min wakeups for imminent events and +10 for long runs. When only you can unblock things, it backs off to +30 and +60, then stops. |
 | A guide runs out of context mid-relay. | It prints its own context size in every status reply and hands off at 120k: ledger current, wakeups cancelled, a one-line prompt for the next guide. |
 | A worker's report says "not fixed, out of scope". Nobody picks it up, and the guide lists it as "open, whenever you want". | After every report the guide adds each loose end to an Open items table with an owner: a session, a new session it proposes, or you. Owner-less items go into the next interview, at most 4 at a time, each as a recommended owner + action you answer yes or no. |
+| A worker hands off, gets blocked or finishes, and the guide doesn't notice until you ask. | Every guide prompt reconciles the ledger against the sessions' real job state: a worker that ended more than 3 minutes ago and still needs the guide is listed until the guide acts. A handoff means the successor starts now, without asking you. |
+| A worker's report goes to a guide's title, or into its final message, and nobody reads it. | The worker contract sends every HANDED OFF, BLOCKED, DONE and MERGE READY by SendMessage to the guide's `uds:` socket, never a title, and a guide change never suspends that. A failed send goes to an inbox file next to the ledger, which the guide's next prompt lists. |
+| The guide hands off with a worker's handoff still unanswered. | `retire` is a gate: it refuses while a row needs a guide, unless `--force` writes those rows into the ledger for the next guide. A retired guide is told on every prompt to forward, not act. |
+| You get asked about work that was finished days ago. | Before a row is put to you, the audit looks for later evidence (a satisfied result, a DONE session, a merged PR). "Likely done" rows go to a daily read-only strike sweep, and you hear one line, not fourteen questions. |
+| A merge or a command handed to you is never checked again. | Every merge or command asked of someone is a claim. The hook re-checks merge claims with `gh` and closes them when merged, and lists commands with no evidence after 4 hours. |
 | New sessions pile up unclassified, and finished ones sit "waiting" forever. | Every prompt sweeps sessions active in the last 12 h, and the guide keeps interviewing you until each new one is managed, watched, left active or ignored. Finished or obsolete workers are closed: ✅ title, `result:` line, state done, or a `! claude stop` for you when they are stuck. |
 
 ## Install
@@ -151,7 +156,11 @@ session is left alone: the hook prints nothing for it, and it prints nothing on 
 
 When a new guide takes over, the old one is retired with `guide_title.py retire <id>`. Its title turns to
 `🎟️🎟️ Sessions Manager (retired) 🎟️🎟️` and never goes red again, and it ends with a `result:` line so its state shows
-done rather than waiting on you.
+done rather than waiting on you. From then on its hook tells it on every prompt that it is retired: forward any worker
+message to the new guide's socket, and do nothing else. `retire` refuses (exit 1) while reconcile lists a row that
+needs a guide; `--check` only runs that gate, and `--force` retires anyway and writes the rows into the ledger's
+`## Handoff` table for the next guide. It also prints the one line the guide sends its workers: "Guide changing. Keep
+sending to this socket; the old guide forwards until the new one introduces itself."
 
 A finished or obsolete worker is **closed** the same way: `guide_title.py done <id>` swaps its `🟧🟧 (g) ` for `✅ ` (at once when the session has ended, on its next prompt otherwise), the
 guide asks it for a final `result:` line, and checks its state turned done. If the session is stuck on a question or
@@ -190,7 +199,8 @@ building stays with the workers. It may:
 
 - read transcripts, `ListAgents`, and CI/PR/deploy state;
 - message managed workers and relay your approvals;
-- start fresh worker sessions (`claude --bg`) from a worker's resume prompt, on the model and effort the task needs;
+- start fresh worker sessions (`guide_title.py launch`, which runs `claude --bg` and marks the session guided the
+  moment it starts) from a worker's resume prompt, on the model and effort the task needs;
 - write the ledger.
 
 Browser checks, test batteries on shared environments, and database and log checks go to a worker or to you.
@@ -205,6 +215,26 @@ Every session the guide manages or watches has to settle in one of two states, a
 - **Done.** It is finished, with no follow-ups on the session or its subject. It is closed with a ✅ title.
 
 A session that has gone quiet for 2 hours in neither state is flagged to the guide on its next prompt, and stays flagged.
+
+Quiet is the slow signal. The fast one is **reconcile**: on every guide prompt (and in `settle`, first in `mark`, and
+in `retire`) it reads each MANAGED and WATCHED row's job state, and lists the ones whose job ended more than 3
+minutes ago (`SESSION_GUIDE_GRACE_MINUTES`) and still need the guide: HANDED OFF with no successor row (start it
+now), BLOCKED with no Waiting row (answer it or ask you), ENDED any other way (record it and close it), UNDELIVERED
+(its last report never reached the guide), and INBOX (a report a worker wrote next to the ledger because its send
+failed). A line stays until the row changes. `guide_title.py reconcile --ledger <path>` prints the same for any
+ledger and never writes.
+
+```
+$ python3 skills/session-guide/scripts/guide_title.py reconcile
+HANDED OFF: 'reindex lead' [d4e5f6a1] ended 6 min ago and no Sessions row is its successor. Start the successor now from ~/work/reindex/HANDOFF.md; give it a row saying "successor of [d4e5f6]" and set this row's Level to HANDED OFF.
+1 to reconcile
+```
+
+Merges and commands asked of someone are tracked the same way, as **claims** in the ledger: `guide_title.py claim
+merge #142 --repo acme/billing` or `claim run "make backfill-exports" --by Dana`. On every guide prompt the hook
+re-checks open merge claims with `gh pr view` (cached 10 minutes, 5 s timeout, never in the way when gh is missing)
+and closes the merged ones itself, lists commands with no evidence after 4 hours, and counts ledger lines that say
+"MERGE READY #N" or hold a `!` command with no claim. `claim done <key> "<evidence>"` closes one by hand.
 `guide_title.py settle <ledger>` shows the same list, plus what is due and what is asleep. Reminders are a one-shot wake in
 the guide session, so they fire only while a guide is running; a new guide picks them up from the ledger.
 
@@ -245,7 +275,20 @@ ranked by value x age and rows that share one next action are collapsed, so the 
   `STATE.md` next to the ledger, a few KB of live state that a new guide reads instead of a ledger log that has
   grown to a megabyte.
 - **Every row can be cleared.** `guide_audit.py set <key> started --session <id>`, `asked`, `parked --hours N`,
-  `done` or `dropped` records what was decided, so the same row isn't raised twice.
+  `done "<evidence>"` or `dropped "<why>"` records what was decided, so the same row isn't raised twice.
+- **Already covered? comes first.** A row with later evidence in the ledger (a satisfied Results row naming its id, a
+  DONE session whose brief names it, a closing decision, a verification, the same ask twice, `gh` saying the PR
+  merged) becomes kind `check`: "likely done: … Confirm, then `set <key> done "<evidence>"`. Do not ask the user."
+  It leaves the ask list. A row that stays on it says when it was checked and why it is still open.
+- **A strike sweep, once a day.** The full audit writes `strike-candidates.md` next to the ledger; when the last sweep
+  is over 24 h old the hook asks the guide for one read-only helper that returns `<key> | DONE / SUPERSEDED / OPEN |
+  <evidence>` per row, and `guide_audit.py strike --from <file>` applies it. The guide strikes only what the helper
+  confirmed and tells you in one line. What is really open comes to you once, as one batch grouped by stream, keep /
+  start / drop per group (`audit --open-batch`).
+- **Rows say what closes them.** An Open items row or a reminder can carry `closes: pr:#N`, `result:<artifact id>`,
+  `ticket:<ID>` or `session:<id8>`; when that happens the audit closes the row itself and says so.
+- **The clock is the script's.** Every guide prompt starts with "Now: <local time and zone>", and the audit flags
+  ledger lines dated in the future: a guide's own guess of the time drifts.
 
 ## Results you asked for get a verdict
 
@@ -300,7 +343,7 @@ The guide picks a model and an effort for every session it starts, from a short
 [table](skills/session-guide/references/model-choice.md) keyed on what the session does next: money and business-rule
 fixes, release gates and design reviews get the top model at high effort; mechanical edits, CI reads, read-only data
 checks and status reports get `sonnet` at low; verify follow-ups get `sonnet` at medium. It passes them as
-`claude --bg --model <alias> --effort <level>`, with aliases (`opus`, `sonnet`, `haiku`) so the table stays current, and
+`guide_title.py launch -- --model <alias> --effort <level>`, with aliases (`opus`, `sonnet`, `haiku`) so the table stays current, and
 records the pick in the ledger. A worker's successor is picked again for its own next step, not copied.
 
 For a session it didn't start, the guide reads what it runs (claude-top's MODEL and EFFORT, or peek's first line) and,
@@ -314,8 +357,10 @@ It can't switch another session itself. Name a different top model (for example 
 ## The ledger
 
 `~/.claude/session-guide/<slug>/ledger.md` holds Streams, Order/gates, Sessions, Decisions (numbered, FINAL unless
-struck), Results for you (each finished deliverable, its link and your verdict), Waiting on you (a table with the action and when to remind you, owed questions included), Open items (a table: Item | Owner | Next action | Status, where every row has an owner or
-ASK), Verifications (each follow-up check and its verdict), and a 15-line log. See the
+struck), Results for you (each finished deliverable, its link and your verdict), Waiting on you (a table with the action and when to remind you, owed questions included), Claims (merges and commands someone was asked to do, until there is evidence), Open items (a table: Item | Owner | Next action | Status, where every row has an owner or
+ASK), Verifications (each follow-up check and its verdict), and a 15-line log. After a forced guide handoff it also
+has a Handoff table of the rows the old guide left open. Next to it the scripts keep `STATE.md`, `audit.json`,
+`strike-candidates.md` and an `inbox/` folder for worker reports whose send failed. See the
 [template](skills/session-guide/references/ledger-template.md). It's plain Markdown, so you can read and edit it
 yourself.
 
@@ -326,6 +371,25 @@ yourself.
 - **`~/.claude/session-guide/playbooks/*.md`**: your release gates, commands and URLs. The guide loads the one that
   fits when a stream heads to staging or production, falling back to the
   [example playbook](skills/session-guide/references/release-playbook.md).
+
+### Environment variables
+
+Set them in the `env` block of `settings.json`, so the hooks see them too.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `SESSION_GUIDE_TITLE` | `🟥🟥 Sessions Manager · {slug} (…) 🟥🟥` | The guide's title format (see Titles) |
+| `SESSION_GUIDE_RETIRED_TITLE` | `🎟️🎟️ Sessions Manager (retired) 🎟️🎟️` | A retired guide's title |
+| `SESSION_GUIDE_GUIDED_PREFIX`, `_WATCHED_PREFIX`, `_ACTIVE_PREFIX`, `_DONE_PREFIX` | `🟧🟧 (g) `, `⬜⬜ `, `🟦🟦 `, `✅ ` | The title prefixes |
+| `SESSION_GUIDE_GRACE_MINUTES` | 3 | How long after a worker's job ends before reconcile lists it |
+| `SESSION_GUIDE_IDLE_HOURS` | 12 | An idle decided item older than this, with no question to you, is nagged about |
+| `SESSION_GUIDE_AUDIT_HOURS` | 12 | How often the full audit is due; 0 turns the audit off |
+| `SESSION_GUIDE_FOLLOWUP_HOURS` | 24 | How often the follow-up review is due; 0 turns it off |
+| `SESSION_GUIDE_QUEUES` | none | Extra queue files for the audit, separated like `PATH` |
+| `SESSION_GUIDE_GH` | on | `0` turns every `gh` call off (claims and the audit's merged-PR check say "not checked") |
+| `SESSION_GUIDE_CLAIM_HOURS` | 4 | A run claim with no evidence this long is listed |
+| `SESSION_GUIDE_CLAIM_DAYS` | 3 | How far back the hook looks for unclaimed merge and command lines; 0 = the whole ledger |
+| `SESSION_GUIDE_CLAUDE` | `claude` | The binary `launch` runs (for tests) |
 
 ## peek.py
 
@@ -345,8 +409,9 @@ More detail: [how it works](docs/how-it-works.md).
 
 ## Notes
 
-- Everything stays on your machine. The skill adds no network calls; the only messages are between your own local
-  sessions.
+- Everything stays on your machine. The only network calls are `gh pr view` for merge claims and for the audit's
+  merged-PR check (cached 10 minutes, 5 s timeout, skipped when gh is missing; `SESSION_GUIDE_GH=0` turns them off).
+  The only messages are between your own local sessions.
 - If you run a cost guard that caps messages to the same agent, exempt messages to other top-level sessions. A guide
   relays many times per session by design.
 - Contributions welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).

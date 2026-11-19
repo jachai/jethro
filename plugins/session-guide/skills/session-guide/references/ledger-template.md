@@ -21,6 +21,16 @@ struck (`~~…~~`) or has a cell starting DONE / DROPPED. The audit also writes 
 puts it in the backlog. An Owner that names a person rather than a session ("Dana", "ASK") needs a reminder in the
 waiting table, or the audit lists it as waiting on someone nobody is asking.
 
+**Next to the ledger** the scripts keep `STATE.md` and `audit.json` (above), `strike-candidates.md` (the rows the
+daily strike sweep checks, written by the full audit) and an `inbox/` folder: a worker whose SendMessage to the guide
+fails writes its report to `inbox/<id8>.md` (first line = the report's first line). Reconcile lists each file on
+every guide prompt until the guide acts on it and deletes the file.
+
+**Handoff (open at the last guide change)** is written by `guide_title.py retire --force`: one row per session that
+still needed a guide when the old guide retired (a handoff with no successor, an ended or blocked worker, an
+undelivered or inbox report), with its kind, what was open and when. The new guide reads it first, acts on each row,
+and deletes the row once it is handled. The table is absent when the last handoff was clean.
+
 **Sessions** has a Model / effort column: the guide's pick for a session it started (`sonnet/low`), or what a session it
 took over runs, read from claude-top or peek. "kept <date>" records that the user turned down a switch, so the guide
 doesn't ask again until the session's task changes (`references/model-choice.md`).
@@ -46,6 +56,20 @@ user is a row here too, written by `waiting ask "<question>" --hours N` (or `--a
 `unwait <key>` move or clear it. Bullets for items no session owns can sit below the table. A MANAGED or WATCHED
 session with no row here that has gone quiet has to settle (SKILL §7).
 
+**`closes:` tags.** An Open items row or a reminder that ends with a known event says so when it is written:
+`closes: pr:#N` (gh says the PR merged), `closes: result:<artifact id>` (its Results row is satisfied), `closes:
+ticket:<ID>` (a satisfied Results row or a closing Decision names it) or `closes: session:<id8>` (its Sessions row is
+DONE); several tags mean all of them. Put it in the Status cell of an Open items row; `waiting` and `waiting ask` take
+`--closes <tag>`. When the event happens the audit closes the row itself (Status DONE, or the reminder leaves the
+table) and the next hook line says so.
+
+**Claims** is a table with one row per merge or command someone was asked to do, written by `guide_title.py claim
+merge #N [--repo owner/name] [--by <who>]` and `claim run "<command>" --by <who>`: the kind and a key made from the
+PR or the command, what (`owner/name#N`, or the command), who, when it was claimed, and the evidence: `—` while it
+is open, then "done <time>: <evidence>" (`claim done <key> "<evidence>"`) or "merged <time> (gh, checked <time>)"
+when gh says the PR is merged. The hook re-checks open merge claims with gh and lists run claims with no evidence
+after 4 hours (`references/verify-followup.md`, Claims). Closed rows stay, like Verifications rows.
+
 **Verifications** is a table with one row per fix or deployment the guide proposed to check, written by `guide_title.py
 verification`: Thing (its PR `#N` or version first; that is the key), Where (prod, staging, merged, released), Result
 (proposed, running, verified, not-exercised, broken, skipped), when it was recorded, one line of evidence or the
@@ -60,6 +84,11 @@ Scope: <slug> · <host> · <config dir> · <uds socket>
 Other guides: <title> [ref] (machine, project) · …   (or: none)
 Queues: <path to a markdown table of approved work>, …   (optional; leave the line out when there is none)
 Updated: <date HH:MM>   Usage: <plan usage, if you track it>
+
+## Handoff (open at the last guide change)
+| Session [id6] | Kind | What is open | Written |
+|---|---|---|---|
+| reindex lead [d4e5f6] | handoff | HANDED OFF: 'reindex lead' [d4e5f6a1] ended 12 min ago and no Sessions row is its successor. … | 2026-10-27 09:00 |
 
 ## Streams
 | Stream | Where now | Next step | Owner | Blocked on |
@@ -98,8 +127,14 @@ Updated: <date HH:MM>   Usage: <plan usage, if you track it>
 ## Waiting on the user
 | Session [id6] | What the user needs to do | Asked | Remind at |
 |---|---|---|---|
-| billing export lead [3fa9c1] | Merge #142: https://github.com/acme/billing/pull/142 | 2026-10-27 12:40 | 2026-10-27 20:40 |
+| billing export lead [3fa9c1] | Merge #142: https://github.com/acme/billing/pull/142 · closes: pr:#142 | 2026-10-27 12:40 | 2026-10-27 20:40 |
 | owed question [f6506d] | Ask: twin plan link model and exterior areas (from 'twin plan' [a1b2c3]) | 2026-10-27 12:40 | 2026-10-27 15:00 |
+
+## Claims
+| Claim [key] | What | By | Claimed | Evidence |
+|---|---|---|---|---|
+| merge [5c2e1a] | acme/billing#142 | the user | 2026-10-27 12:40 | — |
+| run [9f0b3d] | `make backfill-exports` | Dana | 2026-10-27 13:10 | done 2026-10-27 14:02: 4,210 rows, log linked in #ops |
 
 ## Open items
 | Item | Owner | Next action | Status |
@@ -108,6 +143,7 @@ Updated: <date HH:MM>   Usage: <plan usage, if you track it>
 | Skill-edit proposal from the billing lead | the user | say yes or no to the edit | ASK 10-27 12:50 |
 | Search reindex read-only prod audit | 'search reindex lead' [d4e5f6] | run the audit after traffic dips | waiting since 10-27, next check ~15:00 |
 | Stale feature flag in config | ASK | — | ASK 10-27 13:05 |
+| Export retry doc for support | 'docs lead' [8b9c0d] | write it after the review | waiting, closes: result:def456 |
 
 ## Verifications
 | Thing | Where | Result | Checked | Evidence / session | Re-check |

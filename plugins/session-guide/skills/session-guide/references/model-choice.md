@@ -28,10 +28,11 @@ A task that grows changes its row: a "mechanical" session that starts touching m
 ## Starting a session (SKILL §6)
 
 ```
-claude --bg --model <alias> --effort <level> --name '<title>' "<prompt>"
+python3 <skill dir>/scripts/guide_title.py launch -- --model <alias> --effort <level> --name '<title>' "<prompt>"
 ```
 
-Write the pick in the ledger's Sessions row, Model / effort column: `sonnet/low`.
+`launch` runs `claude --bg` with those arguments and marks the session guided the moment its id is printed
+(`references/worker-contract.md`, Launch order). Write the pick in the ledger's Sessions row, Model / effort column: `sonnet/low`.
 
 A successor of a worker that handed off gets a fresh pick for the **next step's** task, never a copy of its
 predecessor's: an opus/high session that finished a refund fix hands off to a sonnet/low session that only reads CI.

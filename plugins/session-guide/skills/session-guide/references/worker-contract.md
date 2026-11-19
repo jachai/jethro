@@ -59,13 +59,17 @@ by SendMessage to uds:<socket path>, exactly that address, never a title. Run `/
 resume.
 ```
 
-Launch order: a worker is marked guided BEFORE its first prompt runs. A `claude --bg` worker marked a moment after
-launch got a cost-guard stop on its first tool call. `python3 <skill dir>/scripts/guide_title.py launch …` does it in
-order: it makes the session id, writes the guided marker, then starts `claude --bg --session-id <uuid> …` with the
-prompt. Without it, do the same three steps by hand:
+Launch order: a worker should be marked guided BEFORE its first prompt runs. A `claude --bg` worker marked a moment
+after launch got a cost-guard stop on its first tool call. But `claude --bg` picks its own session id (it ignores
+`--session-id`), so a new session can't be marked before it exists. `python3 <skill dir>/scripts/guide_title.py
+launch -- <claude args>` comes as close as it can: it runs `claude --bg <claude args>` and writes the guided marker
+the moment the id is printed, while the worker's first model call is still in flight (`launch --watched` marks it
+watched). Only a resume, `launch -- --resume <id> …`, is marked strictly before it runs.
 
 ```
-uuid=$(python3 -c 'import uuid; print(uuid.uuid4())')
-python3 <skill dir>/scripts/guide_title.py guided "$uuid"
-claude --bg --session-id "$uuid" --model <alias> --effort <level> --name '<title>' "<resume prompt + suffix>"
+python3 <skill dir>/scripts/guide_title.py launch -- --model <alias> --effort <level> --name '<title>' "<resume prompt + suffix>"
 ```
+
+Without `launch`: start `claude --bg …`, and the moment it prints the id run `python3 <skill
+dir>/scripts/guide_title.py guided <id>`. If the worker still gets a cost-guard stop on its first call, tell it to
+retry.
