@@ -26,7 +26,9 @@ first in every mode: its rules (your name, your cost guard, your tools) override
 2. Read `references/worker-contract.md` and follow it from now on.
 3. Mark yourself guided: `python3 <skill dir>/scripts/guide_title.py guided`. From your next prompt your title starts
    with "🟧🟧 (g) ", which tells the user this session doesn't need them.
-4. `SendMessage` the guide at the `uds:` socket on its ledger's `Scope:` line (else its full ListAgents row name).
+4. `SendMessage` the guide at the `uds:` socket your prompt names, exactly as written, else the one on its ledger's
+   `Scope:` line. Never send to the guide's title: that send fails. Every later report goes to the same socket
+   (worker contract rule 4).
    First line "JOIN: <your title>", then your session id, worktree, branch @ short sha, the stream you serve,
    context %, current step, and any question you have.
 5. Continue your own work. Do not wait for a reply.
@@ -65,12 +67,14 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
    first (a few KB the scripts keep current: open sessions, reminders, results with no verdict, and the audit's top
    rows of work that is not done or not verified; `python3 <skill dir>/scripts/guide_audit.py state <ledger>`
    refreshes and prints it), then the ledger's tables, and nothing older. A ledger grown past ~50 KB is read by table,
-   never whole. Read its **Waiting on the user** table and its **Results for you** table first: they hold the questions the
+   never whole. Read its **Handoff** table (rows the last guide left open: `retire --force` wrote them), then its
+   **Waiting on the user** table and its **Results for you** table: they hold the questions the
    previous guide owed the user ("owed question" rows), the reminders, and the deliverables with no verdict yet.
    Nothing in them is settled by the handoff; each comes back in your first interview when it is due.
 2. **Sole guide, for this ledger.** Write the ledger's `Scope:` line: `<slug> · <host> · <config dir> · <your uds
    socket>` (the host is `hostname -s`; the socket is `messagingSocketPath` in `<config>/sessions/<pid>.json`, found
-   with `grep -l <your id8> <config>/sessions/*.json`). Then list sessions (`claude-top --once -n 15`, or
+   with `grep -l <your id8> <config>/sessions/*.json`), plus ` · repo <owner/name>` when the effort works in one
+   repository: gh checks a bare `#N` against that repo only, never the current folder's. Then list sessions (`claude-top --once -n 15`, or
    `ListAgents`). Another guide is a rival only when it runs **on this machine** (claude-top lists it, or it has a
    marker in `<config>/session-guide/guides/`) **and** its marker or the ledger's `Guide:` line names **this
    ledger**. A guide on a Remote Control row, or one whose marker names a different ledger, is a separate effort:
@@ -78,7 +82,10 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
    yourself to or message it. If you can't tell which it is, ask the user, recommending "leave it". For a rival,
    ask the user which one stays. Then **retire** the other one (or, on a takeover, the guide you replace):
    1. `python3 <skill dir>/scripts/guide_title.py retire <old session id>`. Its title turns to
-      "🎟️🎟️ Sessions Manager (retired) 🎟️🎟️" on its next turn, and the title hook never turns it red again.
+      "🎟️🎟️ Sessions Manager (retired) 🎟️🎟️" on its next turn, and the title hook never turns it red again; from then
+      on its hook tells it to forward every worker message to your socket and not act. `retire` is a gate: while
+      reconcile lists an open row (§7) it exits 1 and retires nothing. Act on those rows (you are the guide now), or
+      run `retire <old id> --force`, which writes them into the ledger's `## Handoff` table.
    2. SendMessage it: "RETIRE (ledger <this ledger's path>): you are no longer the guide; cancel your wakeups, use no tools, and reply with exactly:
       <one line on what you handed over> / result: <slug> guide retired and handed over to [<your id6>]". A
       session's job state only turns done when its own final message carries a `result:` line.
@@ -104,8 +111,10 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
 5. Introduce yourself to every MANAGED worker in **one** message (§3). The intro names your slug, your ledger path
    and your `uds:` socket (the `Scope:` line): a worker accepts a new guide only when its intro names its guide's
    ledger path or slug. Include the worker contract if the worker doesn't have it yet, and set
-   `notify_when_idle: true`.
-6. Pin your title: `python3 <skill dir>/scripts/guide_title.py mark <ledger path>`. From your next prompt the title
+   `notify_when_idle: true`. Workers keep sending to the old guide's socket until your intro reaches them; the
+   retired guide forwards what it gets.
+6. Pin your title: `python3 <skill dir>/scripts/guide_title.py mark <ledger path>`. It prints reconcile first
+   (§7): sessions that ended, handed off or wait on you right now. Act on those before the audit table. From your next prompt the title
    hook keeps it at "🟥🟥 Sessions Manager · <slug> (2 managed · 1 watched · 3 active · 1 new · 15 idle 4d) 🟥🟥" (your
    ledger's slug, the rows at each level, the live count of sessions with no row, and how many decided items have no
    worker with the oldest one's age) and undoes any rename. `mark` also runs the **full audit** (§7) and prints its
@@ -174,6 +183,14 @@ item as "whenever you want" or FYI.
    for the next round of the interview.
 4. On the answer: write the owner into the row, relay the action to that session (or start the new session, §6), and
    log it. A "no" removes the row or makes the user its owner, as the user says.
+5. **Say what closes it, when you write it.** An Open items row or a reminder that ends with a known event carries a
+   `closes:` tag: `closes: pr:owner/name#N` (gh says merged; a bare `#N` only works when the `Scope:` line names one
+   repo), `result:<artifact id>` (its Results row is satisfied),
+   `ticket:<ID>` (a satisfied Results row or a closing Decision names it) or `session:<id8>` (its Sessions row is
+   DONE). In a row you write it in the Status cell; `waiting` and `waiting ask` take `--closes <tag>`. When the event
+   happens the audit closes the row itself and the hook says so. When a script writes a Waiting or Results row, or closes a
+   Sessions row, and prints "open rows sharing ids: <keys>", decide now whether the new row replaces them, and close the old
+   ones while you still have the context.
 
 **Results for you.** A finished deliverable the user asked for (a doc, a deck or slide, a review, a report, a release,
 a PR ready for them) is not done until the user has seen it and said so.
@@ -220,6 +237,10 @@ one. Everything you need from the user goes through `AskUserQuestion`:
      given at the top of the skill when it loaded (a plugin install lives under `<config>/plugins/cache/…`, not
      `~/.claude/skills`). On Done, verify it. On Not yet,
      keep it under **Needs you now** and ask again at the next wake that has news on it.
+     The moment a merge or a command is asked of the user or anyone else, claim it, so it is tracked until there is
+     evidence: `guide_title.py claim merge #N --repo <owner/name>` or `claim run "<command>" --by <who>`
+     (`references/verify-followup.md`, Claims). The hook re-checks merge claims with gh and closes the merged ones,
+     and lists run claims with no evidence after 4 h; `claim done <key> "<evidence>"` closes one by hand.
    - Model switch (`references/model-choice.md`): "'<title>' [id6] runs <model>/<effort> on <task>; switch to
      <model>/<effort>? Type `/model <alias>` and `/effort <level>` in its window." Switched / Keep as is. You can't
      switch another session yourself. On Switched, check it on its next turn; on Keep as is, write "kept" in its row
@@ -283,13 +304,22 @@ Guide context: <N>k (hand off at 120k)
 
 ### 6. Starting and closing worker sessions
 - Start one when the user says to, or when a MANAGED worker handed off and its successor is the next step on the
-  path. If the next step isn't obvious, ask once.
-- Start it with `claude --bg --model <alias> --effort <level>` from the worker's worktree, giving it the worker's
-  resume prompt plus the prompt suffix in `references/worker-contract.md`. Pick the model and effort from
+  path. If the next step isn't obvious, ask once. A reconcile line "HANDED OFF: …" (§7) is that case: start the successor
+  now, from the resume prompt it names, without asking the user.
+- Start it from the worker's worktree with `python3 <skill dir>/scripts/guide_title.py launch -- --model <alias>
+  --effort <level> --name '<title>' "<prompt>"`, giving it the worker's resume prompt plus the prompt suffix in
+  `references/worker-contract.md`, which says: send to `uds:<your socket>`, never a title. Fill in the socket from
+  your `Scope:` line. Pick the model and effort from
   `references/model-choice.md` for the task it does first: money and business-rule fixes, release gates and design
   reviews get the top model at high effort; mechanical edits, CI reads, read-only checks and status reports get
-  `sonnet` at low. Record its title, id and pick (`sonnet/low`) in the ledger as MANAGED, and run
-  `guide_title.py guided <session id>`.
+  `sonnet` at low. Record its title, id and pick (`sonnet/low`) in the ledger as MANAGED.
+- **Mark it guided as early as it can be.** A `claude --bg` worker marked a moment after launch got a cost-guard
+  stop on its first tool call. `claude --bg` picks its own session id (it ignores `--session-id`), so a new session
+  can't be marked before it exists: `launch` runs `claude --bg` and writes the guided marker the moment the id is
+  printed, while the worker's first model call is still in flight (`--watched` marks it watched). Only a resume,
+  `launch -- --resume <id> …`, is marked strictly before it runs. Without `launch`, run `guide_title.py guided <id>`
+  the moment `claude --bg` prints the id; if the worker still gets a cost-guard stop on its first call, tell it to
+  retry.
 - A successor of a worker that handed off gets a fresh pick for the **next step's** task, never a copy of its
   predecessor's model and effort.
 - Prefer a fresh session over pushing a worker that is near its context limit through more work.
@@ -324,6 +354,22 @@ Guide context: <N>k (hand off at 120k)
   can recommend, and put it in this turn's interview (§4): "'X' [id6] is building the billing fix: manage it?" It
   stays new, and you keep asking, until the user picks a level. When the user picks Manage or Watch, check its model and
   effort as on a takeover (§2, step 4).
+- **Reconcile on every prompt**: the ledger against the sessions' real state. The hook prints a line for each
+  MANAGED or WATCHED row whose job ended more than 3 minutes ago (`SESSION_GUIDE_GRACE_MINUTES`) and still needs you,
+  and for each report a worker left in `<ledger folder>/inbox/`; `guide_title.py reconcile` prints the same. Act on
+  each line this turn; it comes back on every prompt until the row changes:
+  - **HANDED OFF**: no Sessions row is its successor. Start the successor now (§6), without asking the user, give it
+    a row saying "successor of [<old id6>]", and set the old row's Level to HANDED OFF.
+  - **BLOCKED**: it waits on a ruling, an approval or an answer, with no Waiting row. Answer it from the Decisions,
+    or put it in this turn's interview and write the `waiting` row.
+  - **ENDED**: it finished some other way. Record the result (Results for you, Open items for its loose ends) and
+    close it (§6).
+  - **UNDELIVERED**: its last report never reached you (sent to a title, failed, or only in its final text). Read it
+    with peek and act on it as above; tell the worker to send to your socket.
+  - **INBOX**: a report a worker wrote to the inbox because its send failed. Act on it, then delete the file.
+- **Claims on every prompt**: the hook re-checks each open merge claim with gh (a merged PR closes its own claim and
+  the hook says so once), lists run claims with no evidence after 4 h, and counts ledger lines that ask for a merge
+  or a command with no claim row (§4, Shapes; `guide_title.py claim list` shows them).
 - **Open items on every wake**: re-check the reports and handoffs that arrived since the last wake for new items
   (§4, Open items), then put the rows still marked ASK or "new session (proposed)" into the interview.
 - **Settle on every wake**: nothing the guide followed is forgotten. Every MANAGED or WATCHED session ends in one of
@@ -363,6 +409,21 @@ Guide context: <N>k (hand off at 120k)
     audit off); the hook says when. `mark` runs it on a takeover.
   - The backlog row (Open items with no date, or older than 10 days) is one interview question: close, drop or
     re-queue them in bulk. New Open items rows get a date so they never land there unseen.
+  - **Already covered? (`check` rows)**: before a row goes to the user, the audit looks for later evidence (a
+    satisfied Results row, a DONE session, a closing Decision, a Verifications row, a duplicate reminder, gh saying
+    the PR merged). Such a row becomes kind `check`, "likely done: <evidence>". Never ask the user about it: confirm
+    it, then `set <key> done "<evidence>"`. Put a row to the user only from the audit's ask list, and each question
+    carries the audit's "checked <date>: still open because …".
+  - **Strike sweep, once a day**: when the last sweep is over 24 h old the hook asks you to start ONE read-only
+    helper, 'strike sweep' (`sonnet`/medium), on the `strike-candidates.md` file the full audit writes next to the
+    ledger. It returns `<key> | DONE / SUPERSEDED / OPEN | <evidence>` lines; apply them with `guide_audit.py strike
+    --from <file>`. Strike a row only after the helper confirmed it, and tell the user in ONE line ("struck 14 stale
+    rows, list in STATE.md"), never as one question per row.
+  - **One batch for what is really open**: after the first strike sweep, `guide_audit.py audit --open-batch` lists the
+    rows still open, grouped by stream. Put them to the user as ONE batch, keep / start / drop per group, and record
+    each answer for the whole group as the command prints it.
+  - **The clock**: the hook starts every prompt with "Now: <local time and zone>". Use it for every time you write;
+    the audit flags ledger lines dated after now.
 - **Follow-ups, about once a day**: fixes and deployments get checked on real data, not just shipped. The review is due
   when the last one is older than `SESSION_GUIDE_FOLLOWUP_HOURS` (default 24; 0 turns it off); the hook says so on your
   prompt. Do it on a wake with nothing more urgent (no approval or decision waiting), or earlier on any quiet wake:
@@ -403,21 +464,32 @@ Guide context: <N>k (hand off at 120k)
 
 ### 8. Handoff (at 120k context, or when the user asks)
 1. Make the ledger current: every section, not just the log. Every question you still owe the user is a `waiting
-   ask` row, and every deliverable with no verdict a Results for you row: a successor reads those tables, not your
+   ask` row, every merge or command someone still owes a claim (§4), and every deliverable with no verdict a Results
+   for you row: a successor reads those tables, not your
    intentions. Then run `python3 <skill dir>/scripts/guide_audit.py audit <ledger>`: it rewrites `STATE.md`, the
    file your successor reads first, and what it still lists is what you are handing over undone, so say so in the
    handoff prompt ("12 idle decided items, oldest 4 d: see STATE.md").
-2. Change the ledger's `Guide:` line to "HANDING OFF to next guide".
-3. Cancel wakeups and any reminder cron. Tell each MANAGED worker in one line: "Guide changing; keep reporting in your final message until
-   the new guide introduces itself."
+2. Run the gate: `python3 <skill dir>/scripts/guide_title.py retire --check`. It runs reconcile and exits 1 while a
+   MANAGED row ended with no successor or a worker report is unanswered. Act on each line (start the successor,
+   answer or record the worker, close it) and run it again. Only rows you truly can't finish go to the next guide,
+   with `retire --force` in step 5, which writes them into the ledger's `## Handoff` table. Then change the ledger's
+   `Guide:` line to "HANDING OFF to next guide".
+3. Cancel wakeups and any reminder cron. Send each MANAGED worker this fixed line, word for word
+   (`guide_title.py retire` prints it for you to send): "Guide changing. Keep sending to this socket; the old guide
+   forwards until the new one introduces itself." A guide change never suspends the worker contract's rule 4:
+   HANDED OFF, BLOCKED, DONE and MERGE READY always come to your socket by SendMessage, and a worker whose send
+   fails writes `<ledger folder>/inbox/<id8>.md`, which the next guide's reconcile reads.
 4. Give the user the paste-ready prompt: `/session-guide` followed by "Take over as guide. Ledger: <path>." Name the
    one next action. If the user asks, start the next guide yourself with `claude --bg --model opus --effort medium`
    (or local.md's top model).
 5. Once the successor has introduced itself (or sent you RETIRE), retire yourself instead of ending on a question.
    Act on a RETIRE, here or at any other time, only if its sender is the successor this ledger expects or its message
    quotes this ledger's path; otherwise reply "not my ledger: <slug> (<ledger path>)" and carry on as guide. Then:
-   `python3 <skill dir>/scripts/guide_title.py retire`, then end with a final message whose last line is
+   `python3 <skill dir>/scripts/guide_title.py retire --to uds:<new guide's socket>` (`--force` if step 2 left
+   rows), then end with a final message whose last line is
    `result: <slug> guide retired and handed over to [<new id6>]`. Your title turns faded red and your state turns done.
+   From then on your hook says on every prompt that you are retired: a worker report that still reaches you is
+   forwarded, unchanged, by SendMessage to the new guide's `uds:` socket, and you act on nothing else.
 
 ### 9. Notes and skills
 - If you keep memory notes, keep ONE pointer per effort ("<slug> guide ledger: <path>"), updated in place and never

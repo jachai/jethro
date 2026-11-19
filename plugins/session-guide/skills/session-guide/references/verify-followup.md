@@ -2,8 +2,9 @@
 
 The guide starts this read-only session when the user says yes to a follow-up (SKILL §7, Follow-ups). It checks that a
 fix or deployment that reached production or staging does what it was meant to do, using the code, the intended
-behaviour, the database and the logs. Fill in the `<...>` fields, then start it with `claude --bg --model sonnet --effort medium`
-from the repository the change lives in (`model-choice.md`). The title is `verify <thing>`, for example `verify #142`.
+behaviour, the database and the logs. Fill in the `<...>` fields, then start it from the repository the change lives
+in with `guide_title.py launch -- --model sonnet --effort medium …` (`model-choice.md`), which marks it guided the
+moment it starts (SKILL §6). The title is `verify <thing>`, for example `verify #142`.
 
 Tools are named by role. If `<config>/session-guide/local.md` names your real ones (your read-only production database
 tool, your log search tool, your staging database tool), put those names into the brief.
@@ -18,6 +19,7 @@ Where and when: <deploy line from the ledger: environment, deploy time with time
 Intended behaviour: <the PR body's summary and the guide's Decisions that apply, verbatim with their numbers,
   e.g. "Decision 245 FINAL: ...">
 Tools: <your read-only prod DB tool> for data, <your log search tool> for logs. <anything local.md says about access>
+Guide: '<guide title>' [<id6>], ledger <ledger path>, socket uds:<socket path>
 
 Rules
 - READ-ONLY. No writes anywhere: no INSERT, UPDATE, DELETE or DDL, no migrations, no deploys, no reruns of jobs, no
@@ -47,13 +49,15 @@ Steps
    - broken: at least one case contradicts step 2, or the change raises new errors. Give the ids, the expected and
      actual values, and the log lines.
 
-Report to the guide in ONE message:
+Report to the guide in ONE SendMessage to uds:<socket path>, exactly that address, never the guide's title:
   first line "VERIFIED: <thing>" / "NOT EXERCISED YET: <thing>" / "BROKEN: <thing>", then
   - expected behaviour (step 2, with the worked example);
   - evidence: queries run (text), counts, example ids, log searches and their hit counts, time span covered;
   - anything you found but did not check or fix (loose ends: other failures in the logs, data that looks wrong for
     another reason, a test that should exist), each as one line the guide can give an owner;
   - context size.
+If the send fails, write the same report to <ledger folder>/inbox/<your id8>.md (first line = the report's first
+line); the guide reads it from there.
 End your final message with a line `result: <thing> <verified | not exercised yet | broken>`.
 ```
 
@@ -65,3 +69,44 @@ End your final message with a line `result: <thing> <verified | not exercised ye
   something real may be wrong in production.
 - Every loose end in the report becomes an Open items row (SKILL §4, Open items).
 - Closes the session (SKILL §6) once the report is in and recorded.
+
+## Claims: merges and commands someone said they would do
+
+A follow-up can only check what really happened. A merge handed to the user, or a command the user, a colleague or a
+worker was asked to run, is tracked in the ledger's `## Claims` table until there is evidence, so it can't be
+forgotten across a guide handoff. Each row is written by `guide_title.py claim` (or `scripts/guide_claims.py claim
+… --ledger <path>`):
+
+```
+| Claim [key] | What | By | Claimed | Evidence |
+|---|---|---|---|---|
+| merge [5c2e1a] | acme/widgets#12 | the user | 2026-11-19 14:05 | — |
+| run [9f0b3d] | `make backfill-orders` | Dana | 2026-11-19 14:10 | done 2026-11-19 15:02: 4,210 rows, log linked in #ops |
+```
+
+The key is 6 hex characters made from the PR or the command, so the same PR or command always lands on the same row.
+Evidence is `—` while the claim is open. Closed rows stay, like Verifications rows.
+
+- `claim merge #N [--repo owner/name] [--by <who>]`: someone (default: the user) was asked to merge a PR. `#N`, `N`,
+  `owner/name#N` or the PR link all work.
+- `claim run "<command>" --by <who>`: someone was asked to run a command; give it exactly as given to them.
+- `claim done <key | #N | N> "<evidence>"` (all digits is a PR number): closes a claim with what shows it happened (a merge sha, the output, a link).
+- `claim list [--all] [--days 3]`: the open claims (merge claims re-checked with gh), and the ledger lines from the
+  last 3 days (0 = all) that ask for a merge or a command with no claim row; `--all` adds the closed claims.
+
+On every prompt the hook re-checks each open merge claim with `gh pr view <N> --repo <owner/name> --json
+state,mergedAt` (cached 10 minutes, 5 s per call, and all of the hook's gh calls share `SESSION_GUIDE_GH_BUDGET`,
+default 3 s). It fails open and says "not checked" when gh is off with `SESSION_GUIDE_GH=0`, missing, failing or out
+of time; an unchecked claim stays open and is asked about again on the next prompt. The repo is the claim's own
+(`--repo`, `owner/name#N`, a PR link), else the one repo the ledger's `Scope:` line names (add it there, for example
+`Scope: billing · host1 · ~/.claude · uds:/tmp/cc-socks/1.sock · repo acme/billing`). With neither, gh is never asked
+(it would answer for whatever repository the current folder is in) and the claim is listed as "repo unknown: add
+--repo". A merged PR closes its own claim with gh's merge time as evidence, and the hook says so once. A PR still
+open, or closed without merging, stays listed until it merges or you `claim done` it. A run claim with no evidence
+after `SESSION_GUIDE_CLAIM_HOURS` (default 4) is listed until it has some: ask for the output. The hook also counts
+the unclaimed lines: "MERGE READY #N", "<someone> runs / tells …" and `! command` lines from the last
+`SESSION_GUIDE_CLAIM_DAYS` (default 3) days with no claim row. A PR the ledger already says is merged or deployed,
+or that has a Verifications row, is not counted. Claim each one, then `claim done` the ones already done.
+
+A merge claim closed by gh is evidence of the merge, not of the fix working: a fix that reached prod or staging still
+gets its follow-up review above.

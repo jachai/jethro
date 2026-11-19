@@ -3,8 +3,12 @@
 
     python3 guide_title.py mark <ledger.md> [--session <id>]   this session is a guide
     python3 guide_title.py unmark [--session <id>]             it no longer is
-    python3 guide_title.py retire [<id>]                       it handed over: faded red title, never red again
+    python3 guide_title.py retire [<id>] [--to <uds:socket>] [--force | --check]
+                                                               it handed over: faded red title, never red again
     python3 guide_title.py guided [<id>]                       a MANAGED worker: orange blocks + "(g) " first
+    python3 guide_title.py launch [--watched] -- <claude args…>
+                                                               start a worker with `claude --bg`, marked guided at once
+    python3 guide_title.py reconcile [--ledger <ledger.md>]    open rows whose session ended, blocked or handed off
     python3 guide_title.py watched [<id>]                      a WATCHED session: light gray blocks first
     python3 guide_title.py active [<id>]                       running, not managed or watched: blue blocks first
     python3 guide_title.py unguided [<id>]                     no longer managed or watched: the prefix comes off
@@ -15,6 +19,9 @@
     python3 guide_title.py waiting <id> "<what the user does>" it waits on the user: a reminder, due now
     python3 guide_title.py waiting ask "<question>" [--hours N | --at "YYYY-MM-DD HH:MM"]
                                                                the guide owes the user a question: a reminder row
+                                     [--closes pr:#N | result:<artifact id> | ticket:<ID> | session:<id8>] ...
+                                                               (either form) the reminder closes itself when it happens
+    python3 guide_title.py claim merge | run | done | list ... merges and commands asked of someone (guide_claims.py)
     python3 guide_title.py sleep <id> <hours>                  put that reminder off
     python3 guide_title.py unwait <id>                         it no longer waits on the user: the reminder goes
     python3 guide_title.py result "<deliverable>" <link> [--from "<title [id6]>"]
@@ -51,7 +58,20 @@ Every title kind has its own color, so the agents view reads at a glance:
     🟧🟧 (g) billing lead · Waiting on CI         a MANAGED (guided) session
 
 A retired guide (one that handed over to a new guide) gets RETIRED_TITLE instead, on its next prompt and from then on
-(override: SESSION_GUIDE_RETIRED_TITLE). Its marker holds `retired`, so the hook can't turn it red again.
+(override: SESSION_GUIDE_RETIRED_TITLE). Its marker holds `retired`, so the hook can't turn it red again, and on every
+prompt the hook tells it that it is retired: forward each message it gets to the new guide's socket (`--to`, else the
+caller's own socket when the new guide retires the old one, else the live guide of the same ledger) and do not act.
+`retire` is a gate: it runs reconcile (guide_reconcile.py) on the guide's ledger and exits 1, retiring nothing, while
+any open row needs the guide (a handoff with no successor, an ended or blocked worker, an undelivered or inbox
+report). `--force` retires anyway and writes those rows into the ledger's `## Handoff` table for the next guide;
+`--check` only runs the gate. Either way it prints GUIDE_CHANGE, the one line to send each MANAGED worker.
+
+`launch` starts a worker so that its marker is in place before its first tool call (agent-guard reads the marker to
+tell a guide-managed session from any other). `claude --bg` picks its own session id (it ignores --session-id, and
+--resume of an unknown id fails), so for a new session the marker is written the moment `claude --bg` prints the id,
+while the worker's first model call is still in flight; with `--resume <id>` it is written before the command runs.
+
+Every prompt of a live guide starts with "Now: <local date, time and zone>": a guide's own guess of the time drifts.
 
 A guided worker (marker `guided`) keeps its own title with GUIDED_PREFIX in front (override:
 SESSION_GUIDE_GUIDED_PREFIX), so the user can tell at a glance which sessions don't need them. The hook prefixes the
@@ -76,7 +96,11 @@ then both hooks give the same title. Guides and retired guides get its `off` fla
 Every MANAGED or WATCHED session has to settle: either it waits on the user (a row in the ledger's `## Waiting on ...`
 table, whose Remind at says when to ask again; `sleep` moves it) or it is closed (`done`, which also removes that row).
 settle lists the sessions quiet for --idle-hours that are neither, and the reminders that are due; the hook gives a guide
-both on every prompt. A running session, and one whose reminder sleeps, is left alone.
+both on every prompt. A running session, and one whose reminder sleeps, is left alone. Quiet is the slow signal; the
+fast one is reconcile (guide_reconcile.py, its docstring is the spec): a MANAGED or WATCHED row whose job ended more
+than 3 minutes ago handed off with no successor row, is blocked with no Waiting row, or (MANAGED) just ended, and the
+reports workers left in the ledger's inbox/ folder. The hook, `settle`, `mark` (first, before the audit) and `retire`
+print it; `reconcile --ledger <path>` prints it for any ledger and never writes.
 
 Decided work must not sit idle either: guide_audit.py (next to this script; its docstring is the spec) lists the Open
 items and queue rows with no worker, the landings nobody verified and the sessions that never finished, ranked, 10
@@ -85,7 +109,13 @@ STATE.md, the title shows its idle count, and the hook nags a guide whose idle i
 
 A question the guide owes the user ("ask this afternoon") is a reminder too: `waiting ask "<question>"` writes a row
 keyed "owed question [<6 hex chars of the question>]" in the same table, due now or at --hours / --at, so a new guide's
-`settle` finds it after a handoff. `sleep` and `unwait` take that key like a session id.
+`settle` finds it after a handoff. `sleep` and `unwait` take that key like a session id. `--closes <event>` (either
+form, repeatable) appends a "· closes: …" tag that guide_audit.close_tagged() reads: once every event has happened
+(the PR merged, the Results row satisfied, the ticket closed in a Decision or Results row, the session DONE) the next
+audit removes the reminder and the hook says so. A due reminder that later rows already cover is listed as "likely
+done" (the audit's covered() check) in place of the ask, in the hook and in `settle` alike. Whenever this script
+writes a Waiting or Results row, or closes a Sessions row, it prints the open rows that share an id with it ("open
+rows sharing ids: … Does this replace them?").
 
 results: a finished deliverable the user asked for (a doc, a deck or slide, a review, a report, a release, a PR ready
 for them) goes in the ledger's `## Results for you` table with `result`, and stays unanswered until `result-answer`
@@ -140,6 +170,10 @@ ANSWERS = ("satisfied", "change", "drop", "not-looked")
 RESULT_HOURS = 1  # "haven't looked yet": ask again this often, unless the user picks another cadence
 UNANSWERED = "\u2014"  # the Answer cell until the user answers
 ASK_AGAIN = re.compile(r"ask again (\d{4}-\d\d-\d\d \d\d:\d\d)(?: \(every ([\d.]+) h\))?")
+# What the outgoing guide sends each MANAGED worker, word for word: reports never stop going to the socket.
+GUIDE_CHANGE = "Guide changing. Keep sending to this socket; the old guide forwards until the new one introduces itself."
+HANDOFF_SECTION = "## Handoff"
+HANDOFF_TABLE = ["| Session [id6] | Kind | What is open | Written |\n", "|---|---|---|---|\n"]
 
 
 def config_dir():
@@ -232,6 +266,106 @@ def audit_module():
         return None
 
 
+def reconcile_module():
+    """guide_reconcile, which lives next to this script and imports it back; None when it can't be loaded."""
+    try:
+        sys.modules.setdefault("guide_title", sys.modules[__name__])
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import guide_reconcile
+        return guide_reconcile
+    except Exception:
+        return None
+
+
+def claims_module():
+    """guide_claims (merge and run claims), next to this script; None when it can't be loaded."""
+    try:
+        sys.modules.setdefault("guide_title", sys.modules[__name__])
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import guide_claims
+        return guide_claims
+    except Exception:
+        return None
+
+
+def claims_context(ledger):
+    try:
+        lines = claims_module().hook_lines(ledger)
+    except Exception:  # fail open, like the rest of the hook
+        return None
+    return "session-guide claims:\n%s" % "\n".join("- " + l for l in lines) if lines else None
+
+
+def reminder_notes(ledger):
+    """{id6: note} from the last audit for the due reminders: "likely done: …" (later rows cover it: confirm, don't
+    ask) or "checked <date>: still open because …" (ask, with this). {} when there is no audit."""
+    try:
+        return audit_module().reminder_checks(ledger) or {}
+    except Exception:
+        return {}
+
+
+def split_due(rows, notes):
+    """(to ask, likely done) of the due reminders; each row gets its audit note as `note`."""
+    ask, covered = [], []
+    for row in rows:
+        note = (notes.get(row["id"]) or "").strip()
+        (covered if note.startswith("likely done") else ask).append(dict(row, note=note))
+    return ask, covered
+
+
+def shared_note(ledger, text, key=None):
+    """Print which open rows share an id with a row just written, so the guide closes the ones it replaces."""
+    try:
+        keys = audit_module().shared_ids(ledger, text, exclude=tuple(k for k in (key,) if k))
+    except Exception:
+        return
+    if keys:
+        print("open rows sharing ids: %s. Does this replace them?" % ", ".join(keys))
+
+
+CLOSES_VALUE = re.compile(r"^(?:pr:#?\d{1,6}|result:[\w-]{6,64}|ticket:[A-Za-z][A-Za-z0-9]{0,9}-\d{1,6}|"
+                          r"session:[0-9a-fA-F]{6,36})$")
+
+
+def closes_tag(values):
+    """The ` · closes: …` tag guide_audit.close_tagged() reads, from --closes values; "" for none."""
+    values = [v.strip() for v in values or [] if v.strip()]
+    bad = [v for v in values if not CLOSES_VALUE.match(v)]
+    if bad:
+        raise SystemExit("--closes takes pr:#N, result:<artifact id>, ticket:<ID> or session:<id8>, not %s"
+                         % ", ".join(map(repr, bad)))
+    return " · closes: " + " ".join(values) if values else ""
+
+
+def reconcile_lines(ledger, me="", strict=False):
+    """(flags, one line each) from reconcile. ([], []) when it fails, since it must never break a prompt; `strict`
+    (the retire gate) raises instead, so a failure never reads as "nothing open"."""
+    try:
+        module = reconcile_module()
+        if module is None:
+            raise RuntimeError("guide_reconcile.py could not be loaded from %s" % os.path.dirname(os.path.abspath(__file__)))
+        flags = module.reconcile(ledger, me=me)
+        return flags, [module.describe(f, "python3 " + os.path.abspath(__file__)) for f in flags]
+    except Exception:
+        if strict:
+            raise
+        return [], []
+
+
+def reconcile_context(ledger, me=""):
+    flags, lines = reconcile_lines(ledger, me)
+    if not lines:
+        return None
+    return ("session-guide reconcile: %d ledger row(s) disagree with their sessions' real state. Act on these first, "
+            "in this turn; each line comes back on every prompt until its row changes:\n%s"
+            % (len(lines), "\n".join("- " + l for l in lines)))
+
+
+def now_line():
+    return time.strftime("Now: %a %Y-%m-%d %H:%M %Z (UTC%z). Use this, never a guess, for every time you write.")
+
+
 def idle_counts(ledger):
     """(how many decided items sit idle, the oldest one's age as "9h" / "4d") from the last audit; (0, "") with none."""
     try:
@@ -322,9 +456,18 @@ def guide_context(session_id):
     if not content or content in WORKER_MARKERS + (RETIRED, DONE):
         return None
     ledger = os.path.expanduser(content)
+    if not os.path.isfile(ledger) or not any(l.strip() == "## Sessions" for l in open(ledger, errors="replace")):
+        return None  # no ledger to guide by: fail open, say nothing
+    parts = [now_line()]  # the clock and reconcile first: nothing that can call gh comes before them
+    reconciled = reconcile_context(ledger, session_id)
+    if reconciled:
+        parts.append(reconciled)
+    late = []
+    # The audit closes rows whose closes: tag happened and checks the due reminders, so it runs before settle; it
+    # (and claims, below) may ask gh, so each runs within what is left of the hook's time.
+    audit = in_time(audit_context, ledger, late=late, name="audit")
     found, shut, held = untracked(ledger, session_id), closable(ledger), settle_closed()
     settling = settle_status(ledger, session_id)
-    parts = []
     if held:
         parts.append("session-guide sweep: %d closed session(s) still have a running process, so their titles stay "
                      "orange until a prompt reaches them. SendMessage each the CLOSE message: %s"
@@ -348,9 +491,17 @@ def guide_context(session_id):
                      "user first if it is WATCHED or you aren't sure). Still needs the user: `python3 %s waiting <id> "
                      "\"<exact action, full link or command>\"`. More work for it: send it the next step."
                      % (len(rows), "\n".join(lines), os.path.abspath(__file__), os.path.abspath(__file__)))
-    if settling["due"]:
-        rows = settling["due"]
-        lines = ["- %s: %s (asked %s)" % (r["session"], r["what"], r["asked"]) for r in rows[:8]]
+    ask, covered = split_due(settling["due"], reminder_notes(ledger))
+    if covered:
+        lines = ["- %s: %s -> %s" % (r["session"], r["what"], r["note"]) for r in covered[:8]]
+        lines += ["- and %d more" % (len(covered) - 8)] * (len(covered) > 8)
+        parts.append("session-guide settle: %d due reminder(s) look done already; later ledger rows cover them. Do not "
+                     "ask the user: confirm each from its evidence, then close it as its line says:\n%s"
+                     % (len(covered), "\n".join(lines)))
+    if ask:
+        rows = ask
+        lines = ["- %s: %s (asked %s)%s" % (r["session"], r["what"], r["asked"], "; " + r["note"] if r["note"] else "")
+                 for r in rows[:8]]
         lines += ["- and %d more" % (len(rows) - 8)] * (len(rows) > 8)
         parts.append("session-guide settle: %d reminder(s) due:\n%s\n"
                      "Check each still applies (peek, PR state), then ask with AskUserQuestion, one question each, "
@@ -378,10 +529,120 @@ def guide_context(session_id):
                      "review with `followups --reviewed`."
                      % (time.strftime(TIME_FORMAT, time.localtime(last)) if last else "never", due,
                         os.path.abspath(__file__)))
-    audit = audit_context(ledger)
+    claims = in_time(claims_context, ledger, late=late, name="claims")
+    if claims:
+        parts.append(claims)
     if audit:
         parts.append(audit)
-    return "\n".join(parts) or None
+    if late:
+        parts.append("session-guide: the %s check ran past this prompt's time budget (%g s) and was skipped; it runs "
+                     "again on the next prompt." % (" and ".join(late), hook_seconds()))
+    return "\n".join(parts)
+
+
+HOOK_SECONDS = 7.0  # what the hook may spend in all (its timeout is 10 s): SESSION_GUIDE_HOOK_SECONDS
+HOOK_STARTED = [None]  # when cmd_hook began; None outside the hook (no deadline)
+
+
+def hook_seconds():
+    try:
+        return float(os.environ.get("SESSION_GUIDE_HOOK_SECONDS", HOOK_SECONDS))
+    except ValueError:
+        return HOOK_SECONDS
+
+
+def in_time(fn, *args, **kw):
+    """fn(*args) when it returns within what is left of the hook's time, else None (its name goes into `late`).
+    Outside the hook it simply runs. An exception is None too: a slow or broken gh check never costs the prompt the
+    lines already made."""
+    late, name = kw.pop("late", None), kw.pop("name", getattr(fn, "__name__", "check"))
+    if HOOK_STARTED[0] is None:
+        try:
+            return fn(*args)
+        except Exception:
+            return None
+    left = HOOK_STARTED[0] + hook_seconds() - time.time()
+    box = []
+
+    def run():
+        try:
+            box.append(fn(*args))
+        except Exception:
+            box.append(None)
+    import threading
+    worker = threading.Thread(target=run)
+    worker.daemon = True  # a check still running when the hook answers dies with the process
+    worker.start()
+    worker.join(max(0.0, left))
+    if not box:
+        if late is not None:
+            late.append(name)
+        return None
+    return box[0]
+
+
+def gh_budget():
+    """Give this process one overall gh budget (guide_gh.set_budget: SESSION_GUIDE_GH_BUDGET, default 3 s), so the
+    audit's and the claims' gh calls can't run the hook past its timeout. Ignored when guide_gh or set_budget is
+    missing."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import guide_gh
+        guide_gh.set_budget()
+    except Exception:
+        pass
+
+
+def forward_path(session_id):
+    """Where `retire` notes a retired guide's ledger and the new guide's socket. Not in guides/: agent-guard and the
+    title read a marker's whole content, and a retired marker holds exactly `retired`."""
+    return os.path.join(config_dir(), "session-guide", "retired", session_id + ".json")
+
+
+def socket_of(session_id):
+    """The `uds:` address of the live process that holds this session, or None."""
+    for path in glob.glob(os.path.join(config_dir(), "sessions", "*.json")):
+        try:
+            with open(path) as f:
+                info = json.load(f)
+            if info.get("sessionId") == session_id and info.get("messagingSocketPath"):
+                try:
+                    os.kill(int(info["pid"]), 0)
+                except PermissionError:
+                    pass  # the process exists, it is just not ours
+                return "uds:" + info["messagingSocketPath"]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return None
+
+
+def live_guide(ledger, but=""):
+    """The session id of the newest guide marker naming `ledger` (not `but`), or None."""
+    found = []
+    for path in glob.glob(os.path.join(config_dir(), "session-guide", "guides", "*")):
+        sid = os.path.basename(path)
+        content = marker_content(sid)
+        if sid != but and content and content not in WORKER_MARKERS + (RETIRED, DONE) and \
+                os.path.abspath(os.path.expanduser(content)) == os.path.abspath(ledger):
+            found.append((os.path.getmtime(path), sid))
+    return max(found)[1] if found else None
+
+
+def retired_context(session_id):
+    """What a retired guide hears on every prompt: it is retired, where to forward, and not to act."""
+    try:
+        with open(forward_path(session_id)) as f:
+            note = json.load(f)
+    except (OSError, ValueError):
+        note = {}
+    to, ledger = note.get("to"), note.get("ledger")
+    if not to and ledger:
+        new = live_guide(ledger, session_id)
+        to = socket_of(new) if new else None
+    where = to or ("the new guide's socket (the Scope line of %s)" % ledger if ledger else "the new guide's socket")
+    return ("session-guide: you are a RETIRED guide%s. Do not act as guide: no relays, starts, closes, interviews or "
+            "ledger edits. Forward every message a worker sends you, unchanged, to %s by SendMessage, and tell its "
+            "sender to send there from now on; tell the user to talk to the new guide." % (" since %s" % note["at"] if note.get("at") else "", where))
 
 
 def marker_content(session_id):
@@ -441,9 +702,13 @@ def cmd_hook():
         event = json.load(sys.stdin)
         sid = event["session_id"]
         current = (event.get("session_title") or "").strip()
+        HOOK_STARTED[0] = time.time()
+        gh_budget()  # before the audit and the claims, which may call gh
         if marker_content(sid):
             sync_session_titles(sid, marker_content(sid))
         context = guide_context(sid)  # first: it refreshes the audit counts the title shows
+        if marker_content(sid) == RETIRED:
+            context = retired_context(sid)
         title = title_for(sid, current)
         if marker_content(sid) == UNGUIDED and current and not title:
             os.remove(marker(sid))  # the prefix is off: nothing left to undo
@@ -456,6 +721,7 @@ def cmd_hook():
             json.dump({"hookSpecificOutput": output}, sys.stdout)  # ASCII-escaped: any locale
     except Exception:  # fail open: a broken guide title must never block a prompt
         pass
+    HOOK_STARTED[0] = None
     return 0
 
 
@@ -467,6 +733,12 @@ def cmd_mark(args):
     if marker_content(sid) in (RETIRED, DONE):
         raise SystemExit("%s is %s; a new guide needs a fresh session"
                          % (sid[:8], "a retired guide" if marker_content(sid) == RETIRED else "closed"))
+    flags, lines = reconcile_lines(ledger, sid)  # first: what ended under the last guide outranks the whole audit
+    for line in lines:
+        print("Reconcile: " + line)
+    if lines:
+        print("Act on the %d reconcile line(s) above before the audit table: they are sessions that ended, handed off or "
+              "wait on you right now." % len(lines))
     write_marker(sid, ledger)
     found = refresh_audit(ledger, full=True)  # a takeover starts from the whole body of work, not from the reminders
     print("%s is a guide; title from its next prompt: %s" % (sid[:8], title_for(sid)))
@@ -489,10 +761,56 @@ def cmd_unmark(args):
 def cmd_retire(args):
     sid = resolve_session(args.session)
     old = marker_content(sid)
-    write_marker(sid, RETIRED)
-    print("%s is retired; title from its next prompt: %s" % (sid[:8], title_for(sid)))
+    caller = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    ledger = None
     if old and old not in WORKER_MARKERS + (RETIRED, DONE) and os.path.isfile(os.path.expanduser(old)):
-        found = refresh_audit(os.path.expanduser(old))  # the handoff leaves the live state current
+        ledger = os.path.abspath(os.path.expanduser(old))
+    elif old == RETIRED:
+        try:
+            with open(forward_path(sid)) as f:
+                ledger = json.load(f).get("ledger")
+        except (OSError, ValueError):
+            pass
+    try:
+        found = zip(*reconcile_lines(ledger, caller, strict=True)) if ledger else ()
+    except Exception as error:  # the gate can't see the rows: refuse, unless the user said --force
+        print("Reconcile failed on %s: %s: %s" % (ledger, type(error).__name__, error))
+        if args.check or not args.force:
+            print("Not retired: the open rows could not be checked. Fix the error, or run `retire --force` to retire "
+                  "without the check.")
+            return 1
+        found = ()
+    pairs = [(flag, line) for flag, line in found if flag["id"] != sid[:6].lower()]  # never the guide's own row
+    lines = [line for _, line in pairs]
+    for line in lines:
+        print("Reconcile: " + line)
+    if lines and (args.check or not args.force):
+        print("Not retired: %d open row(s) above need a guide. Act on each now (start the successor, answer or record "
+              "the worker, close it), or run `retire --force` to hand them to the next guide in the ledger's %s table."
+              % (len(lines), HANDOFF_SECTION))
+    print("Send each MANAGED worker this line by SendMessage, word for word: \"%s\"" % GUIDE_CHANGE)
+    if args.check or (lines and not args.force):
+        return 1 if lines else 0
+    if lines:
+        now = time.strftime(TIME_FORMAT)
+        for flag, line in pairs:
+            write_row(ledger, HANDOFF_SECTION, HANDOFF_SECTION + " (open at the last guide change)", HANDOFF_TABLE,
+                      lambda cells: (row_id(cells[0]), cells[1]) if cells else None, (flag["id"], flag["kind"]),
+                      [flag["session"], flag["kind"], line, now], before=("## Streams", "## Sessions"))
+        print("%d row(s) written to the %s table of %s for the next guide" % (len(lines), HANDOFF_SECTION, ledger))
+    to = args.to or (socket_of(caller) if caller and caller != sid else None)
+    if not to and ledger:
+        new = live_guide(ledger, sid)
+        to = socket_of(new) if new else None
+    write_marker(sid, RETIRED)
+    os.makedirs(os.path.dirname(forward_path(sid)), exist_ok=True)
+    with open(forward_path(sid), "w") as f:
+        json.dump(dict(ledger=ledger, to=to, at=time.strftime(TIME_FORMAT)), f)
+    print("%s is retired; title from its next prompt: %s" % (sid[:8], title_for(sid)))
+    print("Its prompts now say: you are retired, forward to %s, do not act." % (to or "the new guide's socket (pass "
+                                                                                     "--to uds:<socket> to name it)"))
+    if ledger:
+        found = refresh_audit(ledger)  # the handoff leaves the live state current
         if found:
             print("Handed over: %s\nLive state for the next guide: %s" % (found[0], found[2]))
     return 0
@@ -755,11 +1073,18 @@ def require_ledger():
 
 def cmd_settle(args):
     ledger = os.path.expanduser(args.ledger or require_ledger())
+    audit = refresh_audit(ledger)  # first: it closes rows whose closes: tag happened and checks the due reminders
     found = settle_status(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""), args.idle_hours)
+    ask, covered = split_due(found["due"], reminder_notes(ledger))
+    for line in reconcile_lines(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))[1]:
+        print("Reconcile: " + line)  # first: these ended minutes ago, not hours
     for row in found["unsettled"]:
         print("Unsettled: " + describe_unsettled(row))
-    for row in found["due"]:
-        print("Due: %s: %s (asked %s)" % (row["session"], row["what"], row["asked"]))
+    for row in covered:
+        print("Likely done: %s: %s -> %s" % (row["session"], row["what"], row["note"]))
+    for row in ask:
+        print("Due: %s: %s (asked %s)%s" % (row["session"], row["what"], row["asked"],
+                                             "; " + row["note"] if row["note"] else ""))
     for row in found["asleep"]:
         print("Asleep until %s: %s: %s" % (row["remind"], row["session"], row["what"]))
     results = results_status(ledger)
@@ -768,10 +1093,10 @@ def cmd_settle(args):
     for row in results["asleep"]:
         print("Result asleep until %s: %s %s" % (time.strftime(TIME_FORMAT, time.localtime(row["at"])),
                                                   row["deliverable"], row["link"]))
-    print("%d unsettled, %d due, %d asleep" % (len(found["unsettled"]), len(found["due"]), len(found["asleep"]))
+    print("%d unsettled, %d due, %d asleep" % (len(found["unsettled"]), len(ask), len(found["asleep"]))
+          + (", %d likely done" % len(covered) if covered else "")
           + (", %d result(s) unanswered" % len(results["due"]) if results["due"] else ""))
     print_next_reminder(ledger, found, results)
-    audit = refresh_audit(ledger)
     if audit:  # a wake with nothing due still has this to work on
         print("Audit: %s\n%s" % audit[:2])
         if not found["due"] and not found["unsettled"] and not results["due"]:
@@ -805,9 +1130,20 @@ def cmd_waiting(args):
         raise SystemExit("%s has no open row in ## Sessions (level %r); give it one first" % (sid[:8], level))
     now = time.strftime(TIME_FORMAT)
     old = waiting_rows(ledger).get(sid[:6].lower())
+    what = tagged(what, args, old)
     write_waiting(ledger, sid[:6].lower(), [cell, what, old["asked"] if old else now, old["remind"] if old else now])
     print("%s waits on the user; reminder at %s" % (sid[:8], old["remind"] if old else now))
+    shared_note(ledger, what, sid[:6].lower())
     return 0
+
+
+def tagged(what, args, old=None):
+    """`what` with the closes: tag of --closes, or the one its old row had when no --closes is given."""
+    tag = closes_tag(getattr(args, "closes", None))
+    if not tag and old:
+        found = re.search(r"\s*\u00b7?\s*\bcloses:.*$", old["what"])
+        tag = " \u00b7 " + found.group().strip(" \u00b7") if found else ""
+    return what + tag
 
 
 def owed_question(ledger, question, args):
@@ -822,9 +1158,11 @@ def owed_question(ledger, question, args):
               else time.strftime(TIME_FORMAT, time.localtime(now + (args.hours or 0) * 3600)))
     key = owed_key(question)
     old = waiting_rows(ledger).get(key)
+    question = tagged(question, args, old)
     write_waiting(ledger, key, ["%s [%s]" % (OWED, key), question, old["asked"] if old else
                                 time.strftime(TIME_FORMAT, time.localtime(now)), remind])
     print("owed question [%s] is in the waiting table; ask at %s (sleep / unwait it as `%s`)" % (key, remind, key))
+    shared_note(ledger, question, key)
     return 0
 
 
@@ -864,6 +1202,7 @@ def cmd_result(args):
         deliverable += " (%s)" % " ".join(args.source.split())
     now = time.strftime(TIME_FORMAT)
     write_result(ledger, key or result_key(deliverable), [deliverable, link, now, now, UNANSWERED])
+    shared_note(ledger, "%s %s" % (deliverable, link))
     print("%s: %s is in Results for you, unanswered%s; ask the user now: Satisfied / Change it / Drop it / Haven't "
           "looked yet" % (deliverable, link, " again (it was %s)" % old["answer"] if old else ""))
     return 0
@@ -1179,6 +1518,91 @@ def cmd_sweep(args):
     return 0
 
 
+def cmd_reconcile(args):
+    """Print reconcile's flags for a ledger. Reads only, so it runs against any ledger without being its guide."""
+    ledger = os.path.expanduser(args.ledger or require_ledger())
+    module = reconcile_module()
+    if module is None:
+        raise SystemExit("guide_reconcile.py is missing next to %s" % os.path.abspath(__file__))
+    if not os.path.isfile(ledger):
+        raise SystemExit("no ledger at %s" % ledger)
+    flags = module.reconcile(ledger, grace_minutes=args.grace_minutes, me=os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
+    for flag in flags:
+        print(module.describe(flag, "python3 " + os.path.abspath(__file__)))
+    print("%d to reconcile" % len(flags) if flags else "Nothing to reconcile: every open row matches its session.")
+    return 0
+
+
+def full_id(id8, wait=5.0):
+    """The full session id behind the short id `claude --bg` prints: its job's state.json, else its transcript's name.
+    Waits up to `wait` seconds for either to appear; None when neither does."""
+    end = time.time() + wait
+    while True:
+        try:
+            with open(os.path.join(config_dir(), "jobs", id8, "state.json")) as f:
+                sid = json.load(f).get("sessionId") or ""
+            if sid.startswith(id8):
+                return sid
+        except (OSError, ValueError):
+            pass
+        hits = glob.glob(os.path.join(config_dir(), "projects", "*", id8 + "*.jsonl"))
+        if len(hits) == 1:
+            return os.path.basename(hits[0])[:-6]
+        if time.time() >= end:
+            return None
+        time.sleep(0.05)
+
+
+def cmd_launch(args):
+    """Start a worker with `claude --bg <args>` and mark it guided (or watched) before its first tool call.
+
+    `claude --bg` ignores --session-id, and --resume of an unknown id fails, so a new session's id is known only once
+    the command prints it ("backgrounded · <id8>"); the marker is written right then, while the command may still run
+    and the worker's first model call is in flight. With `--resume <id>` the id is known first, so the marker is
+    written before the command runs. SESSION_GUIDE_CLAUDE names another binary (tests)."""
+    import shlex
+    import subprocess
+    level = WATCHED if args.watched else GUIDED
+    extra = list(args.claude_args)
+    if extra[:1] == ["--"]:
+        extra = extra[1:]
+    if not extra:
+        raise SystemExit("pass the claude arguments after --, for example: launch -- --model sonnet \"<brief>\"")
+    command = shlex.split(os.environ.get("SESSION_GUIDE_CLAUDE") or "claude")
+    command += [] if "--bg" in extra or "--background" in extra else ["--bg"]
+    command += extra
+    sid = None
+    if "--resume" in extra[:-1]:
+        given = extra[extra.index("--resume") + 1]
+        sid = given if len(given) == 36 else resolve_session(given)
+        if marker_content(sid) not in (None,) + WORKER_MARKERS:
+            raise SystemExit("%s is a guide or closed; it is not launched as a worker" % sid[:8])
+        write_marker(sid, level)  # before the command: the resumed session's first tool call already sees it
+    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    printed = None
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        found = re.search(r"\bbackgrounded\W+([0-9a-f]{8})\b", line)
+        if found and not printed:
+            printed = found.group(1)
+            if not (sid and sid.startswith(printed)):
+                sid = full_id(printed)
+                if sid:
+                    write_marker(sid, level)  # now, while the worker's first model call is still in flight
+    code = proc.wait()
+    if code or not printed:
+        print("claude exited %d%s; nothing marked for it" % (code, "" if printed else " without printing a session id"))
+        return code or 1
+    if not sid:
+        print("launched [%s] but found no full session id for it in 5 s: run `python3 %s %s %s` now"
+              % (printed, os.path.abspath(__file__), level, printed))
+        return 1
+    print("launched [%s] %s, marked %s the moment it started. Give it its Sessions row now: | <title> [%s] | %s | "
+          "... |" % (sid[:8], sid, level, sid[:6], "WATCHED" if args.watched else "MANAGED"))
+    return 0
+
+
 def cmd_unguided(args):
     sid = resolve_session(args.session)
     content = marker_content(sid)
@@ -1304,8 +1728,11 @@ def cmd_done(args):
     if ledger is None:
         print("no single guide ledger found: set its row's Level to DONE yourself")
     else:
+        row = " ".join(l for l in open(ledger, errors="replace") if l.lstrip().startswith("|") and
+                       row_id(split_row(l)[0]) == sid[:6].lower())
         print("%d row(s) in %s set to DONE" % (close_rows(ledger, sid), ledger))
         write_waiting(ledger, sid[:6].lower(), None)
+        shared_note(ledger, row, sid[:6].lower())
     return 0
 
 
@@ -1357,6 +1784,17 @@ def main(argv=None):
     unmark.add_argument("--session")
     retire = sub.add_parser("retire", help="retire a guide that handed over (faded red title)")
     retire.add_argument("session", nargs="?")
+    retire.add_argument("--to", help="the new guide's uds: socket, for the retired guide to forward to")
+    retire.add_argument("--force", action="store_true",
+                        help="retire although open rows need a guide; they go into the ledger's ## Handoff table")
+    retire.add_argument("--check", action="store_true", help="only run the gate: exit 1 while open rows need a guide")
+    launch = sub.add_parser("launch", help="start a worker with `claude --bg`, marked guided before its first tool call")
+    launch.add_argument("--watched", action="store_true", help="mark it watched, not guided")
+    launch.add_argument("claude_args", nargs=argparse.REMAINDER, help="-- then the claude arguments")
+    rec = sub.add_parser("reconcile", help="open rows whose session ended, is blocked or handed off; never writes")
+    rec.add_argument("--ledger", help="any ledger (default: this guide's)")
+    rec.add_argument("--grace-minutes", type=float, default=None,
+                     help="leave jobs that ended this recently alone (default SESSION_GUIDE_GRACE_MINUTES or 3)")
     guided = sub.add_parser("guided", help='a MANAGED worker: orange blocks and "(g) " before its title')
     guided.add_argument("session", nargs="?")
     watched = sub.add_parser("watched", help="a WATCHED session: light gray blocks before its title")
@@ -1375,6 +1813,9 @@ def main(argv=None):
     waiting.add_argument("what")
     waiting.add_argument("--hours", type=float, help="`ask` only: ask in this many hours (default: now)")
     waiting.add_argument("--at", help="`ask` only: ask at this local time, YYYY-MM-DD HH:MM")
+    waiting.add_argument("--closes", action="append", metavar="EVENT",
+                         help="repeatable: pr:#N, result:<artifact id>, ticket:<ID> or session:<id8>; the audit closes "
+                              "the reminder itself once every one has happened")
     sleep = sub.add_parser("sleep", help="put a session's reminder off")
     sleep.add_argument("session")
     sleep.add_argument("hours", type=float)
@@ -1411,6 +1852,9 @@ def main(argv=None):
     answer.add_argument("--every", type=float, help="not-looked: ask again every this many hours (default %s)"
                                                     % RESULT_HOURS)
     answer.add_argument("--ledger")
+    claims = claims_module()
+    if claims is not None:
+        claims.add_parser(sub)
     args = p.parse_args(argv)
     commands = {"hook": lambda a: cmd_hook(), "mark": cmd_mark, "unmark": cmd_unmark, "retire": cmd_retire,
                 "guided": lambda a: set_level(a, GUIDED, guided_prefix()),
@@ -1419,7 +1863,8 @@ def main(argv=None):
                 "unguided": cmd_unguided, "unwatched": cmd_unguided, "done": cmd_done, "sweep": cmd_sweep,
                 "settle": cmd_settle, "waiting": cmd_waiting, "sleep": cmd_sleep, "unwait": cmd_unwait,
                 "followups": cmd_followups, "verification": cmd_verification, "result": cmd_result,
-                "result-answer": cmd_result_answer}
+                "result-answer": cmd_result_answer, "launch": cmd_launch, "reconcile": cmd_reconcile,
+                "claim": lambda a: claims.cmd_claim(a)}
     return commands[args.cmd](args)
 
 

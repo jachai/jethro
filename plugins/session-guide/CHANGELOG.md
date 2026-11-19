@@ -5,6 +5,86 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-11-19
+
+Two failure modes with one cause: the ledger said one thing, the facts another, and only the guide's memory joined
+them. A worker that handed off sat 29 minutes unseen across a guide change, and the audit asked the user about work
+finished days before. Each fix below is a check a script runs, not a rule the guide has to remember.
+
+### Added
+
+- Reconcile (`scripts/guide_reconcile.py`, `guide_title.py reconcile [--ledger <path>] [--grace-minutes N]`): every
+  MANAGED and WATCHED row against its job's real state (`jobs/<id8>/state.json`, `timeline.jsonl`, the live process
+  list). A row whose job ended over 3 minutes ago (`SESSION_GUIDE_GRACE_MINUTES`) is listed as HANDED OFF (no
+  successor row: start it now, without asking the user), BLOCKED (no Waiting row), ENDED, UNDELIVERED (its last report
+  never reached the guide) or INBOX (a report in `<ledger dir>/inbox/<id8>.md`). The hook prints it on every guide
+  prompt, `settle` and `retire` run it, and `mark` prints it first, before the audit table. It never writes.
+- Already covered? (Decision 992): before an idle, quiet, person or asked row, or a due reminder, is put to the user,
+  the audit looks for later evidence of the same ticket, PR, monitor or artifact id (a satisfied Results row, a DONE
+  session whose role or brief names it, a closing Decision, a Verifications row, a duplicate reminder, gh saying the
+  PR merged). Such a row becomes kind `check`: "likely done: … Confirm, then `set <key> done "<evidence>"`. Do not
+  ask the user." It leaves the ask list and the hook's nag count; a row that stays carries "checked <date>: still
+  open because …".
+- Strike sweep: the full audit writes `strike-candidates.md` next to the ledger; when the last sweep is over 24 h old
+  the hook asks the guide for ONE read-only 'strike sweep' helper, whose `<key> | DONE / SUPERSEDED / OPEN |
+  <evidence>` lines `guide_audit.py strike --from <file>` applies (DONE rows marked with their evidence, OPEN ones
+  stamped checked, one Log line, one line for the user). `audit --open-batch` lists what is really open, grouped by
+  stream, for one keep / start / drop question per group.
+- Claims (`scripts/guide_claims.py`, `guide_title.py claim merge #N [--repo o/r] [--by <who>]`, `claim run
+  "<command>" --by <who>`, `claim done <key> "<evidence>"`, `claim list`): a `## Claims` table in the ledger. The hook
+  re-checks open merge claims with `gh pr view --json state,mergedAt` (`scripts/guide_gh.py`: cached 10 minutes, 5 s
+  timeout, fails open, `SESSION_GUIDE_GH=0` turns it off); a merged PR closes its own claim and the hook says so once.
+  gh is asked only with a repo (the claim's own, or the one repo on the ledger's `Scope:` line; `guide_gh.repo_for`),
+  never the current folder's; a claim or `closes: pr:#N` tag with no repo stays open as "repo unknown: add --repo".
+  All of one hook run's gh calls share one budget (`guide_gh.set_budget`, `SESSION_GUIDE_GH_BUDGET`, default 3 s), so
+  the hook can't be killed by its 10 s timeout; a call cut short is unchecked and asked again on the next prompt.
+  Run claims with no evidence after `SESSION_GUIDE_CLAIM_HOURS` (default 4) are listed, and ledger lines that say
+  "MERGE READY #N", "<someone> runs / tells …" or hold a `!` command with no claim row are counted
+  (`SESSION_GUIDE_CLAIM_DAYS`, default 3).
+- `closes:` tags: an Open items row or a reminder can say `closes: pr:#N`, `result:<artifact id>`, `ticket:<ID>` or
+  `session:<id8>`, and `waiting` / `waiting ask` take `--closes`. When the event happens the audit closes the row
+  itself and the next hook line says so. A script that writes a Waiting or Results row, or closes a Sessions row, prints
+  the open rows that share an id with it, so the guide can close the old row while it still has the context.
+- Clock: every guide prompt starts with "Now: <local date, time and zone>", and the audit flags ledger lines dated
+  after now. A guide's own written times had drifted 2 hours ahead in 2 hours of work.
+- `guide_title.py launch [--watched] -- <claude args>`: starts a worker with `claude --bg` and writes its guided
+  marker the moment the session id is printed, while its first model call is still in flight (`--resume <id>` is
+  marked before it runs). `claude --bg` ignores `--session-id`, so a new session can't be marked sooner. A worker
+  marked a moment after a plain `claude --bg` had been stopped by a cost guard on its first tool call.
+  `SESSION_GUIDE_CLAUDE` names another binary (tests).
+
+### Changed
+
+- Worker contract rule 4: HANDED OFF, BLOCKED, DONE and MERGE READY always go by SendMessage to the guide's socket,
+  `uds:<socket>` exactly as the brief gives it, and a guide change never suspends this. A failed send goes to
+  `<ledger dir>/inbox/<id8>.md`, which reconcile reads. The guide's handoff no longer tells workers to report in their
+  final message (that line went out at 11 of 13 guide handoffs); `retire` prints the fixed line the guide sends
+  instead: "Guide changing. Keep sending to this socket; the old guide forwards until the new one introduces itself."
+- `retire [<id>] [--to uds:<socket>] [--force | --check]` is a gate: it runs reconcile and exits 1, retiring nothing,
+  while a row needs a guide. `--force` retires anyway and writes those rows into the ledger's `## Handoff (open at the
+  last guide change)` table; `--check` only runs the gate. A retired guide's hook tells it on every prompt to forward
+  every message to the new guide's socket and not act.
+- The skill: the guide starts workers with `launch`, acts on reconcile lines on every prompt, never asks the user
+  about a `check` row, strikes rows only after the sweep helper confirms each and tells the user in one line, puts
+  the rows still open to the user as one batch grouped by stream after the first sweep, claims every merge and
+  command it hands to someone, and runs `retire --check` before handing off.
+- The ledger template has the Claims and Handoff tables, `closes:` tags and the `inbox/` folder; the README has a
+  table of every environment variable.
+
+### Fixed
+
+- STATE.md "Open sessions" printed "running" for any session whose transcript had changed in the last two hours,
+  so a worker that had handed off minutes earlier still read as running. It now prints the job's real state
+  ("working: …", or "ended 12 min ago (done), result: …"); the old wording stays only for a session with no job
+  folder.
+- Worker reports sent to the guide's session title: the send fails and the report is lost (two workers on 11-19, one
+  verdict never delivered). The worker contract, the prompt suffix, the join steps and the verify brief now say
+  "send to uds:<socket>, never a title", and reconcile lists a report sent anywhere else as UNDELIVERED.
+- A session result "handed off to the guide" (a deliverable passed on) no longer counts as an unfinished handoff;
+  reconcile classifies a session by its result line, not by loose words in its text.
+- A "quiet" audit row could name an unrelated worker that only shared a version number with it; versions no longer
+  match a worker to a row.
+
 ## [0.1.19] - 2026-11-19
 
 ### Added
