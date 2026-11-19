@@ -2,7 +2,9 @@
 """guide_audit: the guide's look back over its whole body of work: what was decided, did it land, was it verified.
 
     python3 guide_audit.py audit [<ledger>] [--days 5] [--quick] [--limit 10] [--all] [--group <key>] [--queue <file.md>]...
-    python3 guide_audit.py set <key>[,<key>...] <asked | started | parked | done | dropped> [--session <id>] [--hours N] [--note "…"]
+    python3 guide_audit.py audit [<ledger>] --open-batch   the rows still open, grouped, for one keep / start / drop question
+    python3 guide_audit.py set <key>[,<key>...] <asked | started | parked | done | dropped> ["<evidence>"] [--session <id>] [--hours N] [--note "…"]
+    python3 guide_audit.py strike --from <verdicts file> [--ledger <ledger>]   apply a strike sweep's verdicts
     python3 guide_audit.py state [<ledger>]        print the live-state file (STATE.md), refreshed first
 
 audit reads the ledger's tables (never its log) and, unless --quick, the transcripts of the ledger's sessions from the
@@ -26,6 +28,32 @@ each with one next action:
             naming a PR the ledger never says was merged. Of a relay ('build', 'build 2', 'build (3)') only the last
             session counts.
 - backlog   Open items rows with no date, or older than twice --days: one row, for one bulk question to the user.
+- check     an idle, quiet, person or asked row, or a reminder in the Waiting table, that later ledger rows show as
+            likely done: before anything is put to the user, `covered()` takes the row's ids (tickets and monitor ids
+            "ABC-123", PRs "#123", 22-character artifact ids) and looks for LATER evidence: a satisfied Results row
+            naming the id, or naming a session whose Title / Role cell or brief file (a .md path in the Role cell, else
+            <ledger dir>/*/<session title as a slug>/brief.md) names it; a DONE Sessions row that names it; a Decision
+            naming it with a closing word; a verified Verifications row; another open reminder with the same id (the
+            same ask twice); for a PR, gh saying merged (guide_gh.py, cached, fails open). A check row leaves the ask
+            list and the hook's counts; its next action is "likely done: <evidence>. Confirm, then `set <key> done
+            "<evidence>"`". It never strikes a row by itself. A row that stays on the ask list says "checked <date>:
+            still open because <no later evidence | no id to match>".
+
+Tags. A row (Open items, or a reminder) may say `closes: pr:#N`, `result:<artifact id>`, `ticket:<ID>` or
+`session:<id8>` (several: all of them). When that has happened (gh says the PR merged; a satisfied Results row names
+the id; a satisfied Results row or a closing Decision names the ticket; the session's Sessions row is DONE), the
+audit closes the row itself (an Open items row's Status says DONE, a reminder leaves the Waiting table) and the next
+hook line says so. `shared_ids(ledger, text)` lists the open rows that share an id with `text`.
+
+Strike sweep. The full audit also writes strike-candidates.md next to the ledger: the check rows and the rows idle
+over 3 days not checked in the last week. When the last sweep is over a day old the hook asks the guide for ONE
+read-only helper, 'strike sweep', that returns `<key> | DONE / SUPERSEDED / OPEN | <evidence>` lines; `strike --from
+<file>` marks the DONE and SUPERSEDED rows ("DONE <date>: <evidence>" in the row), stamps the OPEN ones "checked
+<date>", writes one Log line and prints one line for the user. `audit --open-batch` then lists what is really open,
+grouped by stream, for one keep / start / drop question per group.
+
+Clock. Ledger lines whose first date is after now (past the Waiting, Results and Verifications tables, whose times
+are the scripts') are flagged: the guide's own written times drift ahead of the wall clock.
 
 Ranking. Each row scores value x age. Value: 6 for a broken verification or a reminder open over a day, 3 for idle or
 quiet approved work, 2 for work waiting on a person, an unverified landing or an unfinished session, 1 for a re-check,
@@ -54,6 +82,7 @@ prompt (at most every 10 minutes), nags with the top rows when an idle item is o
 Python 3 stdlib only.
 """
 import argparse
+import calendar
 import glob
 import hashlib
 import json
@@ -78,8 +107,28 @@ TOP = 10  # rows the audit prints; the rest are counted
 AGE_CAP = 7  # days: older than this ranks no higher
 # What a row is worth, by what it is. Its rank is this value x its age in days (capped), half again when its words
 # name prod, an outage, a customer, money or a gate, and half when they call it a glance, an idea or cosmetic.
-VALUE = {"broken": 6, "waiting": 6, "idle": 3, "quiet": 3, "person": 2, "unverified": 2, "unfinished": 2,
+VALUE = {"broken": 6, "waiting": 6, "idle": 3, "quiet": 3, "person": 2, "unverified": 2, "unfinished": 2, "check": 2,
          "recheck": 1, "proposed": 1, "decision": 1, "noresult": 1, "backlog": 1}
+ASK_STATES = ("idle", "quiet", "person", "asked")  # what `covered()` checks before the row is put to anyone
+SWEEP_HOURS = 24  # the hook asks for a strike sweep when the last one is older than this
+STRIKE_DAYS = 3  # a row idle this long is a strike candidate
+CHECKED_DAYS = 7  # a row a sweep found still open isn't a candidate again for this long
+GH_LOOKUPS = 8  # PRs one audit may ask gh about (each is cached 10 minutes)
+FUTURE_SLACK = 15 * 60  # a written time this far past now is a clock error
+# The ids a row is matched on: tickets and monitor ids ("ABC-123", "P-401"), PRs ("#5835"), artifact ids (22 letters and
+# digits, with an upper-case letter, a lower-case one and a digit).
+WORK_ID = re.compile(r"(?<![\w-])[A-Z][A-Z0-9]{0,9}-\d{2,6}(?![\w-])|(?<![\w&])#\d{2,6}(?![\w-])")
+ARTIFACT = re.compile(r"(?<![\w-])[A-Za-z0-9]{22}(?![\w-])")
+CLOSING = re.compile(r"\b(?:done|closed?|merged|dropped|superseded|shipped|satisfied|already|moot|resolved|answered)\b",
+                     re.I)
+CLOSES = re.compile(r"\bcloses:?\s+((?:pr|result|ticket|session):.*)", re.I)
+TAG = re.compile(r"\b(pr|result|ticket|session):\s*([^\s,;|)]+)", re.I)
+CHECKED = re.compile(r"\s*(?:·\s*)?\bchecked ((?:20\d\d-)?\d\d-\d\d)\b")  # a sweep's stamp in a row still open
+VERDICT = re.compile(r"^[\s|*-]*([0-9a-fA-F]{6}|D\d{1,5}|[A-Z][A-Z0-9]{0,9}-\d{1,6}|#\d{1,6})\s*\|\s*"
+                     r"(DONE|SUPERSEDED|OPEN)\b\W*\|?\s*(.*?)[\s|]*$", re.I)
+STAMP = re.compile(r"(?<![\d-])(?:(20\d\d)-)?(0[1-9]|1[0-2])-([0-2]\d|3[01])(?![\d-])(?:[ T]+([01]?\d|2[0-3]):([0-5])([\dx]))?")
+LATER_WORDS = re.compile(r"\b(?:until|again|due|remind\w*|by|before|re-?check\w*|next|eta|deadline|at|on|for|till?)\W*$",
+                         re.I)  # "sleep until 11-20 09:00" is a plan, not a written time
 URGENT = re.compile(r"\b(?:prod|production|outage|customers?|money|blocks?|blocked|gate|security|data loss)\b|\$\d", re.I)
 MINOR = re.compile(r"\b(?:glance|nice to have|cosmetic|typo|idea|proposal|maybe|loose ends?|low)\b", re.I)
 # An Owner cell that names no session and none of these words names a person: the item waits on them, not on a worker.
@@ -93,7 +142,9 @@ STRUCK = re.compile(r"^\W*(?:DONE|DROPPED|CLOSED|RESOLVED|SUPERSEDED|MOOT|SHIPPE
 PARKED = re.compile(r"\b(?:later|parked|not now|at cutover|at step|backlog|someday)\b", re.I)
 ANSWER = re.compile(r"\b(?:done|closed?|closes|dropped|drop|no port|stays?|not now|leave|skip|relayed|keep|let it run|"
                     r"backlog|no plan|declined|superseded|satisfied|as is|accepted)\b", re.I)
-NOT_DONE = re.compile(r"\b(?:blocked|waiting|waits|needs?|pending|partial|handed off|push ready|publish ready|draft|"
+# "handed off" is a relay that needs a successor; "handed off to the guide" is a deliverable passed on, a clean end.
+NOT_DONE = re.compile(r"\b(?:blocked|waiting|waits|needs?|pending|partial|push ready|publish ready|draft|"
+                      r"handed off(?!\s+(?:it\s+|them\s+)?(?:to|for)\s+(?:the\s+)?(?:guide|user|you)\b)|"
                       r"fail(?:ed|ing|s)?|stopped|not (?:done|verified|merged|deployed|pushed|finished|landed))\b", re.I)
 DECISION = re.compile(r"^(?:[-*]\s*)?\**(?:Decision\s+)?(\d{1,5})(?:\.|\b)\s*\(([^)]*)\)\s*(?:FINAL)?\s*(?:\*\*)?:?\s*(.*)")
 CLOCK = re.compile(r"\s+(\d\d):(\d)[\dx]")
@@ -114,9 +165,13 @@ def load_state(ledger):
 
 
 def save(path, text):
-    with open(path + ".tmp", "w") as f:
+    with open(path + ".tmp", "w", newline="") as f:
         f.write(text)
     os.replace(path + ".tmp", path)
+
+
+def strike_path(ledger):
+    return os.path.join(os.path.dirname(os.path.abspath(ledger)), "strike-candidates.md")
 
 
 def item_key(text):
@@ -191,16 +246,19 @@ def open_items(tables, now):
             age, cells = age_of(cells[0], now), cells[1:]
         if len(cells) < 2 or cells[0] in ("Item", "") or cells[0].startswith("~~"):
             continue
-        owner, status = cells[1], cells[-1] if len(cells) > 2 else ""
+        owner = cells[1]
         if any(FINISHED.match(c) for c in cells[1:]) or STRUCK.match(cells[0]):
             continue
+        stamp = CHECKED.search(" ".join(cells[1:]))  # a sweep's "checked <date>" is not the row's date
+        bare = [CHECKED.sub("", c) for c in cells]
         if age is None:
-            age = age_of(status, now)
+            age = age_of(bare[-1] if len(cells) > 2 else "", now)
         if age is None:
-            age = age_of(" ".join(cells), now)
+            age = age_of(" ".join(bare), now)
         found.append(dict(key=item_key(cells[0]), kind="open", what=cells[0], owner=owner, age=age,
+                          text=" ".join(cells), stamped=gt.line_date(stamp.group(1), now) if stamp else None,
                           names=names(cells[0]), keys=set(re.findall(r"\[([0-9a-f]{6})\]", " ".join(cells[1:]))),
-                          parked=bool(PARKED.search(" ".join(cells[1:])))))
+                          parked=bool(PARKED.search(" ".join(bare[1:])))))
     return found
 
 
@@ -225,7 +283,7 @@ def queue_items(paths, now):
             what = " · ".join(c for c in cells[:3] if c and c != "—")
             if what.startswith("~~") or any(FINISHED.match(c) for c in cells[1:]):
                 continue
-            found.append(dict(key=item_key(what), kind="queue", what=what, owner=os.path.basename(path),
+            found.append(dict(key=item_key(what), kind="queue", what=what, owner=os.path.basename(path), text=" ".join(cells),
                               names=names(" ".join(cells[:2]), cells[:2]), keys=set(),
                               age=age_of(" ".join(reversed(cells)), now), parked=False))
     return found
@@ -246,12 +304,17 @@ def transcripts(since=0):
 
 
 def live_sessions(tables, now, paths):
-    """{id6: {cell, level, idle, moving, tickets}} for the Sessions rows at MANAGED, WATCHED or ACTIVE, not closed."""
-    closed, found = gt.closed_ids(), {}
+    """{id6: {cell, level, idle, moving, tickets}} for the Sessions rows at MANAGED, WATCHED or ACTIVE, not closed. A
+    session on several rows is at its topmost row's Level, as in session_levels: an older MANAGED row of a session
+    whose top row says DONE is history, not a live worker."""
+    closed, found, topmost = gt.closed_ids(), {}, set()
     for cells in table(tables, "## Sessions"):
         rid = gt.row_id(cells[0]) if len(cells) > 1 else None
         level = re.match(r"[A-Za-z]*", cells[1]).group() if rid else ""
-        if not rid or rid in found or rid in closed or level not in ("MANAGED", "WATCHED", "ACTIVE"):
+        if not rid or rid in topmost:
+            continue
+        topmost.add(rid)
+        if rid in closed or level not in ("MANAGED", "WATCHED", "ACTIVE"):
             continue
         seen = paths.get(rid)
         idle = now - seen[1] if seen else None
@@ -272,8 +335,9 @@ def classify(item, marks, live, waiting, now):
         return "parked", mark.get("note") or "parked"
     owner = gt.row_id(item["owner"]) if item["kind"] == "open" else None
     worker = (mark.get("session") or "")[:6].lower() if state == "started" else owner
-    if not worker:
-        worker = next((rid for rid, s in live.items() if named_in(refs, s["text"])), None)
+    if not worker:  # a version ("v1.2.0") names a release, not a piece of work: two workers can share one
+        work = {n for n in refs if not re.match(r"v\d", n)}
+        worker = next((rid for rid, s in live.items() if named_in(work, s["text"])), None)
     if worker:
         seen = live.get(worker)
         if seen and seen["moving"]:
@@ -309,6 +373,326 @@ def span(seconds):
     return "%.0f h" % (seconds / 3600) if seconds < 36 * 3600 else "%.1f d" % (seconds / 86400)
 
 
+def work_ids(text):
+    """The ids a row can be matched on to later rows: tickets, monitor ids, PRs and artifact ids."""
+    found = set(WORK_ID.findall(text))
+    return found | {a for a in ARTIFACT.findall(text) if re.search(r"\d", a) and re.search(r"[a-z]", a)
+                    and re.search(r"[A-Z]", a)}
+
+
+def stamps(text, now):
+    """[(epoch, has a clock, match)] of every date in `text`: "11-16", "2026-11-16 19:16", "11-19 17:5x" (a bare date
+    is noon). A date without a year more than 2 days ahead is last year's, as in guide_title.line_date."""
+    out = []
+    for found in STAMP.finditer(text):
+        year, month, mday, hour, tens, ones = found.groups()
+        y = int(year or time.localtime(now).tm_year)
+        minute = int(tens) * 10 + (int(ones) if ones and ones != "x" else 0) if hour else 0
+        try:
+            at = time.mktime((y, int(month), int(mday), int(hour) if hour else 12, minute, 0, 0, 0, -1))
+            if not year and at > now + 2 * 86400:
+                at = time.mktime((y - 1, int(month), int(mday), int(hour) if hour else 12, minute, 0, 0, 0, -1))
+        except (OverflowError, ValueError):
+            continue
+        out.append((at, bool(hour), found))
+    return out
+
+
+def newest(text, now):
+    found = [at for at, _, _ in stamps(text, now)]
+    return max(found) if found else None
+
+
+def iso_time(text):
+    """Epoch of gh's "2026-11-15T10:00:00Z", or None."""
+    try:
+        return calendar.timegm(time.strptime(text[:19], "%Y-%m-%dT%H:%M:%S"))
+    except (TypeError, ValueError):
+        return None
+
+
+def slug(text):
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def brief_ids(path, cache):
+    if path not in cache:
+        try:
+            with open(path, errors="replace") as f:
+                cache[path] = work_ids(f.read(400000))
+        except OSError:
+            cache[path] = set()
+    return cache[path]
+
+
+def evidence_index(ledger, tables, lines, now):
+    """What later evidence can come from, read once per audit: the DONE / CLOSED Sessions rows (with the ids of their
+    Title, Role cell and brief file), the satisfied Results rows, the Decisions, the verified Verifications rows and
+    the open reminders."""
+    folder, cache = os.path.dirname(os.path.abspath(ledger)), {}
+    briefs = {}  # a Sessions row that names no brief: <ledger dir>/*/<its title as a slug>/brief.md
+    for path in glob.glob(os.path.join(folder, "*", "brief.md")) + glob.glob(os.path.join(folder, "*", "*", "brief.md")):
+        briefs.setdefault(slug(os.path.basename(os.path.dirname(path))), path)
+    sessions = []
+    for cells in table(tables, "## Sessions"):
+        rid = gt.row_id(cells[0]) if len(cells) > 1 else None
+        if not rid:
+            continue
+        text = cells[0] + " " + (cells[2] if len(cells) > 2 else "")
+        paths = [os.path.join(folder, os.path.expanduser(p)) for p in re.findall(r"[\w./~-]+\.md\b", text)]
+        name = session_name(cells[0])
+        paths = paths or ([briefs[slug(name)]] if slug(name) in briefs and len(slug(name)) >= 6 else [])
+        named = set()
+        for path in paths:
+            named |= brief_ids(path, cache)
+        sessions.append(dict(id=rid, name=name, level=re.match(r"[A-Za-z]*", cells[1]).group().upper(), ids=work_ids(text),
+                             brief=named, briefs=[os.path.basename(os.path.dirname(p)) if os.path.basename(p) == "brief.md"
+                                                  else os.path.basename(p) for p in paths],
+                             at=newest(" ".join(cells), now)))
+    results = []
+    for cells in table(tables, "## Results for you"):
+        if len(cells) >= 5 and cells[4].lower().startswith("satisfied"):
+            results.append(dict(what=cells[0], line=" ".join(cells), ids=work_ids(" ".join(cells)), at=newest(cells[4], now) or newest(
+                " ".join(cells[2:4]), now), sids={i[:6].lower() for i in re.findall(r"\[([0-9a-fA-F]{6,36})\]", cells[0])}))
+    found, inside = [], False
+    for line in lines:
+        if line.startswith("## "):
+            inside = line.startswith("## Decisions")
+            continue
+        decision = DECISION.match(line.strip()) if inside and not line.lstrip().startswith(("~~", "- ~~")) else None
+        if decision:
+            found.append(dict(number=decision.group(1), what=decision.group(3), ids=work_ids(line),
+                              closing=bool(CLOSING.search(line)), at=newest(decision.group(2), now)))
+    verified = [dict(what=cells[0], ids=work_ids(cells[0] + " " + " ".join(cells[4:5])), at=newest(cells[3], now))
+                for cells in table(tables, "## Verifications") if len(cells) >= 5 and cells[2].lower().startswith("verified")]
+    waiting = {rid: dict(row, ids=work_ids(row["what"])) for rid, row in gt.waiting_rows(ledger).items()}
+    return dict(sessions=sessions, results=results, decisions=found, verified=verified, waiting=waiting,
+                gh=[GH_LOOKUPS])
+
+
+def pr_state(number, repo=None):
+    """guide_gh's {"state", "mergedAt"} for a PR, or None when gh can't say (no guide_gh, gh off, missing or slow)."""
+    try:
+        import guide_gh
+        return guide_gh.pr_state(number, repo=repo)
+    except Exception:  # an ImportError or a broken gh is "no evidence", never a failed audit
+        return None
+
+
+def merged(pr, text, index, since=0):
+    """"gh: #N merged <date>" when gh says the PR merged after `since`, or None. At most GH_LOOKUPS asks per audit."""
+    if index["gh"][0] <= 0:
+        return None
+    index["gh"][0] -= 1
+    repo = re.search(r"([\w.-]+/[\w.-]+)%s(?!\d)" % re.escape(pr), text)
+    found = pr_state(int(pr.lstrip("#")), repo.group(1) if repo else None)
+    if not found or found.get("state") != "MERGED":
+        return None
+    at = iso_time(found.get("mergedAt"))
+    return "gh: %s merged %s" % (pr, (found.get("mergedAt") or "")[:10] or "(no date)") if at is None or at > since else None
+
+
+def evidence_for(ids, index, since=0, strict=False, exclude=None, text="", kinds="SRDVWG"):
+    """Lines of LATER evidence (after `since`) that the work these ids name is done, best first. `strict` (the row was
+    checked by a sweep) skips evidence with no date of its own, and reminders that ask the same."""
+    later = lambda at: since <= 0 if at is None else at > since  # noqa: E731
+    hits = []
+    ids = set(ids)
+
+    def which(found):
+        return sorted(found & ids)[0]
+
+    for s in index["sessions"] if "S" in kinds else ():
+        if s["level"] in ("DONE", "CLOSED") and later(s["at"]) and (s["ids"] | s["brief"]) & ids:
+            via = "its row" if s["ids"] & ids else "brief %s" % (s["briefs"][0] if s["briefs"] else "")
+            hits.append((1, "Sessions '%s' [%s] DONE, %s names %s" % (s["name"][:50], s["id"], via, which(s["ids"] | s["brief"]))))
+    for r in index["results"] if "R" in kinds else ():
+        if not later(r["at"]):
+            continue
+        when = time.strftime("%m-%d %H:%M", time.localtime(r["at"])) if r["at"] else ""
+        if r["ids"] & ids:
+            hits.append((0, "Results '%s' satisfied %s, names %s" % (r["what"][:60], when, which(r["ids"]))))
+            continue
+        lower = r["what"].lower()
+        by = next((s for s in index["sessions"] if (s["id"] in r["sids"] or len(s["name"]) >= 8 and s["name"].lower() in lower)
+                   and (s["ids"] | s["brief"]) & ids), None)
+        if by:
+            hits.append((0, "Results '%s' satisfied %s, for '%s' [%s] whose %s names %s" % (
+                r["what"][:60], when, by["name"][:40], by["id"], "row" if by["ids"] & ids else "brief", which(by["ids"] | by["brief"]))))
+    for d in index["decisions"] if "D" in kinds else ():
+        if d["closing"] and d["ids"] & ids and later(d["at"]):
+            hits.append((2, "Decision %s: %s" % (d["number"], cell(d["what"], 70))))
+    for v in index["verified"] if "V" in kinds else ():
+        if v["ids"] & ids and (later(v["at"]) if v["at"] or strict else True):
+            hits.append((3, "Verifications %s verified" % cell(v["what"], 50)))
+    for rid, w in index["waiting"].items() if "W" in kinds and not strict else ():
+        if rid != exclude and w["ids"] & ids:
+            hits.append((4, "reminder [%s] asks the same: %s" % (rid, cell(w["what"], 60))))
+    if not hits and "G" in kinds:
+        for pr in sorted(i for i in ids if i.startswith("#")):
+            found = merged(pr, text, index, since)
+            if found:
+                hits.append((5, found))
+    out = []
+    for _, said in sorted(hits, key=lambda h: h[0]):
+        out += [said] if said not in out else []
+    return out
+
+
+def covered(item, index, now):
+    """(evidence lines, why not): is this open row already covered by LATER ledger rows (or gh)? `item` has the row's
+    `text` (or `what`), its `age` and `since` (when a sweep last checked it). The lines say what; the reason, when
+    there are none, is "no later evidence" or "no id to match". It only stops an ask: it never strikes a row."""
+    ids = work_ids(item.get("text") or item.get("what") or "")
+    if not ids:
+        return [], "no id to match"
+    when = now - item["age"] if item.get("age") is not None else 0
+    since = max(when, item.get("since") or 0)
+    hits = evidence_for(ids, index, since, strict=bool(item.get("since")), exclude=item.get("rid"),
+                        text=item.get("text") or "")
+    return hits, "" if hits else "no later evidence"
+
+
+def check_next(key, hits):
+    return 'likely done: %s. Confirm, then `set %s done "<evidence>"`. Do not ask the user.' % ("; ".join(hits[:3]), key)
+
+
+def closes_tags(text):
+    """[(kind, value)] of a row's `closes:` tag: "closes: pr:#12", "closes result:<artifact id>", several at once."""
+    found = CLOSES.search(text)
+    return [(k.lower(), v) for k, v in TAG.findall(found.group(1))] if found else []
+
+
+def happened(kind, value, index, levels, text=""):
+    """The evidence that a `closes:` event has happened, or None."""
+    if kind == "pr":
+        number = re.search(r"#?(\d{1,6})$", value)
+        return merged("#" + number.group(1), text + " " + value, index) if number else None
+    if kind == "result":
+        row = next((r for r in index["results"] if value in r["ids"] or named_in({value}, r["line"])), None)
+        return "Results '%s' satisfied" % row["what"][:60] if row else None
+    if kind == "ticket":
+        found = evidence_for({value}, index, kinds="RD")
+        return found[0] if found else None
+    if kind == "session":
+        level = next((lv for rid, (lv, _) in levels.items() if rid == value[:6].lower()), "")
+        return "Sessions [%s] DONE" % value[:8] if level in ("DONE", "CLOSED") else None
+    return None
+
+
+def open_rows(ledger, now=None):
+    """[(kind, key, text)] of the rows still open: Open items rows (keyed as the audit keys them) and reminders."""
+    now = now or time.time()
+    tables, _ = sections(ledger)
+    rows = [("open", item["key"], item["text"]) for item in open_items(tables, now)]
+    return rows + [("waiting", rid, row["what"]) for rid, row in gt.waiting_rows(ledger).items()]
+
+
+def shared_ids(ledger, text, exclude=()):
+    """The keys of open rows (Open items, reminders) that share an id (ticket, PR, artifact) with `text`: when a new
+    row is written, these are the old rows it may replace."""
+    ids = work_ids(text)
+    if not ids:
+        return []
+    return sorted({key for _, key, row in open_rows(ledger) if key not in exclude and work_ids(row) & ids})
+
+
+def close_tagged(ledger, now=None):
+    """Close the open rows whose `closes:` event has happened; [one line per row closed]."""
+    now = now or time.time()
+    text = open(ledger, errors="replace").read()
+    if not CLOSES.search(text):
+        return []
+    tables, lines = sections(ledger)
+    index, levels, changes, said = evidence_index(ledger, tables, lines, now), gt.session_levels(ledger), {}, []
+    for kind, key, row in open_rows(ledger, now):
+        tags = closes_tags(row)
+        proof = [happened(k, v, index, levels, row) for k, v in tags]
+        if tags and all(proof):
+            evidence = "closes %s: %s" % (", ".join("%s:%s" % t for t in tags), "; ".join(proof))
+            changes[key] = ("DONE", evidence)
+            said.append("%s %s: %s (%s)" % (key, "reminder" if kind == "waiting" else "Open item", cell(row, 90), evidence))
+    if changes:
+        edit_ledger(ledger, changes, "guide_audit closed %d row(s) whose closes: tag happened: %s"
+                    % (len(changes), ", ".join(sorted(changes))), now)
+    return said
+
+
+def future_lines(lines, now):
+    """[(line number, the date as written, the line)] of ledger lines whose first date is after now: the guide's
+    written times drift ahead of the clock. The Waiting, Results and Verifications tables are skipped (the scripts
+    write their times with the real clock, and Remind at is in the future on purpose), and so is a date after words
+    like "until" or "by"."""
+    found, skip = [], False
+    today = time.strftime("%Y-%m-%d", time.localtime(now))
+    for n, line in enumerate(lines, 1):
+        if line.startswith("## "):
+            skip = line.startswith(("## Waiting on", "## Results for you", "## Verifications"))
+            continue
+        hits = [] if skip else stamps(line, now)
+        if not hits:
+            continue
+        at, clock, match = hits[0]
+        if LATER_WORDS.search(line[max(0, match.start() - 24):match.start()]):
+            continue
+        ahead = at > now + FUTURE_SLACK if clock else time.strftime("%Y-%m-%d", time.localtime(at)) > today
+        if ahead:
+            found.append((n, match.group(0), line.strip()))
+    return found
+
+
+def edit_ledger(ledger, changes, log, now):
+    """Apply {key: (verdict, evidence)} to the ledger in one write, every other line left byte for byte: an Open items
+    row's last cell becomes "<VERDICT> <date>: <evidence>; was: <what it said>" (verdict CHECKED stamps "checked
+    <date>" instead), a reminder (Waiting row) is removed; then one Log line. Returns the keys it found."""
+    with open(ledger, errors="replace", newline="") as f:
+        lines = f.read().splitlines(True)
+    day, section, done, out = time.strftime("%m-%d", time.localtime(now)), "", set(), []
+    for raw in lines:
+        if raw.startswith("## "):
+            section = raw
+        cells = gt.split_row(raw) if raw.lstrip().startswith("|") and not raw.startswith("## ") else None
+        if cells and section.startswith("## Open items"):
+            body = cells[1:] if re.match(r"\s*(?:20\d\d-)?\d\d-\d\d\b", cells[0]) and len(cells) > 2 else cells
+            key = item_key(body[0]) if len(body) >= 2 and not body[0].startswith("~~") else None
+            if key in changes and key not in done and not (any(FINISHED.match(c) for c in body[1:]) or STRUCK.match(body[0])):
+                verdict, evidence = changes[key]
+                last = CHECKED.sub("", cells[-1]).strip()
+                cells[-1] = ("%s · checked %s" % (last, day) if last else "checked " + day) if verdict == "CHECKED" else (
+                    "%s %s: %s" % (verdict, day, " ".join(evidence.split()).replace("|", "/")) + ("; was: " + last if last else ""))
+                out.append("| %s |%s" % (" | ".join(cells), raw[len(raw.rstrip("\r\n")):]))
+                done.add(key)
+                continue
+        if cells and section.startswith("## Waiting on") and len(cells) >= 4:
+            rid = gt.row_id(cells[0])
+            if rid in changes and changes[rid][0] != "CHECKED":
+                done.add(rid)
+                continue  # a reminder that is done leaves the table, as `unwait` does
+        out.append(raw)
+    if log:
+        out = add_log(out, log, now)
+    with open(ledger + ".tmp", "w", newline="") as f:
+        f.write("".join(out))
+    os.replace(ledger + ".tmp", ledger)
+    return done
+
+
+def add_log(lines, text, now):
+    """`lines` with "- MM-DD HH:MM <text>" after the last line of the ## Log section (added at the end when missing)."""
+    entry = "- %s %s" % (time.strftime("%m-%d %H:%M", time.localtime(now)), " ".join(text.split()))
+    eol = "\r\n" if lines and lines[0].endswith("\r\n") else "\n"
+    start = next((i for i, l in enumerate(lines) if l.startswith("## Log")), None)
+    if start is None:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += eol
+        return lines + [eol] * bool(lines and lines[-1].strip()) + ["## Log (last ~15)" + eol, entry + eol]
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    at = max([i for i in range(start, end) if lines[i].strip()] or [start]) + 1
+    if not lines[at - 1].endswith("\n"):
+        lines[at - 1] += eol
+    return lines[:at] + [entry + eol] + lines[at:]
+
+
 def unverified(ledger, tables, days, full, now):
     found = []
     follow = gt.followups(ledger, days, full, now)
@@ -333,16 +717,30 @@ def unverified(ledger, tables, days, full, now):
     return found
 
 
-def long_waits(waiting, now):
-    found = []
+def long_waits(waiting, now, index=None, marks=None):
+    """(rows, notes). Every reminder is checked with covered() first: one with later evidence is a `check` row (and
+    its note says "likely done: …"); one asked over a day ago with none is a `waiting` row; the rest only get a note,
+    "checked <date>: still open because …". `notes` ({id6: line}) is what the hook says beside a due reminder."""
+    found, notes, day = [], {}, time.strftime("%m-%d", time.localtime(now))
     for rid, row in waiting.items():
-        asked = gt.read_time(row["asked"])
+        asked, since = gt.read_time(row["asked"]), ((marks or {}).get(rid) or {}).get("checked")
+        hits, reason = covered(dict(text=row["what"], rid=rid, age=now - asked if asked else None, since=since),
+                               index, now) if index else ([], "")
+        what = "%s: %s" % (row["session"], row["what"])
+        if hits:
+            notes[rid] = check_next(rid, hits)
+            found.append(dict(key=rid, kind="waiting", tier="check", what=what, age=now - asked if asked else None,
+                              state="check", why="likely done: " + hits[0], evidence=hits[:3], next=notes[rid],
+                              since=since))
+            continue
+        notes[rid] = "checked %s: still open because %s" % (day, reason) if reason else ""
         if asked and now - asked > WAITING_HOURS * 3600:
             at = gt.read_time(row["remind"])
-            found.append(dict(key=rid, kind="waiting", tier="waiting", what="%s: %s" % (row["session"], row["what"]), age=now - asked,
+            found.append(dict(key=rid, kind="waiting", tier="waiting", what=what, age=now - asked, checked=notes[rid],
+                              since=since,
                               state="waiting", why="due now" if at <= now else "asleep until " + row["remind"],
                               next="re-ask, or build around it"))
-    return found
+    return found, notes
 
 
 def decisions(lines, tables, now, days=DECISION_DAYS):
@@ -512,22 +910,32 @@ def audit(ledger, days=DAYS, full=True, queues=(), now=None):
     marks = state.get("items") or {}
     waiting = gt.waiting_rows(ledger)
     live = live_sessions(tables, now, transcripts(now - 30 * 86400))
-    work, hidden = [], []
+    index = evidence_index(ledger, tables, lines, now)
+    work, hidden, checks, day = [], [], [], time.strftime("%m-%d", time.localtime(now))
     for item in open_items(tables, now) + queue_items(queue_paths(lines, queues), now):
         found, why = classify(item, marks, live, waiting, now)
         if found is None:
             continue
+        item["since"] = max((marks.get(item["key"]) or {}).get("checked") or 0, item.get("stamped") or 0) or None
+        if found in ASK_STATES:  # before anything is put to the user: is it already done?
+            hits, reason = covered(item, index, now)
+            if hits:
+                found, why, item["evidence"] = "check", "likely done: " + hits[0], hits[:3]
+            elif found != "asked":
+                item["checked"] = "checked %s: still open because %s" % (day, reason)
         late = item["age"] is None or item["age"] > idle_hours() * 3600
         item.update(state=found, why=why, tier=found, next={
             "idle": "ask now: start it / keep waiting / drop" if late else "propose a start",
             "person": "ask %s in this turn's interview, then `waiting ask`" % person(item["owner"]),
-            "quiet": "peek the worker; restart it or start a successor"}.get(found, ""))
+            "quiet": "peek the worker; restart it or start a successor",
+            "check": check_next(item["key"], item.get("evidence") or [])}.get(found, ""))
         if found in ("idle", "quiet", "person") and item["kind"] == "open" and (
                 item["age"] is None or item["age"] > 2 * days * 86400):
-            item.update(state="stale", tier="backlog", was=found, why="open %s, %s" % (
+            item.update(state="stale", tier="backlog", was=found, was_why=why, why="open %s, %s" % (
                 "with no date" if item["age"] is None else "for " + span(item["age"]), why))
-        (work if item["state"] in ("idle", "quiet", "person") else hidden).append(item)
-    other = unverified(ledger, tables, min(days, gt.FOLLOWUP_DAYS), full, now) + long_waits(waiting, now)
+        (work if item["state"] in ("idle", "quiet", "person") else checks if found == "check" else hidden).append(item)
+    waits, notes = long_waits(waiting, now, index, marks)
+    other = unverified(ledger, tables, min(days, gt.FOLLOWUP_DAYS), full, now) + waits
     other += decisions(lines, tables, now)
     clean = None
     if full:
@@ -536,7 +944,7 @@ def audit(ledger, days=DAYS, full=True, queues=(), now=None):
         sessions = [dict(r, age=now - r["ended"]) for r in state.get("sessions") or [] if r.get("ended")]
     checked = {t for r in other if r["kind"] == "unverified" for t in tickets(r["what"])}
     other += [r for r in sessions if not (r.get("prs") and set(r["prs"]) <= checked)]  # those PRs are rows already
-    rows = list(work)
+    rows = work + checks
     for row in other:
         found = marked(row, marks, live, now)
         if found:
@@ -548,12 +956,15 @@ def audit(ledger, days=DAYS, full=True, queues=(), now=None):
     rows.sort(key=lambda r: -r["score"])
     ages = [r["age"] for r in work if r["age"] is not None]
     nag = [r for r in work if r["age"] is None or r["age"] > idle_hours() * 3600]
-    count = lambda kind: sum(r["kind"] == kind for r in rows)  # noqa: E731
-    found = dict(rows=rows, hidden=hidden, nag=nag, clean=clean, at=now, full=full, days=days,
+    count = lambda kind: sum(r["kind"] == kind and r["state"] != "check" for r in rows)  # noqa: E731
+    found = dict(rows=rows, hidden=hidden, nag=nag, clean=clean, at=now, full=full, days=days, reminders=notes,
+                 future=future_lines(lines, now),
                  counts=dict(idle=len(work), oldest=max(ages) if ages else None, nag=len(nag),
+                             check=sum(r["state"] == "check" for r in rows),
                              unverified=count("unverified"), waiting=count("waiting"), decisions=count("decision"),
                              sessions=count("session"), **{s: sum(h["state"] == s for h in hidden)
                                                            for s in ("moving", "asked", "parked", "stale")}))
+    found["counts"]["future"] = len(found["future"])
     found["top"] = collapse(found)
     return found
 
@@ -562,6 +973,8 @@ def group_of(row):
     """What a row collapses with: rows that share one next action become one row of the table."""
     if row["state"] == "stale":
         return ("backlog",)
+    if row["state"] == "check":
+        return ("check",)
     if row["kind"] in ("open", "queue"):
         if row["state"] == "quiet":
             return ("quiet", row["why"] if "quiet" in row["why"] else "gone")
@@ -588,7 +1001,32 @@ GROUPS = {  # what a collapsed row says, and its one next action
     "broken": ("verifications that found the same break", "start a fix"),
     "decision": ("recent decisions nothing in the ledger refers to", "skim; start what is still owed, `set` the rest done"),
     "noresult": ("sessions that ended with no result line", "peek each; hand its work on, or `set` it done"),
+    "check": ("rows that later ledger rows show as likely done",
+              "confirm each from its evidence (`audit --group <key>`), then `set <key> done \"<evidence>\"`; do not ask "
+              "the user"),
 }
+
+
+def group_title(group, rows, days):
+    """(what a collapsed row of `rows` says, its one next action)."""
+    first = rows[0]
+    title, action = GROUPS[group[0]]
+    return title % dict(old=2 * days, owner=first.get("owner", "") if first["kind"] == "queue" else
+                        owner_head(first.get("owner", "")), person=person(first.get("owner", "")),
+                        gone=first["why"] if group[-1] != "gone" else "worker is closed or gone"), action
+
+
+def checked_note(rows):
+    """One "checked <date>: still open because …" for a collapsed row, counting each reason."""
+    notes = [r["checked"] for r in rows if r.get("checked")]
+    if not notes:
+        return ""
+    reasons = {}
+    for note in notes:
+        reason = note.split("because ", 1)[-1]
+        reasons[reason] = reasons.get(reason, 0) + 1
+    return "%s: still open because %s" % (notes[0].split(":")[0], ", ".join(
+        "%s (%d)" % (r, n) if len(notes) > 1 else r for r, n in sorted(reasons.items())))
 
 
 def collapse(found):
@@ -604,15 +1042,12 @@ def collapse(found):
         if len(rows) == 1:
             out.append(dict(first, members=rows))
             continue
-        title, action = GROUPS[group[0]]
-        title %= dict(old=2 * found["days"], owner=first.get("owner", "") if first["kind"] == "queue" else
-                      owner_head(first.get("owner", "")), person=person(first.get("owner", "")),
-                      gone=first["why"] if group[-1] != "gone" else "worker is closed or gone")
+        title, action = group_title(group, rows, found["days"])
         names = []
         for r in rows:
             names += [label(r)] if label(r) not in names else []
         out.append(dict(key="%s+%d" % (first["key"], len(rows) - 1), kind=first["kind"], state=first["state"],
-                        age=max(dated) if dated else None, members=rows, next=action,
+                        age=max(dated) if dated else None, members=rows, next=action, checked=checked_note(rows),
                         why="oldest of %d" % len(rows) if dated else "no dates",
                         score=first["score"] * (1 + 0.1 * min(len(rows) - 1, 5)),
                         what="%d %s: %s" % (len(rows), title, ", ".join(names))))
@@ -644,6 +1079,8 @@ def summary(found):
     elif c["sessions"]:
         text += "; %d session(s) without a clean end at the last full audit" % c["sessions"]
     text += "; %d Open items row(s) in the backlog" % c["stale"] if c["stale"] else ""
+    text += "; %d row(s) likely done already (check, don't ask)" % c["check"] if c.get("check") else ""
+    text += "; %d ledger line(s) dated after now" % c["future"] if c.get("future") else ""
     return text + "; not listed: %d moving, %d asked, %d parked" % (c["moving"], c["asked"], c["parked"])
 
 
@@ -653,10 +1090,14 @@ def cell(text, width):
 
 
 def line(r, wide=110):
+    """One table row. A check row's next action carries its evidence, and a row still to ask says when it was
+    checked, so those two get a wider Next action cell."""
+    after = (r.get("next") or "—") + ("; " + r["checked"] if r.get("checked") else "")
     return "| %s | %s | %s | %s | %s | %s |" % (
         r["key"], span(r["age"]), "backlog" if r["state"] == "stale" else r["kind"] if r["state"] in (
             "unverified", "waiting", "decision", "session") else r["state"],
-        cell(r["what"], wide if len(r.get("members") or ()) < 2 else wide + 60), cell(r["why"], 40), cell(r.get("next") or "—", 64))
+        cell(r["what"], wide if len(r.get("members") or ()) < 2 else wide + 60), cell(r["why"], 40),
+        cell(after, 240 if r["state"] == "check" else 130 if r.get("checked") else 64))
 
 
 def render(found, limit=TOP, everything=False, group=None):
@@ -680,7 +1121,7 @@ def render(found, limit=TOP, everything=False, group=None):
     return "\n".join(out) if rows else "Nothing idle, unverified or stuck."
 
 
-def state_file(ledger, found):
+def state_file(ledger, found, state=None):
     """STATE.md: the live state a takeover reads instead of the ledger's log."""
     now = found["at"]
     tables, lines = sections(ledger)
@@ -695,42 +1136,108 @@ def state_file(ledger, found):
             for s in list(live.values())[:25]] + ["- and %d more" % (len(live) - 25)] * (len(live) > 25)
     settle = gt.settle_status(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
     results = gt.results_status(ledger)["due"]
+    notes = found.get("reminders") or {}
     out += ["", "## Reminders (%d due, %d asleep)" % (len(settle["due"]), len(settle["asleep"]))]
-    out += ["- %s %s: %s" % ("DUE" if r in settle["due"] else "until " + r["remind"], cell(r["session"], 40),
-                             cell(r["what"], 150)) for r in (settle["due"] + settle["asleep"])[:20]]
+    out += ["- %s %s: %s%s" % ("DUE" if r in settle["due"] else "until " + r["remind"], cell(r["session"], 40),
+                               cell(r["what"], 150), " (%s)" % cell(notes[r["id"]], 160) if notes.get(r["id"]) else "")
+            for r in (settle["due"] + settle["asleep"])[:20]]
     out += ["", "## Results with no verdict (%d)" % len(results)]
     out += ["- " + cell(gt.describe_result(r), 200) for r in results[:12]]
+    if found.get("future"):
+        out += ["", "## Ledger lines dated after now (%d): run `date` before writing a time" % len(found["future"])]
+        out += ["- L%d %s: %s" % (n, written, cell(text, 120)) for n, written, text in found["future"][:10]]
+    struck = (state or {}).get("struck") or {}
+    if struck.get("rows"):
+        out += ["", "## Last strike sweep (%s)" % time.strftime(gt.TIME_FORMAT, time.localtime(struck.get("at", now)))]
+        out += ["- " + cell(r, 220) for r in struck["rows"][:40]]
     out += ["", "## Not done or not verified (top %d by value x age)" % (2 * TOP), summary(found), "", render(found, 2 * TOP), ""]
     save(state_paths(ledger)[1], "\n".join(out))
 
 
+def candidates(found):
+    """The rows a strike sweep looks at: the check rows, and the rows still to ask that are idle over STRIKE_DAYS (or
+    undated), unless a sweep found them open in the last CHECKED_DAYS."""
+    now, out = found["at"], []
+    for r in found["rows"] + found["hidden"]:
+        if r["kind"] not in ("open", "queue", "waiting") or r.get("since") and now - r["since"] < CHECKED_DAYS * 86400:
+            continue
+        old = r["age"] is None and r["state"] == "stale" or (r["age"] or 0) > STRIKE_DAYS * 86400
+        if r["state"] == "check" or r["state"] in ("idle", "quiet", "person", "stale", "waiting") and old:
+            out.append(r)
+    return sorted(out, key=lambda r: (r["state"] != "check", -(r["age"] or 0)))
+
+
+def write_candidates(ledger, found):
+    """strike-candidates.md, for the 'strike sweep' helper; returns how many rows it holds."""
+    rows, me = candidates(found), os.path.abspath(__file__)
+    verdicts = os.path.join(os.path.dirname(os.path.abspath(ledger)), "strike-verdicts.md")
+    out = ["# Strike candidates", "",
+           "Written %s by guide_audit.py (full audit) for the guide's read-only 'strike sweep' helper. For each row, look "
+           "for proof that it is finished or replaced: later rows of the ledger (%s), the brief and result of the "
+           "session that did it, `gh pr view`. Change nothing. Write one line per key to %s:" % (
+               time.strftime(gt.TIME_FORMAT, time.localtime(found["at"])), ledger, verdicts), "",
+           "    <key> | DONE | <the proof: ledger line, PR state, result line>",
+           "    <key> | SUPERSEDED | <what replaced it>",
+           "    <key> | OPEN | <why it is still open>", "",
+           "Then the guide runs `python3 %s strike --from %s`." % (me, verdicts), "",
+           "| Key | Age | Kind | What | Evidence so far |", "|---|---|---|---|---|"]
+    out += ["| %s | %s | %s | %s | %s |" % (r["key"], span(r["age"]), r.get("was") or r["state"], cell(r["what"], 200),
+                                            cell("; ".join(r.get("evidence") or []) or r.get("checked") or "—", 200))
+            for r in rows]
+    save(strike_path(ledger), "\n".join(out) + "\n")
+    return len(rows)
+
+
 def run(ledger, days=DAYS, full=True, queues=()):
     """Run the audit, write STATE.md and audit.json, and return what was found. The full audit keeps its session rows
-    in the cache, so a quick refresh in between doesn't lose them."""
+    in the cache, so a quick refresh in between doesn't lose them, and writes strike-candidates.md. Rows whose
+    `closes:` event has happened are closed first; the next hook line says which."""
+    try:
+        closed = close_tagged(ledger)
+    except OSError:
+        closed = []
     found = audit(ledger, days, full, queues)
     state = load_state(ledger)
+    if closed:
+        state["closed"] = (state.get("closed") or []) + closed
     if full:
         state["full_at"] = found["at"]
         state["sessions"] = [dict(r, names=None) for r in found["rows"] + found["hidden"] if r["kind"] == "session"]
     late = {r["key"] for r in found["nag"]}
     state["quick"] = dict(at=found["at"], counts=found["counts"], queues=list(queues) or (state.get("quick") or {}).get("queues") or [],
-                          nag=["%s %s: %s -> %s" % (r["key"], span(r["age"]), cell(r["what"], 130), r.get("next") or "ask")
-                               for r in found["top"] if any(m["key"] in late for m in r["members"])][:5])
+                          nag=["%s %s: %s -> %s" % (r["key"], span(r["age"]), cell(r["what"], 130), (r.get("next") or "ask")
+                                                    + ("; " + r["checked"] if r.get("checked") else ""))
+                               for r in found["top"] if any(m["key"] in late for m in r["members"])][:5],
+                          check=["%s %s: %s -> likely done: %s" % (r["key"], span(r["age"]), cell(r["what"], 100),
+                                                                  "; ".join(r.get("evidence") or []))
+                                 for r in found["rows"] if r["state"] == "check"][:5],
+                          reminders=found["reminders"],
+                          future=["L%d %s: %s" % (n, written, cell(text, 100)) for n, written, text in found["future"][:5]])
     try:
+        if full:
+            state["sweep"] = dict(at=found["at"], count=write_candidates(ledger, found))
         save(state_paths(ledger)[0], json.dumps(state, indent=1))
-        state_file(ledger, found)
+        state_file(ledger, found, state)
     except OSError:
         pass
     return found
 
 
 def cached(ledger):
-    """The counts of the last audit ({idle, oldest, nag, ...}), or {} when none ran. Reads one small file."""
+    """The counts of the last audit ({idle, oldest, nag, check, ...}), or {} when none ran. Reads one small file."""
     return (load_state(ledger).get("quick") or {}).get("counts") or {}
 
 
+def reminder_checks(ledger):
+    """{id6: line} from the last audit, for the hook's list of due reminders: "likely done: <evidence>. Confirm, then
+    `set <id6> done "<evidence>"`. Do not ask the user." in place of the ask when later rows cover it, else "checked
+    <date>: still open because …" to add to the ask. Reads one small file."""
+    return (load_state(ledger).get("quick") or {}).get("reminders") or {}
+
+
 def hook_context(ledger):
-    """What the guide hears on its prompt: the idle items it owes the user a question about, and a due full audit."""
+    """What the guide hears on its prompt: rows the audit closed by their tags, the idle items it owes the user a
+    question about, the rows that look done already, a due strike sweep, a due full audit, and lines dated after now."""
     hours = audit_hours()
     if hours <= 0:
         return None
@@ -742,6 +1249,14 @@ def hook_context(ledger):
         state = load_state(ledger)
         quick = state.get("quick") or {}
     counts, parts, me = quick.get("counts") or {}, [], os.path.abspath(__file__)
+    if state.get("closed"):
+        parts.append("session-guide audit: closed %d row(s) whose `closes:` tag has happened (tell the user in one line):"
+                     "\n%s" % (len(state["closed"]), "\n".join("- " + l for l in state["closed"][:8])))
+        state.pop("closed")
+        try:
+            save(state_paths(ledger)[0], json.dumps(state, indent=1))
+        except OSError:
+            pass
     if counts.get("nag"):
         parts.append("session-guide audit: %d decided item(s) have no worker and no question to the user for over %g h "
                      "(%d idle in all, oldest %s). The top ones by value x age:\n%s\nPut each in this turn's interview, "
@@ -749,10 +1264,27 @@ def hook_context(ledger):
                      "worker and `python3 %s set <key> started --session <id>`, or `set <key> asked` / `parked --hours N` "
                      "/ `dropped`. `python3 %s audit` prints the top 10 of everything." % (counts["nag"], idle_hours(), counts.get("idle", 0),
                                                          span(counts.get("oldest")), "\n".join("- " + l for l in quick.get("nag") or []), me, me))
+    if counts.get("check"):
+        parts.append("session-guide audit: %d open row(s) look done already: later ledger rows (or gh) cover them. Do "
+                     "not ask the user about them. Confirm each from its evidence, then `python3 %s set <key> done "
+                     "\"<evidence>\"`:\n%s" % (counts["check"], me, "\n".join("- " + l for l in quick.get("check") or [])))
+    sweep = state.get("sweep") or {}
+    if sweep.get("count") and now - state.get("sweep_at", 0) > SWEEP_HOURS * 3600:
+        parts.append("session-guide strike sweep: %d row(s) in %s may be finished (last sweep %s). Start ONE read-only "
+                     "helper named 'strike sweep' (sonnet/medium) on that file: it returns `<key> | DONE / SUPERSEDED / "
+                     "OPEN | <evidence>` lines. Then run `python3 %s strike --from <its file>`, tell the user the one line "
+                     "it prints, and put `python3 %s audit --open-batch` to the user once." % (
+                         sweep["count"], strike_path(ledger), time.strftime(gt.TIME_FORMAT, time.localtime(
+                             state["sweep_at"])) if state.get("sweep_at") else "never", me, me))
     if now - state.get("full_at", 0) > hours * 3600:
         parts.append("session-guide audit: the look back over past sessions is due (last full audit %s). On this wake, or "
                      "the first one with nothing due, run `python3 %s audit` and put what it lists into the interview."
                      % (time.strftime(gt.TIME_FORMAT, time.localtime(state["full_at"])) if state.get("full_at") else "never", me))
+    if counts.get("future"):
+        parts.append("session-guide clock: %d ledger line(s) carry a time after now (%s): your written times run ahead "
+                     "of the clock. Run `date` before you write a time, and correct these:\n%s" % (
+                         counts["future"], time.strftime("%Y-%m-%d %H:%M %Z", time.localtime(now)),
+                         "\n".join("- " + l for l in quick.get("future") or [])))
     return "\n".join(parts) or None
 
 
@@ -782,8 +1314,9 @@ def cmd_set(args):
     now = time.time()
     hours = args.hours if args.hours else ASKED_HOURS if args.state == "asked" else 0
     state = load_state(ledger)
+    evidence = " ".join((args.evidence or "").split())
     for item in items:
-        mark = dict(state=args.state, at=now, what=item["what"][:120], note=" ".join((args.note or "").split()))
+        mark = dict(state=args.state, at=now, what=item["what"][:120], note=" ".join((args.note or evidence).split()))
         if hours:
             mark["until"] = now + hours * 3600
         if args.session:
@@ -791,15 +1324,100 @@ def cmd_set(args):
         state.setdefault("items", {})[item["key"]] = mark
         print("%s %s%s: %s" % (item["key"], args.state, " for %g h" % hours if hours else "", cell(item["what"], 100)))
     save(state_paths(ledger)[0], json.dumps(state, indent=1))
-    if args.state in ("done", "dropped") and any(item["kind"] == "open" for item in items):
+    rows = [item for item in items if item["kind"] in ("open", "waiting")]
+    if args.state in ("done", "dropped") and evidence and rows:  # the row itself says so, as a strike sweep writes it
+        done = edit_ledger(ledger, {item["key"]: (args.state.upper(), evidence) for item in rows}, None, now)
+        print("The ledger says so: %d Open items row(s) now %s, %d reminder(s) removed." % (
+            sum(item["key"] in done for item in rows if item["kind"] == "open"), args.state.upper(),
+            sum(item["key"] in done for item in rows if item["kind"] == "waiting")))
+    elif args.state in ("done", "dropped") and any(item["kind"] == "open" for item in items):
         print("Also set the Status of each Open items row to %s, with how it was verified or why." % args.state.upper())
     run(ledger, full=False, queues=(state.get("quick") or {}).get("queues") or ())
     return 0
 
 
+def cmd_strike(args):
+    """Apply a strike sweep's verdicts: `<key> | DONE / SUPERSEDED / OPEN | <evidence>`, one per line."""
+    ledger = os.path.expanduser(args.ledger or gt.require_ledger())
+    try:
+        with open(os.path.expanduser(args.from_file), errors="replace") as f:
+            verdicts = [m.groups() for m in map(VERDICT.match, f.read().splitlines()) if m]
+    except OSError as e:
+        raise SystemExit("can't read %s: %s" % (args.from_file, e))
+    if not verdicts:
+        raise SystemExit("%s has no `<key> | DONE / SUPERSEDED / OPEN | <evidence>` lines" % args.from_file)
+    state = load_state(ledger)
+    found = audit(ledger, full=False, queues=(state.get("quick") or {}).get("queues") or ())
+    items, waiting, now = found["rows"] + found["hidden"], gt.waiting_rows(ledger), time.time()
+    marks, changes, struck, still, unknown = state.setdefault("items", {}), {}, [], [], []
+    for key, verdict, evidence in verdicts:
+        verdict, evidence = verdict.upper(), " ".join(evidence.split()) or "(no evidence given)"
+        hits = [r for r in items if r["key"].lower() == key.lower()] or [r for r in items if key in (r.get("names") or ())]
+        item = hits[0] if len(hits) == 1 or hits and hits[0]["key"].lower() == key.lower() else None
+        if item is None and key.lower() in waiting:
+            item = dict(key=key.lower(), kind="waiting", what=waiting[key.lower()]["what"])
+        if item is None:
+            unknown.append(key)
+            continue
+        if verdict == "OPEN":
+            mark = marks.get(item["key"]) or dict(what=item["what"][:120])
+            mark["checked"] = now
+            marks[item["key"]] = mark
+            if item["kind"] == "open":
+                changes.setdefault(item["key"], ("CHECKED", evidence))
+            still.append("%s OPEN (checked): %s; %s" % (item["key"], cell(item["what"], 100), evidence))
+            continue
+        marks[item["key"]] = dict(state="done" if verdict == "DONE" else "dropped", at=now, what=item["what"][:120],
+                                  note="%s: %s" % (verdict, evidence))
+        if item["kind"] in ("open", "waiting"):
+            changes[item["key"]] = (verdict, evidence)
+        struck.append("%s %s: %s; %s" % (item["key"], verdict, cell(item["what"], 100), evidence))
+    keys = lambda rows: ", ".join(r.split()[0] for r in rows) or "none"  # noqa: E731
+    edit_ledger(ledger, changes, "guide_audit strike: struck %d stale row(s) (%s), %d checked and still open (%s); "
+                "list in STATE.md" % (len(struck), keys(struck), len(still), keys(still)), now)
+    state["sweep_at"], state["struck"] = now, dict(at=now, rows=struck + still)
+    save(state_paths(ledger)[0], json.dumps(state, indent=1))
+    run(ledger, full=False, queues=(state.get("quick") or {}).get("queues") or ())
+    print("struck %d stale rows, list in STATE.md" % len(struck))
+    print("Guide: tell the user the line above, and nothing more about those rows. %d row(s) are still open%s; put "
+          "`python3 %s audit --open-batch` to the user once, as one batch." % (
+              len(still), "" if not unknown else "; not audit rows (already closed?): " + ", ".join(unknown),
+              os.path.abspath(__file__)))
+    return 0
+
+
+def open_batch(found):
+    """The rows really still open, grouped by stream (the audit's grouping), for ONE keep / start / drop question per
+    group: what the guide puts to the user once after a strike sweep."""
+    groups = {}
+    for r in found["rows"] + found["hidden"]:
+        if r["kind"] in ("open", "queue") and r["state"] in ("idle", "quiet", "person", "stale"):
+            r = dict(r, state=r.get("was") or r["state"], why=r.get("was_why") or r["why"]) if r["state"] == "stale" else r
+            groups.setdefault(group_of(r), []).append(r)
+    if not groups:
+        return "Nothing is still open: no batch to put to the user."
+    out = ["OPEN BATCH: %d row(s) still open, in %d group(s). Put them to the user ONCE, one question per group, "
+           "recommended option first: keep (waiting for what) / start (one worker for the group) / drop."
+           % (sum(len(g) for g in groups.values()), len(groups))]
+    ranked = sorted(groups.items(), key=lambda g: -max(r.get("score", 0) for r in g[1]))
+    for n, (group, rows) in enumerate(ranked, 1):
+        rows.sort(key=lambda r: -(r["age"] or 0))
+        out.append("%d. %d %s: keep / start / drop. Keys: %s" % (n, len(rows), group_title(group, rows, found["days"])[0],
+                                                                  ",".join(r["key"] for r in rows)))
+        out += ["   - %s %s: %s" % (r["key"], span(r["age"]), cell(r["what"], 110)) for r in rows[:12]]
+        out += ["   - and %d more (`audit --all`)" % (len(rows) - 12)] * (len(rows) > 12)
+    out.append("Record each answer for the whole group: start: start its worker, then `set <keys> started --session "
+               "<id>`; keep: `set <keys> parked --hours <N>`; drop: `set <keys> dropped \"<why>\"`.")
+    return "\n".join(out)
+
+
 def cmd_audit(args):
     ledger = os.path.expanduser(args.ledger or gt.require_ledger())
-    found = run(ledger, args.days, not args.quick, args.queue or (load_state(ledger).get("quick") or {}).get("queues") or ())
+    queues = args.queue or (load_state(ledger).get("quick") or {}).get("queues") or ()
+    if args.open_batch:
+        print(open_batch(run(ledger, args.days, False, queues)))
+        return 0
+    found = run(ledger, args.days, not args.quick, queues)
     print("AUDIT %s, last %g days%s" % (time.strftime(gt.TIME_FORMAT, time.localtime(found["at"])), args.days,
                                         " (quick: the ledger, and the last full audit's sessions)" if args.quick else ""))
     print(render(found, args.limit, args.all, args.group))
@@ -827,17 +1445,23 @@ def main(argv=None):
     a.add_argument("--limit", type=int, default=TOP, help="how many rows of the table to print (default %d)" % TOP)
     a.add_argument("--group", metavar="KEY", help="list the items inside one collapsed row (a key ending +N)")
     a.add_argument("--queue", action="append", help="a markdown table of approved work; repeatable; remembered")
+    a.add_argument("--open-batch", action="store_true",
+                   help="the rows still open, grouped by stream, for one keep / start / drop question per group")
     s = sub.add_parser("set", help="mark an audit item: asked, started, parked, done or dropped")
     s.add_argument("key")
     s.add_argument("state", choices=STATES)
+    s.add_argument("evidence", nargs="?", help="done / dropped: how it was verified or why; written into the row")
     s.add_argument("--session", help="started: the worker that has it")
     s.add_argument("--hours", type=float, help="asked / parked: for this long (asked: default %d)" % ASKED_HOURS)
     s.add_argument("--note")
     s.add_argument("--ledger")
+    k = sub.add_parser("strike", help="apply a strike sweep's `<key> | DONE / SUPERSEDED / OPEN | <evidence>` lines")
+    k.add_argument("--from", dest="from_file", required=True, metavar="FILE")
+    k.add_argument("--ledger")
     st = sub.add_parser("state", help="refresh and print STATE.md")
     st.add_argument("ledger", nargs="?")
     args = p.parse_args(argv)
-    return {"audit": cmd_audit, "set": cmd_set, "state": cmd_state}[args.cmd](args)
+    return {"audit": cmd_audit, "set": cmd_set, "strike": cmd_strike, "state": cmd_state}[args.cmd](args)
 
 
 if __name__ == "__main__":
