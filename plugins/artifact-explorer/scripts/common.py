@@ -2,6 +2,8 @@
 import json
 import os
 import re
+import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -11,7 +13,9 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(HERE, "vendor"))
 import tomli  # noqa: E402  (vendored, works on Python 3.9+)
 
-PLUGIN_KEY = "artifact-explorer@artifact-explorer"
+PLUGIN_NAME = "artifact-explorer"
+DEFAULT_KEY = PLUGIN_NAME + "@jethro"  # the install id in the jethro marketplace
+PLUGIN_KEY = DEFAULT_KEY  # kept for callers; lookups go through find_plugin_key (any artifact-explorer@* id)
 PAGE_HEARTBEAT = 3600  # the watcher rewrites an unchanged page once it is this old, so its build time shows liveness
 DEFAULT_OPTIONS = {
     "watch_interval": 10,
@@ -43,30 +47,131 @@ def own_version():
     return str(d.get("version") or "") if isinstance(d, dict) else ""
 
 
-def installed_entries():
-    """This plugin's installed_plugins.json entries (one per scope), [] when it is not installed."""
-    d = _read_json(os.path.join(claude_dir(), "plugins", "installed_plugins.json"))
-    ent = ((d or {}).get("plugins") or {}).get(PLUGIN_KEY) if isinstance(d, dict) else None
+def plugin_keys(mapping):
+    """The keys of `mapping` (installed_plugins.json "plugins" or settings.json "pluginConfigs") that are this
+    plugin under any marketplace: artifact-explorer@*."""
+    return [k for k in (mapping if isinstance(mapping, dict) else {}) if isinstance(k, str) and k.startswith(PLUGIN_NAME + "@")]
+
+
+def _entry_list(ent):
     if isinstance(ent, dict):
         ent = [ent]
     return [e for e in ent if isinstance(e, dict)] if isinstance(ent, list) else []
 
 
+def find_plugin_key(mapping, root=None):
+    """Which artifact-explorer@* key of `mapping` is this install: the one whose installPath is the running code's
+    ROOT (or a folder above it), else artifact-explorer@jethro, else any. None when there is no such key."""
+    keys = plugin_keys(mapping)
+    if not keys:
+        return None
+    root = os.path.realpath(root or ROOT)
+    for k in sorted(keys):
+        for e in _entry_list(mapping[k]):
+            ip = e.get("installPath")
+            if isinstance(ip, str) and ip:
+                ip = os.path.realpath(ip)
+                if root == ip or root.startswith(ip.rstrip(os.sep) + os.sep):
+                    return k
+    return DEFAULT_KEY if DEFAULT_KEY in keys else sorted(keys)[0]
+
+
+def _installed_plugins():
+    d = _read_json(os.path.join(claude_dir(), "plugins", "installed_plugins.json"))
+    p = d.get("plugins") if isinstance(d, dict) else None
+    return p if isinstance(p, dict) else {}
+
+
+def installed_key():
+    """The install id of this plugin: the key found in installed_plugins.json, else artifact-explorer@jethro."""
+    return find_plugin_key(_installed_plugins()) or DEFAULT_KEY
+
+
+def marketplace_name(key=None):
+    return (key or installed_key()).split("@", 1)[1] or "jethro"
+
+
+def installed_entries():
+    """This plugin's installed_plugins.json entries (one per scope), [] when it is not installed."""
+    plugins = _installed_plugins()
+    k = find_plugin_key(plugins)
+    return _entry_list(plugins.get(k)) if k else []
+
+
 def marketplace_dir():
-    """The local clone of the artifact-explorer marketplace (known_marketplaces.json), or None."""
+    """The local clone of this plugin's marketplace (known_marketplaces.json), or None."""
     d = _read_json(os.path.join(claude_dir(), "plugins", "known_marketplaces.json"))
-    ent = d.get("artifact-explorer") if isinstance(d, dict) else None
+    ent = d.get(marketplace_name()) if isinstance(d, dict) else None
     loc = ent.get("installLocation") if isinstance(ent, dict) else None
     return loc if isinstance(loc, str) and os.path.isdir(loc) else None
 
 
+def marketplace_plugin_root(loc):
+    """Where the plugin lives in a marketplace clone: the clone itself (a one-plugin marketplace) or plugins/<name>."""
+    if loc and not os.path.isfile(os.path.join(loc, ".claude-plugin", "plugin.json")):
+        sub = os.path.join(loc, "plugins", PLUGIN_NAME)
+        if os.path.isfile(os.path.join(sub, ".claude-plugin", "plugin.json")):
+            return sub
+    return loc
+
+
+def data_folder_name(key):
+    """The folder Claude Code makes for CLAUDE_PLUGIN_DATA: <plugin>-<marketplace>, other characters as -."""
+    return re.sub(r"[^A-Za-z0-9_-]", "-", key.replace("@", "-", 1))
+
+
 def default_data_dir():
-    return os.path.join(claude_dir(), "plugins", "data", "artifact-explorer-artifact-explorer")
+    return os.path.join(claude_dir(), "plugins", "data", data_folder_name(installed_key()))
+
+
+def _skip_copy(name):
+    n = name.lower()
+    return n.endswith(("-wal", "-shm", ".lock", ".pid")) or n in ("lock", "pid", "watcher.json")
+
+
+def _copy_db(src, dst):
+    """Copy a SQLite file with the backup API, so committed rows still in its -wal are included."""
+    a = sqlite3.connect("file:%s?mode=ro" % src.replace("?", "%3f"), uri=True, timeout=10)
+    try:
+        tmp = "%s.tmp%d" % (dst, os.getpid())  # two first-run processes must not share a temp file
+        b = sqlite3.connect(tmp)
+        try:
+            a.backup(b)
+        finally:
+            b.close()
+    finally:
+        a.close()
+    os.replace(tmp, dst)
+
+
+def migrate_data(d):
+    """First run under a new install id: when `d` has no explorer.db and a sibling plugins/data/artifact-explorer-*
+    folder has one, copy that folder's files in (never move; no wal/shm/lock/pid). Idempotent, cheap when idle."""
+    try:
+        if os.path.exists(os.path.join(d, "explorer.db")):
+            return None
+        parent = os.path.dirname(os.path.abspath(d))
+        if os.path.basename(parent) != "data" or os.path.basename(os.path.dirname(parent)) != "plugins":
+            return None
+        me = os.path.basename(os.path.abspath(d))
+        src = [os.path.join(parent, n) for n in os.listdir(parent)
+               if n.startswith(PLUGIN_NAME + "-") and n != me and os.path.exists(os.path.join(parent, n, "explorer.db"))]
+        if not src:
+            return None
+        src = max(src, key=lambda p: os.path.getmtime(os.path.join(p, "explorer.db")))
+        shutil.copytree(src, d, dirs_exist_ok=True,
+                        ignore=lambda _dir, names: [n for n in names if _skip_copy(n) or n == "explorer.db"])
+        _copy_db(os.path.join(src, "explorer.db"), os.path.join(d, "explorer.db"))
+        log(d, "copied the catalog from %s (old install id); the old folder is untouched" % os.path.basename(src))
+        return src
+    except (OSError, sqlite3.Error):
+        return None
 
 
 def data_dir(arg=None):
     d = arg or os.environ.get("AE_DATA") or default_data_dir()
     os.makedirs(d, exist_ok=True)
+    migrate_data(d)
     return d
 
 
@@ -105,7 +210,13 @@ def options():
     opts = dict(DEFAULT_OPTIONS)
     s = user_settings()
     try:
-        opts.update(((s.get("pluginConfigs") or {}).get(PLUGIN_KEY) or {}).get("options") or {})
+        cfgs = s.get("pluginConfigs") or {}
+        mine = installed_key()  # the found id first, then the default, then any other artifact-explorer@* block
+        for k in [mine, DEFAULT_KEY] + sorted(plugin_keys(cfgs)):
+            got = (cfgs.get(k) or {}).get("options")
+            if isinstance(got, dict) and got:
+                opts.update(got)
+                break
     except (AttributeError, TypeError, ValueError):
         pass
     for k, v in DEFAULT_OPTIONS.items():  # coerce types (the settings UI may store strings)

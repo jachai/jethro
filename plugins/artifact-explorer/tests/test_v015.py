@@ -26,7 +26,7 @@ import doctor  # noqa: E402
 
 U = "https://claude.ai/artifact/"
 A, B = "AAAAAAAAAAAA", "BBBBBBBBBBBB"
-KEY = "artifact-explorer@artifact-explorer"
+KEY = "artifact-explorer@jethro"
 
 
 def run(*args):
@@ -45,7 +45,7 @@ def fake_config(installed=None, market=None, rule=True):
     os.makedirs(plugins)
     inst = {"version": 2, "plugins": {}}
     if installed:
-        path = os.path.join(plugins, "cache", "artifact-explorer", "artifact-explorer", installed)
+        path = os.path.join(plugins, "cache", "jethro", "artifact-explorer", installed)
         os.makedirs(os.path.join(path, ".claude-plugin"))
         json.dump({"version": installed}, open(os.path.join(path, ".claude-plugin", "plugin.json"), "w"))
         inst["plugins"][KEY] = [{"scope": "user", "installPath": path, "version": installed,
@@ -53,10 +53,10 @@ def fake_config(installed=None, market=None, rule=True):
     json.dump(inst, open(os.path.join(plugins, "installed_plugins.json"), "w"))
     known = {}
     if market:
-        loc = os.path.join(plugins, "marketplaces", "artifact-explorer")
+        loc = os.path.join(plugins, "marketplaces", "jethro")
         os.makedirs(os.path.join(loc, ".claude-plugin"))
         json.dump({"version": market}, open(os.path.join(loc, ".claude-plugin", "plugin.json"), "w"))
-        known["artifact-explorer"] = {"installLocation": loc}
+        known["jethro"] = {"installLocation": loc}
     json.dump(known, open(os.path.join(plugins, "known_marketplaces.json"), "w"))
     return cfg
 
@@ -118,7 +118,7 @@ class Doctor(Env):
     def test_window_running_an_older_cached_version(self):
         cfg = fake_config("0.1.5", "0.1.5")
         self.use(cfg)
-        old = os.path.join(cfg, "plugins", "cache", "artifact-explorer", "artifact-explorer", "0.1.2")
+        old = os.path.join(cfg, "plugins", "cache", "jethro", "artifact-explorer", "0.1.2")
         os.makedirs(old)
         with mock.patch.object(common, "ROOT", old):
             rc, out = run("--data", os.path.join(helpers.tmp(), "x"), "doctor")
@@ -322,14 +322,14 @@ class DevScripts(unittest.TestCase):
                 "if sys.argv[1:3]==['plugin','uninstall']:\n d=json.load(open(p)); d['plugins'].pop(%r,None);"
                 " json.dump(d,open(p,'w'))\n" % (cfg, KEY)) if removes else ""
         body += ("if sys.argv[1:4]==['plugin','marketplace','remove']:\n"
-                 " shutil.rmtree(os.path.join(%r,'plugins','marketplaces','artifact-explorer'),True)\n" % cfg)
+                 " shutil.rmtree(os.path.join(%r,'plugins','marketplaces','jethro'),True)\n" % cfg)
         with open(b, "w") as f:
             f.write("#!%s\n%s" % (sys.executable, body))
         os.chmod(b, 0o755)
         return b
 
     def reset(self, cfg, claude):
-        data = os.path.join(cfg, "plugins", "data", "artifact-explorer-artifact-explorer")
+        data = os.path.join(cfg, "plugins", "data", "artifact-explorer-jethro")
         os.makedirs(data)
         con = db.connect(data)
         db.upsert_artifact(con, A, title="x")
@@ -345,7 +345,7 @@ class DevScripts(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("What reset did:", p.stdout)
         for line in ("ok:     no data folder", "ok:     plugin not in installed_plugins.json",
-                     "ok:     marketplace clone removed", "ok:     allow rule not in settings.json",
+                     "ok:     allow rule not in settings.json",
                      "ok:     no watcher running", "fresh-install-check.sh"):
             self.assertIn(line, p.stdout)
         self.assertNotIn("FAILED", p.stdout)
@@ -390,7 +390,7 @@ class Docs(unittest.TestCase):
 
     def test_readme_update_and_cost(self):
         r = self.read("README.md")
-        self.assertIn("claude plugin update artifact-explorer@artifact-explorer", r)
+        self.assertIn("claude plugin update artifact-explorer@jethro", r)
         self.assertIn("## Cost", r)
         self.assertIn("$1.00 a day", r)
 

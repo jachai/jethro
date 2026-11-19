@@ -24,7 +24,7 @@ def run(data, payload, thumbed=None):
         out = io.StringIO()
         with mock.patch("sys.stdout", out):
             rc = hook.main(data)
-    with mock.patch("thumbs.run") as t, mock.patch("build.build") as b:
+    with mock.patch("thumbs.run") as t, mock.patch("build.build"):
         hook.ingest(data)
     if thumbed is not None:
         thumbed += [c.kwargs["aid"] for c in t.call_args_list]

@@ -57,7 +57,7 @@ class V024Test(unittest.TestCase):
 
     def test_detach_env_adds_to_environment(self):
         out = os.path.join(self.d, "env.out")
-        pid = common.detach([sys.executable, "-c", "import os;print(os.environ.get('CLAUDE_CODE_ARTIFACT'),"
+        common.detach([sys.executable, "-c", "import os;print(os.environ.get('CLAUDE_CODE_ARTIFACT'),"
                              "bool(os.environ.get('PATH')))"], out=out, env={"CLAUDE_CODE_ARTIFACT": "1"})
         deadline = time.time() + 20  # a detached child: no portable wait, so poll for its output
         while time.time() < deadline and len(open(out).read().split()) < 2:

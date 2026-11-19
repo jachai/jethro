@@ -43,14 +43,23 @@ class InstallPath(unittest.TestCase):
                         self.fail("version glob in %s:%d" % (f, n))
 
     def test_resolves_current_not_old_glob_first(self):
-        h = self.home({"artifact-explorer@artifact-explorer": [{"installPath": "/x/cache/artifact-explorer/artifact-explorer/0.2.1"}]})
-        base = os.path.join(h, ".claude", "plugins", "cache", "artifact-explorer", "artifact-explorer")
+        h = self.home({"artifact-explorer@jethro": [{"installPath": "/x/cache/jethro/artifact-explorer/0.2.1"}]})
+        base = os.path.join(h, ".claude", "plugins", "cache", "jethro", "artifact-explorer")
         for v in ("0.1.2", "0.2.1"):
             os.makedirs(os.path.join(base, v, "bin"))
             with open(os.path.join(base, v, "bin", "ae"), "w") as f:
                 f.write("echo ran %s\n" % v)
         r = self.run_cmd(h, _command())
         self.assertEqual(r.stdout.strip(), "ran 0.2.1", r.stderr)
+
+    def test_old_install_id_still_resolves(self):
+        h = self.home({"artifact-explorer@artifact-explorer": [{"installPath": "/x/cache/artifact-explorer/artifact-explorer/0.2.1"}]})
+        base = os.path.join(h, ".claude", "plugins", "cache", "artifact-explorer", "artifact-explorer", "0.2.1", "bin")
+        os.makedirs(base)
+        with open(os.path.join(base, "ae"), "w") as f:
+            f.write("echo ran old id\n")
+        r = self.run_cmd(h, _command())
+        self.assertEqual(r.stdout.strip(), "ran old id", r.stderr)
 
     def test_missing_entry_or_file_gives_clear_error(self):
         for plugins in (None, {}, {"other@x": [{"installPath": "/a/b"}]}):

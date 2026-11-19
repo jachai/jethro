@@ -17,7 +17,7 @@ if [ -z "$BACKUP" ] || [ ! -d "$BACKUP" ]; then
 fi
 CONFIG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CLAUDE="${CLAUDE_BIN:-claude}"
-DATA="$CONFIG/plugins/data/artifact-explorer-artifact-explorer"
+DATA="$CONFIG/plugins/data/artifact-explorer-jethro"
 SETTINGS="$CONFIG/settings.json"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -71,8 +71,8 @@ fi
 
 echo
 echo "Plugin:"
-run "$CLAUDE" plugin marketplace add jachai/artifact-explorer || echo "  (marketplace already added; continuing)"
-run "$CLAUDE" plugin install artifact-explorer@artifact-explorer || echo "  (already installed; continuing)"
+run "$CLAUDE" plugin marketplace add jachai/jethro || echo "  (marketplace already added; continuing)"
+run "$CLAUDE" plugin install artifact-explorer@jethro || echo "  (already installed; continuing)"
 
 cat <<EOF
 

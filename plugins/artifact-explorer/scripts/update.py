@@ -4,7 +4,8 @@ Offline, rate-limited or any other failure means "no news": the page shows no ba
 to the user. The check is a plain unauthenticated GET of the public releases API; it sends nothing about the
 catalog or the user beyond what any HTTPS request does (an IP address and a generic User-Agent).
 
-When the API gives no answer (a private repo answers 404, a repo with no release yet the same), the check asks
+Releases of this plugin are git tags `artifact-explorer--vX.Y.Z` in the jethro suite repo; the check lists them
+and takes the highest version. When the API gives no answer (a private repo answers 404, no tag yet the same), the check asks
 the marketplace clone Claude Code already keeps instead: `git fetch origin HEAD` there, with the user's own git
 credentials and no prompt, then the version in .claude-plugin/plugin.json of what it fetched. That is the
 version `/plugin update` would install. The fetch only moves FETCH_HEAD; branches and the checkout stay as
@@ -19,15 +20,26 @@ import urllib.request
 
 import common
 
-REPO = "jachai/artifact-explorer"
-URL = "https://api.github.com/repos/%s/releases/latest" % REPO
+REPO = "jachai/jethro"
+TAG_PREFIX = "artifact-explorer--v"
+URL = "https://api.github.com/repos/%s/git/matching-refs/tags/%s" % (REPO, TAG_PREFIX)
 CACHE = "update.json"
 EVERY = 86400  # seconds between checks, also after a failed one
 TIMEOUT = 3
 GIT_TIMEOUT = 10  # seconds for each git call of the marketplace-clone fallback
 BUDGET = TIMEOUT + 2 * GIT_TIMEOUT + 2  # total seconds a check may take (DNS and slow reads are not bounded by
 # the socket timeout); a check runs at most once a day and the cache is stamped before it starts
-UPDATE_CMDS = ["/plugin marketplace update artifact-explorer", "/plugin update artifact-explorer@artifact-explorer"]
+
+
+def update_cmds():
+    """The commands that update this install, with the marketplace name taken from the install id (default jethro)."""
+    mkt = common.marketplace_name()
+    return ["/plugin marketplace update " + mkt, "/plugin update %s@%s" % (common.PLUGIN_NAME, mkt)]
+
+
+def release_url(tag):
+    v = parse(tag)
+    return "https://github.com/%s/releases/tag/%s%d.%d.%d" % ((REPO, TAG_PREFIX) + v) if v else None
 
 
 def parse(v):
@@ -54,13 +66,16 @@ def fetch(version):
 
 
 def fetch_release(version):
-    """The latest release tag from GitHub, or None. Never raises."""
+    """The newest artifact-explorer--v* tag of the repo ("v0.2.12"), or None. Never raises."""
     req = urllib.request.Request(URL, headers={"Accept": "application/vnd.github+json",
                                                "User-Agent": "artifact-explorer/%s" % version})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            tag = json.loads(r.read(200_000).decode("utf-8")).get("tag_name")
-        return tag if parse(tag) else None
+            refs = json.loads(r.read(1_000_000).decode("utf-8"))
+        found = [parse(str(x.get("ref", "")).rpartition("refs/tags/" + TAG_PREFIX)[2])
+                 for x in refs if isinstance(x, dict) and str(x.get("ref", "")).startswith("refs/tags/" + TAG_PREFIX)]
+        found = [v for v in found if v]
+        return "v%d.%d.%d" % max(found) if found else None
     except Exception:  # offline, DNS, 403 rate limit, 404 private repo, bad JSON: all mean "no news"
         return None
 
@@ -80,7 +95,10 @@ def fetch_clone(loc=None):
         if not loc:
             return None
         _git(["fetch", "--quiet", "--no-tags", "origin", "HEAD"], loc)
-        raw = _git(["show", "FETCH_HEAD:.claude-plugin/plugin.json"], loc)
+        try:  # the jethro suite keeps the plugin under plugins/; a one-plugin marketplace has it at the root
+            raw = _git(["show", "FETCH_HEAD:plugins/%s/.claude-plugin/plugin.json" % common.PLUGIN_NAME], loc)
+        except subprocess.CalledProcessError:
+            raw = _git(["show", "FETCH_HEAD:.claude-plugin/plugin.json"], loc)
         v = parse(json.loads(raw.decode("utf-8")).get("version"))
         return "v%d.%d.%d" % v if v else None
     except Exception:  # no git, no network, no credentials, timeout, bad JSON: all mean "no news"
@@ -140,4 +158,4 @@ def badge(data, version, cfg, now=None, get=None):
     tag = latest(data, version, now, get)
     if not newer(tag, version):
         return None
-    return {"latest": "v%d.%d.%d" % parse(tag), "cmds": UPDATE_CMDS}
+    return {"latest": "v%d.%d.%d" % parse(tag), "cmds": update_cmds(), "url": release_url(tag)}

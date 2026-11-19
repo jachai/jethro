@@ -8,7 +8,7 @@ Issues and pull requests are welcome. Artifact Explorer uses only the Python 3.9
 ```sh
 python -m unittest discover -s tests -v
 sh bin/ae --version
-claude plugin validate .
+claude plugin validate ../..
 ```
 
 Every test builds its own data folder in a temp dir. Nothing may read your real `~/.claude` or call
@@ -20,17 +20,11 @@ Never commit real artifact ids, titles, history, transcripts or paths from your 
 
 ## Releases
 
+Artifact Explorer is released from the [jethro](https://github.com/jachai/jethro) suite repo, as the tag `artifact-explorer--vX.Y.Z`.
+
 1. Move the notes in `CHANGELOG.md` under a new version heading.
 2. Bump `VERSION` in `scripts/ae.py` and `version` in `.claude-plugin/plugin.json`.
-3. Open the bump as a pull request to `main` and fill in the checklist from `.github/pull_request_template.md`.
-4. After the bump PR is merged, tag the merge commit on `main` and push the tag:
-
-   ```sh
-   git fetch origin && git checkout main && git pull --ff-only
-   git tag vX.Y.Z $(git rev-parse HEAD)   # the merge commit of the bump PR
-   git push origin vX.Y.Z
-   ```
-
-   The release workflow runs the tests, checks the versions match and creates a GitHub release.
+3. Open the bump as a pull request to `main` of `jachai/jethro`.
+4. After the bump PR is merged, the maintainer tags the merge commit (`artifact-explorer--vX.Y.Z`) and pushes the tag.
 
 The maintainer tags and releases. Agents and other contributors open the PR and stop there: they never merge, tag or create a release.

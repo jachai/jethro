@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.12] - 2026-11-19
+
+### Changed
+- Moved into the [jethro](https://github.com/jachai/jethro) suite. Install with `/plugin marketplace add jachai/jethro` and `/plugin install artifact-explorer@jethro`. The old `artifact-explorer@artifact-explorer` id keeps working.
+- Every lookup of the install (`installed_plugins.json`, the options in `settings.json`, the doctor, the marketplace clone) accepts any `artifact-explorer@*` id: the one whose install path is the running code, else `artifact-explorer@jethro`, else any. Options under the old id are still read when there are none under the new one.
+- The update check reads the `artifact-explorer--v*` tags of `jachai/jethro` (newest version wins) instead of the releases of `jachai/artifact-explorer`. The update commands name the marketplace of the install.
+- The data folder follows the install id (`artifact-explorer-jethro`). On first run under a new id the catalog is copied from an `artifact-explorer-*` folder that has one, when the new folder has no `explorer.db`. The old folder is left in place.
+- The README doctor command finds any `artifact-explorer@*` entry. Own marketplace, LICENSE and workflows removed (the suite has them).
+
 ## [0.2.11] - 2026-11-16
 
 Chosen as 0.2.11, not 0.3.0: no config breaks; only defaults change.

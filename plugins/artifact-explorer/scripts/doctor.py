@@ -13,8 +13,6 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-KEY = "artifact-explorer@artifact-explorer"
-UPDATE_CMD = "claude plugin update " + KEY
 
 
 def _json(path):
@@ -39,9 +37,9 @@ def installed():
 def marketplace():
     """(version, folder) of the marketplace clone, (None, None) when the marketplace is not added."""
     d = _json(os.path.join(common.claude_dir(), "plugins", "known_marketplaces.json"))
-    ent = d.get("artifact-explorer") if isinstance(d, dict) else None
+    ent = d.get(common.marketplace_name()) if isinstance(d, dict) else None
     loc = ent.get("installLocation") if isinstance(ent, dict) else None
-    return (_plugin_version(loc), loc) if loc else (None, None)
+    return (_plugin_version(common.marketplace_plugin_root(loc)), loc) if loc else (None, None)
 
 
 def data_state(data):
@@ -105,7 +103,7 @@ def run(data, version, expect="any"):
     print("  marketplace clone: %s" % ("%s at %s" % (mver, mloc) if mloc else "not added"))
     if ent and mver and ent.get("version") != mver:
         print("  MISMATCH: the marketplace has %s but %s is installed. A marketplace update does not move the"
-              " installed plugin. Run `%s`, then open a new Claude Code window." % (mver, ent.get("version"), UPDATE_CMD))
+              " installed plugin. Run `%s`, then open a new Claude Code window." % (mver, ent.get("version"), "claude plugin update " + common.installed_key()))
         bad.append("installed version is not the marketplace version")
     inst = ent.get("installPath")
     if inst and os.path.realpath(inst) != os.path.realpath(root):

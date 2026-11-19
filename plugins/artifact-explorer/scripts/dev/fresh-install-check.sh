@@ -17,7 +17,7 @@ echo "Artifact Explorer post-install check"
 INST="$(python3 -c 'import json,sys
 try: d=json.load(open(sys.argv[1]))
 except Exception: d={}
-e=(d.get("plugins") or {}).get("artifact-explorer@artifact-explorer") or []
+e=next((v for k,v in sorted((d.get("plugins") or {}).items()) if k.startswith("artifact-explorer@")),[])
 print(e[0].get("installPath","") if isinstance(e,list) and e else "")' "$CONFIG/plugins/installed_plugins.json")"
 if [ -n "$INST" ] && [ -f "$INST/bin/ae" ]; then
   echo "  installed copy says: $(sh "$INST/bin/ae" --version 2>&1)"
@@ -26,7 +26,7 @@ fi
 python3 "$HERE/../ae.py" doctor --expect "$EXPECT"
 rc=$?
 if [ -z "$INST" ]; then
-  echo "  (not installed: run claude plugin install artifact-explorer@artifact-explorer first)"
+  echo "  (not installed: run claude plugin install artifact-explorer@jethro first)"
   rc=1
 fi
 exit $rc

@@ -6,7 +6,6 @@
 Everything is made up: generic hobby themes, fake people, fake ids. Nothing comes from a real catalog.
 """
 import os
-import sqlite3
 import sys
 import time
 

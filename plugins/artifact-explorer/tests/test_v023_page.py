@@ -1,5 +1,4 @@
 """0.2.3 page: topic pill colors, pills on cards and rows, category fallback (categorize.py)."""
-import colorsys  # noqa: F401
 import os
 import sys
 import unittest
