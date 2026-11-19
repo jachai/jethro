@@ -19,6 +19,9 @@
     python3 guide_title.py waiting <id> "<what the user does>" it waits on the user: a reminder, due now
     python3 guide_title.py waiting ask "<question>" [--hours N | --at "YYYY-MM-DD HH:MM"]
                                                                the guide owes the user a question: a reminder row
+                                     [--closes pr:#N | result:<artifact id> | ticket:<ID> | session:<id8>] ...
+                                                               (either form) the reminder closes itself when it happens
+    python3 guide_title.py claim merge | run | done | list ... merges and commands asked of someone (guide_claims.py)
     python3 guide_title.py sleep <id> <hours>                  put that reminder off
     python3 guide_title.py unwait <id>                         it no longer waits on the user: the reminder goes
     python3 guide_title.py result "<deliverable>" <link> [--from "<title [id6]>"]
@@ -106,7 +109,13 @@ STATE.md, the title shows its idle count, and the hook nags a guide whose idle i
 
 A question the guide owes the user ("ask this afternoon") is a reminder too: `waiting ask "<question>"` writes a row
 keyed "owed question [<6 hex chars of the question>]" in the same table, due now or at --hours / --at, so a new guide's
-`settle` finds it after a handoff. `sleep` and `unwait` take that key like a session id.
+`settle` finds it after a handoff. `sleep` and `unwait` take that key like a session id. `--closes <event>` (either
+form, repeatable) appends a "· closes: …" tag that guide_audit.close_tagged() reads: once every event has happened
+(the PR merged, the Results row satisfied, the ticket closed in a Decision or Results row, the session DONE) the next
+audit removes the reminder and the hook says so. A due reminder that later rows already cover is listed as "likely
+done" (the audit's covered() check) in place of the ask, in the hook and in `settle` alike. Whenever this script
+writes a Waiting or Results row, or closes a Sessions row, it prints the open rows that share an id with it ("open
+rows sharing ids: … Does this replace them?").
 
 results: a finished deliverable the user asked for (a doc, a deck or slide, a review, a report, a release, a PR ready
 for them) goes in the ledger's `## Results for you` table with `result`, and stays unanswered until `result-answer`
@@ -268,6 +277,67 @@ def reconcile_module():
         return None
 
 
+def claims_module():
+    """guide_claims (merge and run claims), next to this script; None when it can't be loaded."""
+    try:
+        sys.modules.setdefault("guide_title", sys.modules[__name__])
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import guide_claims
+        return guide_claims
+    except Exception:
+        return None
+
+
+def claims_context(ledger):
+    try:
+        lines = claims_module().hook_lines(ledger)
+    except Exception:  # fail open, like the rest of the hook
+        return None
+    return "session-guide claims:\n%s" % "\n".join("- " + l for l in lines) if lines else None
+
+
+def reminder_notes(ledger):
+    """{id6: note} from the last audit for the due reminders: "likely done: …" (later rows cover it: confirm, don't
+    ask) or "checked <date>: still open because …" (ask, with this). {} when there is no audit."""
+    try:
+        return audit_module().reminder_checks(ledger) or {}
+    except Exception:
+        return {}
+
+
+def split_due(rows, notes):
+    """(to ask, likely done) of the due reminders; each row gets its audit note as `note`."""
+    ask, covered = [], []
+    for row in rows:
+        note = (notes.get(row["id"]) or "").strip()
+        (covered if note.startswith("likely done") else ask).append(dict(row, note=note))
+    return ask, covered
+
+
+def shared_note(ledger, text, key=None):
+    """Print which open rows share an id with a row just written, so the guide closes the ones it replaces."""
+    try:
+        keys = audit_module().shared_ids(ledger, text, exclude=tuple(k for k in (key,) if k))
+    except Exception:
+        return
+    if keys:
+        print("open rows sharing ids: %s. Does this replace them?" % ", ".join(keys))
+
+
+CLOSES_VALUE = re.compile(r"^(?:pr:#?\d{1,6}|result:[\w-]{6,64}|ticket:[A-Za-z][A-Za-z0-9]{0,9}-\d{1,6}|"
+                          r"session:[0-9a-fA-F]{6,36})$")
+
+
+def closes_tag(values):
+    """The ` · closes: …` tag guide_audit.close_tagged() reads, from --closes values; "" for none."""
+    values = [v.strip() for v in values or [] if v.strip()]
+    bad = [v for v in values if not CLOSES_VALUE.match(v)]
+    if bad:
+        raise SystemExit("--closes takes pr:#N, result:<artifact id>, ticket:<ID> or session:<id8>, not %s"
+                         % ", ".join(map(repr, bad)))
+    return " · closes: " + " ".join(values) if values else ""
+
+
 def reconcile_lines(ledger, me=""):
     """(flags, one line each) from reconcile; ([], []) when it fails: it must never break a prompt."""
     try:
@@ -384,6 +454,7 @@ def guide_context(session_id):
     if not os.path.isfile(ledger) or not any(l.strip() == "## Sessions" for l in open(ledger, errors="replace")):
         return None  # no ledger to guide by: fail open, say nothing
     parts = [now_line()]
+    audit = audit_context(ledger)  # first: it closes rows whose closes: tag happened and checks the due reminders
     found, shut, held = untracked(ledger, session_id), closable(ledger), settle_closed()
     settling = settle_status(ledger, session_id)
     reconciled = reconcile_context(ledger, session_id)
@@ -412,9 +483,17 @@ def guide_context(session_id):
                      "user first if it is WATCHED or you aren't sure). Still needs the user: `python3 %s waiting <id> "
                      "\"<exact action, full link or command>\"`. More work for it: send it the next step."
                      % (len(rows), "\n".join(lines), os.path.abspath(__file__), os.path.abspath(__file__)))
-    if settling["due"]:
-        rows = settling["due"]
-        lines = ["- %s: %s (asked %s)" % (r["session"], r["what"], r["asked"]) for r in rows[:8]]
+    ask, covered = split_due(settling["due"], reminder_notes(ledger))
+    if covered:
+        lines = ["- %s: %s -> %s" % (r["session"], r["what"], r["note"]) for r in covered[:8]]
+        lines += ["- and %d more" % (len(covered) - 8)] * (len(covered) > 8)
+        parts.append("session-guide settle: %d due reminder(s) look done already; later ledger rows cover them. Do not "
+                     "ask the user: confirm each from its evidence, then close it as its line says:\n%s"
+                     % (len(covered), "\n".join(lines)))
+    if ask:
+        rows = ask
+        lines = ["- %s: %s (asked %s)%s" % (r["session"], r["what"], r["asked"], "; " + r["note"] if r["note"] else "")
+                 for r in rows[:8]]
         lines += ["- and %d more" % (len(rows) - 8)] * (len(rows) > 8)
         parts.append("session-guide settle: %d reminder(s) due:\n%s\n"
                      "Check each still applies (peek, PR state), then ask with AskUserQuestion, one question each, "
@@ -442,7 +521,9 @@ def guide_context(session_id):
                      "review with `followups --reviewed`."
                      % (time.strftime(TIME_FORMAT, time.localtime(last)) if last else "never", due,
                         os.path.abspath(__file__)))
-    audit = audit_context(ledger)
+    claims = claims_context(ledger)
+    if claims:
+        parts.append(claims)
     if audit:
         parts.append(audit)
     return "\n".join(parts)
@@ -917,13 +998,18 @@ def require_ledger():
 
 def cmd_settle(args):
     ledger = os.path.expanduser(args.ledger or require_ledger())
+    audit = refresh_audit(ledger)  # first: it closes rows whose closes: tag happened and checks the due reminders
     found = settle_status(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""), args.idle_hours)
+    ask, covered = split_due(found["due"], reminder_notes(ledger))
     for line in reconcile_lines(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))[1]:
         print("Reconcile: " + line)  # first: these ended minutes ago, not hours
     for row in found["unsettled"]:
         print("Unsettled: " + describe_unsettled(row))
-    for row in found["due"]:
-        print("Due: %s: %s (asked %s)" % (row["session"], row["what"], row["asked"]))
+    for row in covered:
+        print("Likely done: %s: %s -> %s" % (row["session"], row["what"], row["note"]))
+    for row in ask:
+        print("Due: %s: %s (asked %s)%s" % (row["session"], row["what"], row["asked"],
+                                             "; " + row["note"] if row["note"] else ""))
     for row in found["asleep"]:
         print("Asleep until %s: %s: %s" % (row["remind"], row["session"], row["what"]))
     results = results_status(ledger)
@@ -932,10 +1018,10 @@ def cmd_settle(args):
     for row in results["asleep"]:
         print("Result asleep until %s: %s %s" % (time.strftime(TIME_FORMAT, time.localtime(row["at"])),
                                                   row["deliverable"], row["link"]))
-    print("%d unsettled, %d due, %d asleep" % (len(found["unsettled"]), len(found["due"]), len(found["asleep"]))
+    print("%d unsettled, %d due, %d asleep" % (len(found["unsettled"]), len(ask), len(found["asleep"]))
+          + (", %d likely done" % len(covered) if covered else "")
           + (", %d result(s) unanswered" % len(results["due"]) if results["due"] else ""))
     print_next_reminder(ledger, found, results)
-    audit = refresh_audit(ledger)
     if audit:  # a wake with nothing due still has this to work on
         print("Audit: %s\n%s" % audit[:2])
         if not found["due"] and not found["unsettled"] and not results["due"]:
@@ -969,9 +1055,20 @@ def cmd_waiting(args):
         raise SystemExit("%s has no open row in ## Sessions (level %r); give it one first" % (sid[:8], level))
     now = time.strftime(TIME_FORMAT)
     old = waiting_rows(ledger).get(sid[:6].lower())
+    what = tagged(what, args, old)
     write_waiting(ledger, sid[:6].lower(), [cell, what, old["asked"] if old else now, old["remind"] if old else now])
     print("%s waits on the user; reminder at %s" % (sid[:8], old["remind"] if old else now))
+    shared_note(ledger, what, sid[:6].lower())
     return 0
+
+
+def tagged(what, args, old=None):
+    """`what` with the closes: tag of --closes, or the one its old row had when no --closes is given."""
+    tag = closes_tag(getattr(args, "closes", None))
+    if not tag and old:
+        found = re.search(r"\s*\u00b7?\s*\bcloses:.*$", old["what"])
+        tag = " \u00b7 " + found.group().strip(" \u00b7") if found else ""
+    return what + tag
 
 
 def owed_question(ledger, question, args):
@@ -986,9 +1083,11 @@ def owed_question(ledger, question, args):
               else time.strftime(TIME_FORMAT, time.localtime(now + (args.hours or 0) * 3600)))
     key = owed_key(question)
     old = waiting_rows(ledger).get(key)
+    question = tagged(question, args, old)
     write_waiting(ledger, key, ["%s [%s]" % (OWED, key), question, old["asked"] if old else
                                 time.strftime(TIME_FORMAT, time.localtime(now)), remind])
     print("owed question [%s] is in the waiting table; ask at %s (sleep / unwait it as `%s`)" % (key, remind, key))
+    shared_note(ledger, question, key)
     return 0
 
 
@@ -1028,6 +1127,7 @@ def cmd_result(args):
         deliverable += " (%s)" % " ".join(args.source.split())
     now = time.strftime(TIME_FORMAT)
     write_result(ledger, key or result_key(deliverable), [deliverable, link, now, now, UNANSWERED])
+    shared_note(ledger, "%s %s" % (deliverable, link))
     print("%s: %s is in Results for you, unanswered%s; ask the user now: Satisfied / Change it / Drop it / Haven't "
           "looked yet" % (deliverable, link, " again (it was %s)" % old["answer"] if old else ""))
     return 0
@@ -1553,8 +1653,11 @@ def cmd_done(args):
     if ledger is None:
         print("no single guide ledger found: set its row's Level to DONE yourself")
     else:
+        row = " ".join(l for l in open(ledger, errors="replace") if l.lstrip().startswith("|") and
+                       row_id(split_row(l)[0]) == sid[:6].lower())
         print("%d row(s) in %s set to DONE" % (close_rows(ledger, sid), ledger))
         write_waiting(ledger, sid[:6].lower(), None)
+        shared_note(ledger, row, sid[:6].lower())
     return 0
 
 
@@ -1635,6 +1738,9 @@ def main(argv=None):
     waiting.add_argument("what")
     waiting.add_argument("--hours", type=float, help="`ask` only: ask in this many hours (default: now)")
     waiting.add_argument("--at", help="`ask` only: ask at this local time, YYYY-MM-DD HH:MM")
+    waiting.add_argument("--closes", action="append", metavar="EVENT",
+                         help="repeatable: pr:#N, result:<artifact id>, ticket:<ID> or session:<id8>; the audit closes "
+                              "the reminder itself once every one has happened")
     sleep = sub.add_parser("sleep", help="put a session's reminder off")
     sleep.add_argument("session")
     sleep.add_argument("hours", type=float)
@@ -1671,6 +1777,9 @@ def main(argv=None):
     answer.add_argument("--every", type=float, help="not-looked: ask again every this many hours (default %s)"
                                                     % RESULT_HOURS)
     answer.add_argument("--ledger")
+    claims = claims_module()
+    if claims is not None:
+        claims.add_parser(sub)
     args = p.parse_args(argv)
     commands = {"hook": lambda a: cmd_hook(), "mark": cmd_mark, "unmark": cmd_unmark, "retire": cmd_retire,
                 "guided": lambda a: set_level(a, GUIDED, guided_prefix()),
@@ -1679,7 +1788,8 @@ def main(argv=None):
                 "unguided": cmd_unguided, "unwatched": cmd_unguided, "done": cmd_done, "sweep": cmd_sweep,
                 "settle": cmd_settle, "waiting": cmd_waiting, "sleep": cmd_sleep, "unwait": cmd_unwait,
                 "followups": cmd_followups, "verification": cmd_verification, "result": cmd_result,
-                "result-answer": cmd_result_answer, "launch": cmd_launch, "reconcile": cmd_reconcile}
+                "result-answer": cmd_result_answer, "launch": cmd_launch, "reconcile": cmd_reconcile,
+                "claim": lambda a: claims.cmd_claim(a)}
     return commands[args.cmd](args)
 
 

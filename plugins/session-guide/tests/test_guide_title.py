@@ -64,7 +64,8 @@ class GuideTitleBase(unittest.TestCase):
         env = {k: v for k, v in os.environ.items()
                if k not in ("CLAUDE_CODE_SESSION_ID", "SESSION_GUIDE_TITLE", "SESSION_GUIDE_GUIDED_PREFIX",
                             "SESSION_GUIDE_DONE_PREFIX", "SESSION_GUIDE_WATCHED_PREFIX", "SESSION_GUIDE_ACTIVE_PREFIX")}
-        env.update(CLAUDE_CONFIG_DIR=self.cfg, **extra_env)
+        env.update(CLAUDE_CONFIG_DIR=self.cfg, SESSION_GUIDE_GH="0")  # never the network
+        env.update(extra_env)
         return subprocess.run([sys.executable, SCRIPT] + list(args), input=stdin, capture_output=True, text=True,
                               env=env)
 
