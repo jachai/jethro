@@ -34,7 +34,8 @@ is undone on the next turn:
 managed, watched and active count those rows in the ledger's `## Sessions` table; new is the live count of sessions
 active in the last 12 hours with no row there (see sweep). To pick your own format, set SESSION_GUIDE_TITLE (for
 hooks: in settings.json "env") with {managed}, {watched}, {active}, {new} and {tracked} (managed + watched)
-placeholders, plus {slug} (the ledger's folder name) and {host} (this machine's short host name), which tell two
+placeholders, {idle_note} (" · 15 idle 4d" when the last audit found decided work with no worker, else empty; or
+{idle} and {oldest} on their own), plus {slug} (the ledger's folder name) and {host} (this machine's short host name), which tell two
 guides apart when Remote Control shows another machine's sessions too. A format without them still works. Avoid `*`: some title tools strip markdown. Keep
 the "🟥🟥 Sessions Manager" start if you use claude-top: it falls back to it for a session without a marker. The
 marker is
@@ -76,6 +77,11 @@ Every MANAGED or WATCHED session has to settle: either it waits on the user (a r
 table, whose Remind at says when to ask again; `sleep` moves it) or it is closed (`done`, which also removes that row).
 settle lists the sessions quiet for --idle-hours that are neither, and the reminders that are due; the hook gives a guide
 both on every prompt. A running session, and one whose reminder sleeps, is left alone.
+
+Decided work must not sit idle either: guide_audit.py (next to this script; its docstring is the spec) lists the Open
+items and queue rows with no worker, the landings nobody verified and the sessions that never finished, ranked, 10
+rows at a time. `mark` runs its full audit and prints the table, `settle` ends with it, `retire` refreshes its
+STATE.md, the title shows its idle count, and the hook nags a guide whose idle items got no question to the user.
 
 A question the guide owes the user ("ask this afternoon") is a reminder too: `waiting ask "<question>"` writes a row
 keyed "owed question [<6 hex chars of the question>]" in the same table, due now or at --hours / --at, so a new guide's

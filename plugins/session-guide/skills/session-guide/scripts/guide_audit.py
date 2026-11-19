@@ -1,38 +1,57 @@
 #!/usr/bin/env python3
 """guide_audit: the guide's look back over its whole body of work: what was decided, did it land, was it verified.
 
-    python3 guide_audit.py audit [<ledger>] [--days 5] [--quick] [--all] [--queue <file.md>]...
-    python3 guide_audit.py set <key> <asked | started | parked | done | dropped> [--session <id>] [--hours N] [--note "…"]
+    python3 guide_audit.py audit [<ledger>] [--days 5] [--quick] [--limit 10] [--all] [--group <key>] [--queue <file.md>]...
+    python3 guide_audit.py set <key>[,<key>...] <asked | started | parked | done | dropped> [--session <id>] [--hours N] [--note "…"]
     python3 guide_audit.py state [<ledger>]        print the live-state file (STATE.md), refreshed first
 
 audit reads the ledger's tables (never its log) and, unless --quick, the transcripts of the ledger's sessions from the
-last --days, and prints a short table of work that is NOT done or NOT verified, oldest first, each with a next action:
+last --days, and prints the 10 rows most worth the guide's attention among the work that is NOT done or NOT verified,
+each with one next action:
 
 - idle      an Open items row, or a row of a queue file, that is still open with no live worker and no question to
             the user. A queue file is any markdown table of approved work (a fix queue): name it on a `Queues:` line
             in the ledger's first lines (comma-separated paths), in SESSION_GUIDE_QUEUES, or with --queue.
-- quiet     the same, but its worker (the `[id6]` in its Owner cell, a `set <key> started` session, or a live Sessions
-            row naming the same ticket or PR) has gone quiet for 2 h or is closed.
+- person    an Open items row whose Owner cell names a person (or says ASK), not a session, a guide or a worker, with
+            no reminder in the Waiting table: it waits on someone nobody is asking.
+- quiet     the same as idle, but its worker (the `[id6]` in its Owner cell, a `set <key> started` session, or a live
+            Sessions row naming the same ticket or PR) has gone quiet for 2 h or is closed.
 - unverified  what `guide_title.py followups` lists (landed, no Verifications row; "not-exercised" past its re-check),
             plus Verifications rows left proposed, broken, or running for over a day.
 - waiting   a reminder asked over a day ago that is still open: the gate may never open by itself.
 - decision  a decision of the last 3 days that nothing else in the ledger refers to (no Sessions row, Open item,
             reminder or later note names "D<N>" / "Decision <N>"), unless its words say it was an answer, not work.
-- session   (full audit only) a session of the last --days that ended with no `result:` line, with a result that says
-            it isn't finished (blocked, waiting, draft, needs …), or naming a PR the ledger never says was merged.
+- session   (full audit only; a quick one repeats the last full audit's) a session of the last --days that ended
+            with no `result:` line, with a result that says it isn't finished (blocked, waiting, draft, needs …), or
+            naming a PR the ledger never says was merged. Of a relay ('build', 'build 2', 'build (3)') only the last
+            session counts.
+- backlog   Open items rows with no date, or older than twice --days: one row, for one bulk question to the user.
 
-Rows the audit counts as moving (a live worker), asked (a pending question, or `set <key> asked`) or parked
-(`set <key> parked`, or the row's own words: "later", "not now", "at cutover") are counted, and listed only with --all.
+Ranking. Each row scores value x age. Value: 6 for a broken verification or a reminder open over a day, 3 for idle or
+quiet approved work, 2 for work waiting on a person, an unverified landing or an unfinished session, 1 for a re-check,
+an untraced decision, a session with no result line or the backlog; half again when the row's words name prod, an
+outage, a customer, money or a gate, half when they call it a glance, an idea or cosmetic. Age is in days, capped at 7.
+
+Collapsing. Rows that share one next action print as one row, its key ending "+N": the rows of one queue file, the
+items of one owner ("new session"), the items waiting on one person, the items whose worker is gone, the landed PRs
+with no verification, the re-checks that are due, the untraced decisions, the sessions with no result line, the
+backlog. `--group <key>` lists what is inside one; `--limit N` prints more rows; `--all` prints every item, not
+collapsed, with the ones counted but not listed: moving (a live worker), asked (a pending question, or
+`set <key> asked`) and parked (`set <key> parked`, or the row's own words: "later", "not now", "at cutover").
+
+set records what the guide did about a row, so the next audit doesn't list it again: `started --session <id>` (it is
+moving while that session is), `asked` (for 12 h, or --hours), `parked` (for --hours, or until un-set), `done` and
+`dropped`. A key is the table's first column, several of them comma-separated, a collapsed key ("3fa9c1+5": every
+item in that row), or a ticket / PR when only one item names it. It works on every kind of row.
 
 Every run writes two files next to the ledger: STATE.md, a few KB of live state (guide, open sessions, reminders,
-results with no verdict, this table), which a takeover reads instead of the ledger's log; and audit.json, the `set`
-marks and the counts the title hook shows ({idle} and {oldest}). The hook refreshes the quick audit on a guide's
-prompt (at most every 10 minutes), nags when an idle item is older than SESSION_GUIDE_IDLE_HOURS (default 12) with no
-question to the user, and says when the full audit is due (SESSION_GUIDE_AUDIT_HOURS, default 12; 0 turns both off).
-`guide_title.py mark` (a takeover) runs the full audit; `retire` and `settle` refresh the quick one.
+results with no verdict, the top 20 rows), which a takeover reads instead of the ledger's log; and audit.json, the
+`set` marks and the counts the title hook shows ({idle} and {oldest}). The hook refreshes the quick audit on a guide's
+prompt (at most every 10 minutes), nags with the top rows when an idle item is older than SESSION_GUIDE_IDLE_HOURS
+(default 12) with no question to the user, and says when the full audit is due (SESSION_GUIDE_AUDIT_HOURS, default 12;
+0 turns both off). `guide_title.py mark` (a takeover) runs the full audit; `retire` and `settle` refresh the quick one.
 
-A key is the 6 hex characters in the table's first column (a hash of the item's words), or a ticket / PR in the item
-when only one item names it. Python 3 stdlib only.
+Python 3 stdlib only.
 """
 import argparse
 import glob

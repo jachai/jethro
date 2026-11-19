@@ -5,6 +5,39 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-11-19
+
+### Added
+
+- `scripts/guide_audit.py`: the guide's look back over its whole body of work. `audit [<ledger>]` lists what is not
+  done or not verified: Open items and queue-file rows with no live worker, items waiting on a person nobody is
+  asking, landings with no verification, reminders open over a day, recent decisions nothing refers to, and sessions
+  of the last 5 days that ended without a clean `result:` line. Rows are ranked by value x age, rows that share one
+  next action are collapsed, and the top 10 print with one next action each (`--limit`, `--group <key>`, `--all`).
+  `set <key> started | asked | parked | done | dropped` records what the guide did about a row. `--quick` skips the
+  transcripts (about 2 s on a 1 MB ledger; the full audit takes about 6 s).
+- Queue files: a `Queues:` line in the ledger's first lines (or `SESSION_GUIDE_QUEUES`, or `--queue`) names markdown
+  tables of approved work outside the ledger, so a fix queue another session appends to is audited too.
+- `STATE.md` next to the ledger: a few KB of live state (open sessions, reminders, results with no verdict, the
+  audit's top 20 rows), rewritten on every audit. A takeover reads it instead of the ledger's log.
+- The guide title shows the idle count and the oldest age (" · 15 idle 4d"; `{idle_note}`, `{idle}` and `{oldest}`
+  in `SESSION_GUIDE_TITLE`). The hook nags a guide when an idle item is over `SESSION_GUIDE_IDLE_HOURS` (default 12)
+  old with no question to the user, and says when the full audit is due (`SESSION_GUIDE_AUDIT_HOURS`, default 12;
+  0 turns the audit off).
+
+### Changed
+
+- `guide_title.py mark` runs the full audit and prints its table, `settle` ends with the quick audit and, with nothing
+  else due, tells the guide to work the table instead of sleeping, and `retire` refreshes `STATE.md`.
+- The skill's status reply has a "Decided, not moving" heading, the takeover reads `STATE.md` first, and the handoff
+  runs the audit.
+- A custom `SESSION_GUIDE_TITLE` needs `{idle_note}` added to show the idle count.
+
+### Fixed
+
+- The skill told the user to run `guide_approve.py` from `~/.claude/skills/session-guide`, which doesn't exist on a
+  plugin install. It now uses the skill's own base directory.
+
 ## [0.1.18] - 2026-11-18
 
 ### Changed

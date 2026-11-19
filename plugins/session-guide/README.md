@@ -137,12 +137,13 @@ varies by platform; override it with `SESSION_GUIDE_RETIRED_TITLE`.
 The guide keeps one title, so you can always find it in the agents view:
 
 ```
-🟥🟥 Sessions Manager · release-guide (2 managed · 1 watched · 3 active · 1 new) 🟥🟥
+🟥🟥 Sessions Manager · release-guide (2 managed · 1 watched · 3 active · 1 new · 15 idle 4d) 🟥🟥
 ```
 
 `release-guide` is the ledger's slug (its folder name), so two guides, say one per machine over Remote Control, read
 apart. managed, watched and active count the ledger's rows at those levels. new is the count of sessions active in the
-last 12 h that have no ledger row yet, counted live on every prompt. At start the
+last 12 h that have no ledger row yet, counted live on every prompt. "15 idle 4d" appears when the audit (below) finds
+decided work with no worker: how many items, and the oldest one's age. At start the
 guide runs
 `scripts/guide_title.py mark <ledger>`. A `UserPromptSubmit` and `SessionStart` hook then re-applies the title on
 every prompt, with fresh counts, so a rename (by hand or by another titling hook) lasts one turn at most. Every other
@@ -210,6 +211,41 @@ the guide session, so they fire only while a guide is running; a new guide picks
 A question the guide owes you later ("ask this afternoon") is a reminder too, written the moment the guide says it:
 `guide_title.py waiting ask "<question>" --hours 3`. It is a dated row in the same table, so it survives a guide
 handoff instead of living in the old guide's head.
+
+## Decided work doesn't sit idle
+
+Reminders only cover what someone remembered to write a reminder for. A fix you approved on Monday that no session
+picked up has no reminder, so a guide that only works its reminders reports "nothing due" while the work sits. The
+audit closes that gap. It is a script, so it runs whether or not the guide remembers to:
+
+```console
+$ python3 skills/session-guide/scripts/guide_audit.py audit
+AUDIT 2026-10-27 14:26, last 5 days
+| Key | Age | Kind | What | Why | Next action |
+|---|---|---|---|---|---|
+| d21531 | 6.1 d | unverified | #131 (prod): split invoices still round 0.01 off on 12 orders | broken | start a fix |
+| 788e4f+5 | 4.1 d | idle | 6 approved rows of fix-queue.md with no worker: BIL-208, BIL-213, BIL-219, … | oldest of 6 | ask now: start a fix wave for them / keep waiting / drop |
+| 19feab | 26 h | waiting | owed question: #142 merge gate, the export wave waits on it | asleep until 10-28 00:25 | re-ask, or build around it |
+| 473b7d+3 | 3.0 d | person | 4 items wait on Dana with no reminder: #135, BIL-201, … | oldest of 4 | one interview question listing them, then `waiting ask` |
+… and 9 more row(s) holding 41 item(s), lower value x age: `audit --limit 13`, or `--all` for every item
+23 idle decided item(s) (oldest 4.1 d), 19 over 12 h with no question to the user; 7 unverified; 1 reminder(s) open over a day; …
+```
+
+It reads the ledger's tables, any queue files the ledger names on a `Queues:` line (a fix queue another session
+appends to), and the last 5 days of the guide's sessions' transcripts, and lists what is **not done or not verified**:
+approved items with no live worker, items waiting on a person nobody is asking, landings nobody verified, reminders
+open for over a day, recent decisions nothing refers to, and sessions that ended without a clean `result:`. Rows are
+ranked by value x age and rows that share one next action are collapsed, so the guide gets 10 rows, not 300.
+
+- **A quiet wake works the table.** `settle` ends with it, and with nothing else due the guide proposes a start for
+  each row instead of going back to sleep.
+- **The title and the hook keep count.** The title shows the idle count and the oldest age; the hook nags the guide
+  when an idle item is over 12 h old with no question to you (`SESSION_GUIDE_IDLE_HOURS`).
+- **Takeover and handoff run it.** `guide_title.py mark` runs the full audit and prints the table; every run rewrites
+  `STATE.md` next to the ledger, a few KB of live state that a new guide reads instead of a ledger log that has
+  grown to a megabyte.
+- **Every row can be cleared.** `guide_audit.py set <key> started --session <id>`, `asked`, `parked --hours N`,
+  `done` or `dropped` records what was decided, so the same row isn't raised twice.
 
 ## Results you asked for get a verdict
 
