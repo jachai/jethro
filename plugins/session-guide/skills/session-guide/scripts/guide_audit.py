@@ -94,7 +94,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import guide_title as gt  # noqa: E402
 
-__version__ = "0.1.19"
+__version__ = "0.1.20"
 IDLE_HOURS = 12  # an idle item older than this with no question to the user is nagged about
 AUDIT_HOURS = 12  # the full audit (transcripts too) is due this often
 QUICK_MINUTES = 10  # the hook recomputes the quick audit at most this often
@@ -1131,9 +1131,8 @@ def state_file(ledger, found, state=None):
                                                            "full" if found["full"] else "quick"), ""]
     live = live_sessions(tables, now, transcripts(now - 30 * 86400))
     out += ["## Open sessions (%d)" % len(live)]
-    out += ["- %s %s, %s" % (cell(s["cell"], 70), s["level"], "running" if s["moving"] else
-                             "quiet " + span(s["idle"]) if s["idle"] is not None else "no transcript")
-            for s in list(live.values())[:25]] + ["- and %d more" % (len(live) - 25)] * (len(live) > 25)
+    out += ["- %s %s, %s" % (cell(s["cell"], 70), s["level"], session_state(rid, s, now))
+            for rid, s in list(live.items())[:25]] + ["- and %d more" % (len(live) - 25)] * (len(live) > 25)
     settle = gt.settle_status(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
     results = gt.results_status(ledger)["due"]
     notes = found.get("reminders") or {}
@@ -1152,6 +1151,36 @@ def state_file(ledger, found, state=None):
         out += ["- " + cell(r, 220) for r in struck["rows"][:40]]
     out += ["", "## Not done or not verified (top %d by value x age)" % (2 * TOP), summary(found), "", render(found, 2 * TOP), ""]
     save(state_paths(ledger)[1], "\n".join(out))
+
+
+def reconcile_module():
+    """guide_reconcile (the job folder's facts), next to this script; None when it can't be loaded."""
+    try:
+        import guide_reconcile
+        return guide_reconcile
+    except Exception:
+        return None
+
+
+def session_state(rid, live, now):
+    """What an open session is really doing, for STATE.md: its job's state ("working", "ended 12 min ago (done),
+    result: …"), not a guess from its transcript's age. A session with no job folder (interactive, or old) keeps the
+    transcript wording: running, quiet <age>, no transcript."""
+    try:
+        facts = reconcile_module().job_facts(rid)
+    except Exception:
+        facts = None
+    if facts is None:
+        return ("running" if live["moving"] else "quiet " + span(live["idle"]) if live["idle"] is not None
+                else "no transcript")
+    if facts["state"] == "working" and facts["alive"]:
+        return "working" + (": " + cell(facts["detail"], 80) if facts["detail"] else "")
+    ended = facts["ended_at"].timestamp() if facts["ended_at"] else None
+    ago = "%d min" % ((now - ended) // 60) if ended is not None and now - ended < 3600 else span(
+        now - ended if ended is not None else None)
+    result = facts["result"] or facts["detail"]
+    return "ended %s ago (%s)%s" % (ago, facts["state"] if facts["state"] != "working" else "process gone",
+                                     ", result: " + cell(result, 110) if result else "")
 
 
 def candidates(found):

@@ -65,7 +65,8 @@ class ReconcileBase(unittest.TestCase):
         self.write_ledger(LEDGER)
         env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_CODE_SESSION_ID", "SESSION_GUIDE_GRACE_MINUTES",
                                                                  "SESSION_GUIDE_CLAUDE")}
-        env.update(CLAUDE_CONFIG_DIR=self.cfg, SESSION_GUIDE_AUDIT_HOURS="0", SESSION_GUIDE_FOLLOWUP_HOURS="0")
+        env.update(CLAUDE_CONFIG_DIR=self.cfg, SESSION_GUIDE_AUDIT_HOURS="0", SESSION_GUIDE_FOLLOWUP_HOURS="0",
+                   SESSION_GUIDE_GH="0")
         self.env = mock.patch.dict(os.environ, env, clear=True)
         self.env.start()
 
@@ -377,6 +378,102 @@ class WiringTest(ReconcileBase):
                     with open(os.path.join(top, name), errors="replace") as f:
                         self.assertNotIn(OLD_SENTENCE, f.read().lower(), os.path.join(top, name))
         self.assertIn("Keep sending to this socket", gt.GUIDE_CHANGE)
+
+
+ARTIFACT_ID = "AbCdEfGhIjKlMnOpQrStUv"  # 22 characters, as an artifact id is
+COVERED_LEDGER = LEDGER.replace("## Waiting on the user", """## Results for you
+| Deliverable | Link | Delivered | Asked | Answer |
+|---|---|---|---|---|
+| WID-4321 review (widget review [d1d1d1]) | https://example.test/r/1 | 2026-11-02 09:00 | 2026-11-02 09:00 | satisfied 2026-11-02 10:00 |
+
+## Waiting on the user""").replace("|---|---|---|---|\n\n## Open items", """|---|---|---|---|
+| owed question [018c07] | Did the user read the WID-4321 review? | 2026-11-01 10:00 | 2026-11-01 10:00 |
+
+## Open items""").replace("| Item | Owner | Next action | Status |\n|---|---|---|---|\n", """| Item | Owner | Next action | Status |
+|---|---|---|---|
+| Chase WID-777 with the vendor | the user | chase | ASK 11-01 |
+""")
+
+
+class TitleWiringTest(ReconcileBase):
+    """Claims, covered reminders, closes: tags, the shared-ids line and STATE.md's real session state, through the
+    title script."""
+    def setUp(self):
+        super().setUp()
+        os.environ.pop("SESSION_GUIDE_AUDIT_HOURS")  # the audit runs here, as on a real guide's prompt
+        self.write_ledger(COVERED_LEDGER)
+        r = self.script("mark", self.ledger, "--session", GUIDE)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def ok(self, *args):
+        r = self.script(*args)
+        self.assertEqual((r.returncode, r.stderr), (0, ""), r.stdout)
+        return r.stdout
+
+    def test_a_claim_lands_in_the_ledger_and_its_hook_line_shows(self):
+        out = self.ok("claim", "merge", "4242", "--repo", "acme/widgets")
+        self.assertIn("merge PR #4242", out)
+        self.assertIn("| acme/widgets#4242 | the user |", open(self.ledger).read())
+        context = self.hook()
+        self.assertIn("session-guide claims:", context)
+        self.assertIn("merge PR #4242 (acme/widgets)", context)  # gh is off in tests: "not checked"
+
+    def test_a_covered_due_reminder_is_likely_done_and_not_asked_in_hook_and_settle(self):
+        context = self.hook()
+        covered = context[context.index("look done already"):]
+        self.assertIn("owed question [018c07]: Did the user read the WID-4321 review? -> likely done:", covered)
+        self.assertNotIn("reminder(s) due:\n- owed question [018c07]", context)
+        out = self.ok("settle", self.ledger)
+        self.assertIn("Likely done: owed question [018c07]", out)
+        self.assertNotIn("Due: owed question [018c07]", out)
+        self.assertIn("0 due, 0 asleep, 1 likely done", out)
+
+    def test_an_open_reminder_is_asked_with_its_checked_note(self):
+        self.ok("waiting", "ask", "Did the vendor answer on WID-888?")
+        out = self.ok("settle", self.ledger)
+        self.assertRegex(out, r"Due: owed question \[\w{6}\]: Did the vendor answer on WID-888\? \(asked [\d: -]+\); "
+                              r"checked \d\d-\d\d: still open because")
+
+    def test_a_closes_result_reminder_closes_once_that_result_is_satisfied(self):
+        out = self.ok("waiting", "ask", "Review the pricing deck", "--closes", "result:" + ARTIFACT_ID)
+        key = re.search(r"owed question \[(\w{6})\]", out).group(1)
+        self.assertIn("Review the pricing deck · closes: result:%s |" % ARTIFACT_ID, open(self.ledger).read())
+        self.ok("settle", self.ledger)
+        self.assertIn(key, gt.waiting_rows(self.ledger))  # not yet: no such result
+        self.ok("result", "pricing deck", "https://claude.ai/artifact/" + ARTIFACT_ID)
+        self.ok("result-answer", "pricing deck", "satisfied")
+        self.ok("settle", self.ledger)
+        self.assertNotIn(key, gt.waiting_rows(self.ledger))
+        self.assertIn("closed 1 row(s) whose `closes:` tag has happened", self.hook())
+
+    def test_closes_is_repeatable_checked_and_kept_on_a_repeat(self):
+        self.ok("waiting", "ask", "Ship it", "--closes", "pr:#12", "--closes", "ticket:WID-9")
+        self.assertIn("Ship it · closes: pr:#12 ticket:WID-9 |", open(self.ledger).read())
+        self.ok("waiting", "ask", "Ship it", "--hours", "2")
+        self.assertIn("Ship it · closes: pr:#12 ticket:WID-9 |", open(self.ledger).read())
+        r = self.script("waiting", "ask", "Ship it", "--closes", "branch:main")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("--closes takes", r.stderr)
+
+    def test_a_new_row_sharing_an_id_names_the_open_rows(self):
+        out = self.ok("waiting", "ask", "Did the vendor answer on WID-777?")
+        self.assertRegex(out, r"open rows sharing ids: \w{6}\. Does this replace them\?")
+        self.assertNotIn("sharing ids", self.ok("waiting", "ask", "Unrelated question"))
+
+    def test_state_md_shows_the_real_session_state(self):
+        self.job(CLEANUP, result="DONE: cleanup merged", ago=720)
+        self.job(RELAY, state="working", detail="Reading the diff", alive=True)
+        self.ok("settle", self.ledger)
+        import guide_audit as ga
+        state = open(ga.state_paths(self.ledger)[1]).read()
+        self.assertIn("ledger cleanup [b8b8b8] MANAGED, ended 12 min ago (done), result: DONE: cleanup merged", state)
+        self.assertIn("atlas plan rewrite (2) [a7a7a7] MANAGED, working: Reading the diff", state)
+        self.assertIn("search spike [c9c9c9] WATCHED, no transcript", state)  # no job folder: the old wording
+
+    def test_retire_prints_the_contract_text(self):
+        out = self.script("retire", GUIDE, "--check").stdout
+        self.assertIn('"Guide changing. Keep sending to this socket; the old guide forwards until the new one '
+                      'introduces itself."', out)
 
 
 FAKE_CLAUDE = r'''
