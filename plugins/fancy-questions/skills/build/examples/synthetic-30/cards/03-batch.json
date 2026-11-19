@@ -1,0 +1,568 @@
+[
+  {
+    "id": "syn-17",
+    "section": "money",
+    "short": "Software seats",
+    "question": "Should unused software seats be cancelled each quarter?",
+    "recommend": "Yes, review every quarter.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, review every quarter."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "steps",
+      "items": [
+        {
+          "when": "Day 1",
+          "label": "Request sent"
+        },
+        {
+          "when": "Day 3",
+          "label": "Reminder",
+          "tone": "discuss"
+        },
+        {
+          "when": "Day 5",
+          "label": "Closed",
+          "tone": "yes"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, review every quarter.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ],
+    "parts": [
+      {
+        "id": "syn-17b",
+        "question": "Who signs off the quarterly seat review?",
+        "recommend": "The finance lead signs it off.",
+        "today": "No rule today.",
+        "visual": {
+          "kind": "bars",
+          "rows": [
+            {
+              "label": "Today",
+              "value": 0,
+              "text": "none",
+              "tone": "no"
+            },
+            {
+              "label": "After",
+              "value": 1,
+              "text": "one",
+              "tone": "yes"
+            }
+          ]
+        },
+        "options": [
+          {
+            "id": "yes",
+            "tone": "yes",
+            "recommended": true,
+            "name": "Yes",
+            "sub": "The finance lead signs it off.",
+            "impact": "<b>Team</b> knows who decides."
+          },
+          {
+            "id": "no",
+            "tone": "no",
+            "name": "No",
+            "sub": "Leave it open."
+          },
+          {
+            "tone": "discuss"
+          }
+        ]
+      },
+      {
+        "id": "syn-17c",
+        "question": "Should cancelled seats be listed on the intranet?",
+        "recommend": "Yes, list them for a month.",
+        "today": "No rule today.",
+        "visual": {
+          "kind": "bars",
+          "rows": [
+            {
+              "label": "Today",
+              "value": 0,
+              "text": "none",
+              "tone": "no"
+            },
+            {
+              "label": "After",
+              "value": 1,
+              "text": "one",
+              "tone": "yes"
+            }
+          ]
+        },
+        "options": [
+          {
+            "id": "yes",
+            "tone": "yes",
+            "recommended": true,
+            "name": "Yes",
+            "sub": "Yes, list them for a month.",
+            "impact": "<b>Team</b> knows who decides."
+          },
+          {
+            "id": "no",
+            "tone": "no",
+            "name": "No",
+            "sub": "Leave it open."
+          },
+          {
+            "tone": "discuss"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "syn-18",
+    "section": "money",
+    "short": "Phone allowance",
+    "question": "Should we pay a flat phone allowance?",
+    "recommend": "Yes, pay a flat monthly amount.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, pay a flat monthly amount."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "table",
+      "cols": [
+        "Item",
+        "Today",
+        "Proposed"
+      ],
+      "rows": [
+        [
+          "Guest badge",
+          "Paper",
+          "Printed"
+        ],
+        [
+          "Parking",
+          "First come",
+          "Booked"
+        ],
+        [
+          "Visitors",
+          "Any time",
+          "Mornings"
+        ]
+      ],
+      "highlight": [
+        1
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, pay a flat monthly amount.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-19",
+    "section": "money",
+    "short": "Invoice timing",
+    "question": "Should supplier invoices be paid on a fixed day?",
+    "recommend": "Yes, pay on the 15th.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, pay on the 15th."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "image",
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAAB4CAIAAABQJv+tAAACTklEQVR42u3XsQmAQAxA0RvM2traIaytHcLacRzFwsoJHMBGEY6Ee/AnSMKDlOO8JOlTxQgkgUMSOCSBQxI4JIFDksAhCRySwCEJHJLAIUk/4OinXVIjgUMSOCSBQxI4JIEDHBI4wCEJHJLAIQkcksBhmhI4wCEJHJLAIQkcksAhCRzgkAQOSRHgkCRwSAKHJHAoRYkecoFD4AAHOAQOcIBD4AAHOCRwCBwCh8AhcFgEOAQOcIBD4AAHOCRwCBwCh8AhcAgcAgc4wCFwgAMcAgc4wFG/bpsi5ALAIXCAAxwCBzjAAQ5wgAMc4AAHOMABDnCAQ+AQOMABDoEDHOAABzjAAQ5wgAMc4AAHOMAhcAgc4ACHwAEOcIADHOAABzjAAQ5wgAMc4BA4BA5wgEPgAAc4BA5wgAMc4AAHOMABDnC8ax+HCIFD4AAHOMABDnCAAxzgAAc4wAEOcIADHAIHOMAhcIADHOAABzjAAQ5wgAMc4AAHOMABDoEDHOAQOMABDoEDHOAABzjAAQ5wgAMc4AAHOMABDnA8W9ctQuAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAQ5wgAMc4AAHOMABDnCAAxzgAAc4wAEOcIADHOAABzjAAY6qcMzzIil44JCUHw5J7QQOSeCQBA5J4JAEDkngkCRwSAKHJHBIStoNVcYilU2KFUIAAAAASUVORK5CYII=",
+      "alt": "Example image: a bar chart with four bars"
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, pay on the 15th.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-20",
+    "section": "money",
+    "short": "Petty cash",
+    "question": "Should we drop petty cash?",
+    "recommend": "Yes, use cards instead.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, use cards instead."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "pair",
+      "a": {
+        "kind": "bars",
+        "rows": [
+          {
+            "label": "Today",
+            "value": 4,
+            "text": "4 days",
+            "tone": "no"
+          }
+        ]
+      },
+      "b": {
+        "kind": "bars",
+        "rows": [
+          {
+            "label": "After",
+            "value": 1,
+            "text": "1 day",
+            "tone": "yes"
+          }
+        ]
+      }
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, use cards instead.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-21",
+    "section": "money",
+    "short": "Gift budget",
+    "question": "Should there be a fixed gift budget for clients?",
+    "recommend": "Yes, set a yearly budget.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, set a yearly budget."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "stack",
+      "items": [
+        {
+          "kind": "flow",
+          "steps": [
+            {
+              "label": "Ask"
+            },
+            {
+              "label": "Approve",
+              "tone": "yes"
+            }
+          ]
+        },
+        {
+          "kind": "bars",
+          "rows": [
+            {
+              "label": "Today",
+              "value": 3,
+              "text": "3 steps",
+              "tone": "no"
+            },
+            {
+              "label": "After",
+              "value": 2,
+              "text": "2 steps",
+              "tone": "yes"
+            }
+          ]
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, set a yearly budget.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-22",
+    "section": "tools",
+    "short": "Chat rules",
+    "question": "Should chat threads close after a week?",
+    "recommend": "Yes, close after a week.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, close after a week."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "svg",
+      "svg": "<svg class=\"ico\" viewBox=\"0 0 320 110\" role=\"img\" aria-label=\"Mail arrives at the front desk, then goes to the shared tray; unsorted mail is flagged.\"><rect class=\"soft\" x=\"8\" y=\"30\" width=\"90\" height=\"44\" rx=\"8\"/><text x=\"20\" y=\"57\">Front desk</text><path d=\"M98 52h50m-7-7 7 7-7 7\"/><rect x=\"154\" y=\"30\" width=\"90\" height=\"44\" rx=\"8\"/><text x=\"166\" y=\"57\">Shared tray</text><path class=\"ok\" d=\"M244 52h40\"/><circle class=\"ok\" cx=\"296\" cy=\"52\" r=\"10\"/><path class=\"bad\" d=\"M199 74v22\"/><text class=\"sm redt\" x=\"130\" y=\"106\">unsorted: flagged</text></svg>"
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, close after a week.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-23",
+    "section": "tools",
+    "short": "Password manager",
+    "question": "Should everyone use the shared password manager?",
+    "recommend": "Yes, make it required.",
+    "urgent": false,
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, make it required."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "bars",
+      "rows": [
+        {
+          "label": "Today",
+          "value": 40,
+          "text": "$40",
+          "tone": "no"
+        },
+        {
+          "label": "Option A",
+          "value": 25,
+          "text": "$25",
+          "tone": "yes"
+        },
+        {
+          "label": "Option B",
+          "value": 32,
+          "text": "$32"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, make it required.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  },
+  {
+    "id": "syn-24",
+    "section": "tools",
+    "short": "Backups",
+    "question": "Should laptops back up every night?",
+    "recommend": "Yes, nightly backups.",
+    "today": {
+      "text": "There is no written rule; people decide case by case."
+    },
+    "after": {
+      "text": "Yes, nightly backups."
+    },
+    "example": "Last month 12 requests came in on this topic and 5 took more than two days to settle.",
+    "facts": [
+      {
+        "text": "The counts in the example are made up for this demo.",
+        "verified": false
+      }
+    ],
+    "visual": {
+      "kind": "split",
+      "parts": [
+        {
+          "label": "office",
+          "value": 50,
+          "text": "50%",
+          "tone": "yes"
+        },
+        {
+          "label": "remote",
+          "value": 30,
+          "text": "30%"
+        },
+        {
+          "label": "travel",
+          "value": 20,
+          "text": "20%",
+          "tone": "muted"
+        }
+      ]
+    },
+    "notePrompt": "Anything we should know first?",
+    "options": [
+      {
+        "id": "yes",
+        "tone": "yes",
+        "recommended": true,
+        "name": "Yes, as recommended",
+        "sub": "Yes, nightly backups.",
+        "impact": "<b>Everyone</b> follows one written rule."
+      },
+      {
+        "id": "no",
+        "tone": "no",
+        "name": "No, keep today",
+        "sub": "People keep deciding case by case."
+      },
+      {
+        "tone": "discuss"
+      }
+    ]
+  }
+]

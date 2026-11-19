@@ -1,6 +1,6 @@
 {
   "name": "jethro",
-  "description": "jethro: Claude Code plugins for running many sessions at once: session titles, a session guide, a stale-session sweep and an artifact explorer",
+  "description": "jethro: Claude Code plugins for running many sessions at once: session titles, a session guide, a stale-session sweep, an artifact explorer and question walkthroughs",
   "owner": {
     "name": "Jonathan Achai",
     "url": "https://github.com/jachai"
@@ -27,9 +27,14 @@
       "description": "A catalog of your claude.ai artifacts on your own machine: one local page to search, sort and reopen everything you made or were sent."
     },
     {
+      "name": "fancy-questions",
+      "source": "./plugins/fancy-questions",
+      "description": "Turn open questions for one decider into a one-card-at-a-time claude.ai artifact, then collect the answers"
+    },
+    {
       "name": "jethro",
       "source": "./plugins/jethro",
-      "description": "Installs the whole suite: session-titles, session-sweep, session-guide and artifact-explorer"
+      "description": "Installs the whole suite: session-titles, session-sweep, session-guide, artifact-explorer and fancy-questions"
     }
   ]
 }
