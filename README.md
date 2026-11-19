@@ -13,7 +13,8 @@ Named after Jethro, who told Moses to stop judging every case himself and hand t
 | session-sweep | Closes background sessions that are done, handed off or abandoned, after asking about the unclear ones | [plugins/session-sweep](plugins/session-sweep) |
 | session-guide | Makes one session the guide across parallel sessions: one ledger, relayed decisions, handoffs | [plugins/session-guide](plugins/session-guide) |
 | artifact-explorer | A catalog of your claude.ai artifacts on your own machine: one local page to search, sort and reopen everything you made or were sent | [plugins/artifact-explorer](plugins/artifact-explorer) |
-| jethro | Installs the four plugins above | [plugins/jethro](plugins/jethro) |
+| fancy-questions | Turns open questions for one decider into a one-card-at-a-time claude.ai artifact, then collects the answers | [plugins/fancy-questions](plugins/fancy-questions) |
+| jethro | Installs the five plugins above | [plugins/jethro](plugins/jethro) |
 
 The examples below use made-up sessions and invented data.
 
@@ -77,6 +78,25 @@ background model writes a one-line description for each artifact.
 
 More: [plugins/artifact-explorer/README.md](plugins/artifact-explorer/README.md)
 
+### fancy-questions
+
+Turns a set of open questions for one decider (Ops, a PM, a customer) into a claude.ai artifact they
+walk through one card at a time: the recommendation first, a visual per question, answers saved in the
+artifact's shared db. `/fancy-questions:collect` reads the answers back. A session writes only the
+question data (one card from the bundled `minimal` example below), and the bundled `qw` CLI checks it
+and builds the page:
+
+```
+"question": "Should a late payment add a $25 fee?",
+"recommend": "Yes, after a 5-day grace period.",
+"example": "Invoice of $1,000 paid 8 days late: $25 fee under the recommendation, $0 today.",
+
+$ bin/qw stats skills/build/examples/minimal
+2 cards (+1 parts), about 2 min, 1 urgent · visuals bars 1, tree 1, beforeAfter 1
+```
+
+More: [plugins/fancy-questions/README.md](plugins/fancy-questions/README.md)
+
 ## Install
 
 You need Claude Code with background sessions, and Python 3.9+ on macOS or Linux. These are terminal
@@ -108,9 +128,10 @@ or any of the plugins on their own:
 /plugin install session-sweep@jethro
 /plugin install session-guide@jethro
 /plugin install artifact-explorer@jethro
+/plugin install fancy-questions@jethro
 ```
 
-The shell form is the same with `claude plugin install`. `jethro@jethro` installs the four as
+The shell form is the same with `claude plugin install`. `jethro@jethro` installs the five as
 dependencies. While it is enabled, its members cannot be disabled one by one: to leave one out,
 uninstall `jethro@jethro` and install the plugins you want by name.
 
@@ -135,6 +156,9 @@ is changed on install. The rest is asked for the first time a plugin needs it:
 | artifact-explorer | Artifact tool reads of your artifact list and your own artifacts | Builds the catalog and the descriptions | Asked in setup. claude.ai may show its own consent prompt. Artifacts others shared with you are read only when you run `/artifact-explorer:refresh` yourself |
 | artifact-explorer | `PostToolUse` (Artifact) and `SessionStart` hooks, and a silent watcher monitor | Record each publish, read and open, and rebuild the page every `watch_interval` minutes (10 by default) | Registered by the plugin (`hooks/hooks.json`, `monitors/monitors.json`); nothing to add |
 | artifact-explorer | Background describer runs, within `describe_daily_cap` ($1.00 a day by default) | Writes the missing descriptions | Options in `/config` (plugins). `browser_history` and `transcript_reads` are on and read locally; `chrome_screenshots` and `share_harvest` are off |
+| fancy-questions | `Bash(sh *bin/qw *)` | Runs `qw` to check and build the page | Granted by the build skill itself (`allowed-tools`) while it runs; nothing to add. `qw` needs Node 20+ |
+| fancy-questions | Publishing a new artifact with a shared db, and one test save and delete | The page saves the reader's answers | Asked by claude.ai when the skill publishes. Share the page with the reader as **Contributor**: a Viewer or Commenter cannot save |
+| fancy-questions | Claude in Chrome (the `walkthrough-checker` agent) | Opens the published page to check it before it is called ready | Needs the Claude in Chrome extension; the extension asks for site access |
 
 ### 4. First run
 
@@ -146,6 +170,8 @@ is changed on install. The rest is asked for the first time a plugin needs it:
 - **artifact-explorer**: run `/artifact-explorer:setup`. It prints the version it runs and asks
   everything in one message: the two allow rules above, the first refresh and a one-row describer test.
   Then it opens the page. `/artifact-explorer:open` opens it again later.
+- **fancy-questions**: nothing to set up. Run `/fancy-questions:build` (or "turn these questions into a
+  walkthrough for Ops") when you have questions to ask.
 
 ### 5. Check it works
 
@@ -162,6 +188,7 @@ claude plugin list                 # each plugin shows "Status: ✔ enabled"
 - artifact-explorer: the first step of `/artifact-explorer:setup` runs `ae doctor`. It prints the
   version this window runs, the installed version and the marketplace version, and says MISMATCH when
   they differ.
+- fancy-questions: `/fancy-questions:build` and `/fancy-questions:collect` show up in the `/` menu.
 
 ### Update
 
@@ -173,6 +200,7 @@ claude plugin update session-titles@jethro       # one per installed plugin
 claude plugin update session-sweep@jethro
 claude plugin update session-guide@jethro
 claude plugin update artifact-explorer@jethro
+claude plugin update fancy-questions@jethro
 ```
 
 Then open a new window. Updating the marketplace alone does not move an installed plugin. Each plugin
@@ -181,7 +209,7 @@ has its own version, `CHANGELOG.md` and release tags (`<plugin>--v<version>`).
 ### Uninstall or roll back
 
 ```
-claude plugin uninstall jethro@jethro            # the bundle; its four plugins stay installed
+claude plugin uninstall jethro@jethro            # the bundle; its five plugins stay installed
 claude plugin prune                              # removes the auto-installed plugins nothing needs now
 claude plugin uninstall session-titles@jethro    # or one plugin by name
 claude plugin marketplace remove jethro          # after the last plugin
