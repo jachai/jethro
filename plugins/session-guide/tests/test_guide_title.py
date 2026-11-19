@@ -38,6 +38,17 @@ Guide: 'release guide' [c0ffee12] since 10-27 09:00
 """
 
 
+NOW = re.compile(r"^Now: \w{3} \d{4}-\d\d-\d\d \d\d:\d\d .*\(UTC[+-]\d{4}\)\. .*$")
+
+
+def without_now(context):
+    """A guide's hook context minus its first line, the clock ("Now: ..."), which every guide prompt carries."""
+    lines = context.split("\n")
+    if lines and NOW.match(lines[0]):
+        lines = lines[1:]
+    return "\n".join(lines)
+
+
 class GuideTitleBase(unittest.TestCase):
     def setUp(self):
         self.cfg = tempfile.mkdtemp(prefix="guide-title-")
@@ -62,6 +73,11 @@ class GuideTitleBase(unittest.TestCase):
         if title is not None:
             event_in["session_title"] = title
         return self.run_script("hook", stdin=json.dumps(event_in), **extra_env)
+
+    def extra_context(self, session_id=GUIDE, **extra_env):
+        """The hook's additionalContext for a session, without the clock line; "" when it gives none."""
+        out = self.hook(session_id, **extra_env).stdout
+        return without_now(json.loads(out)["hookSpecificOutput"].get("additionalContext", "")) if out else ""
 
     def guide_title(self, **extra_env):
         r = self.hook(**extra_env)
@@ -94,7 +110,9 @@ class GuideTitleTest(GuideTitleBase):
         for event in ("UserPromptSubmit", "SessionStart"):
             r = self.hook(event=event)
             self.assertEqual(r.returncode, 0)
-            self.assertEqual(json.loads(r.stdout), {"hookSpecificOutput": {
+            output = json.loads(r.stdout)
+            self.assertRegex(output["hookSpecificOutput"].pop("additionalContext"), NOW)  # the clock, and nothing else
+            self.assertEqual(output, {"hookSpecificOutput": {
                 "hookEventName": event,
                 "sessionTitle": TITLE}})
 
@@ -157,7 +175,9 @@ class GuideTitleTest(GuideTitleBase):
         self.run_script("mark", self.ledger, "--session", GUIDE)
         self.assertEqual(self.run_script("retire", GUIDE).returncode, 0)
         for event in ("UserPromptSubmit", "SessionStart"):
-            self.assertEqual(json.loads(self.hook(event=event).stdout), {"hookSpecificOutput": {
+            output = json.loads(self.hook(event=event).stdout)
+            self.assertIn("you are a RETIRED guide", output["hookSpecificOutput"].pop("additionalContext"))
+            self.assertEqual(output, {"hookSpecificOutput": {
                 "hookEventName": event, "sessionTitle": "🎟️🎟️ Sessions Manager (retired) 🎟️🎟️"}})
         self.assertNotEqual(self.run_script("mark", self.ledger, "--session", GUIDE).returncode, 0)
         self.assertIn("(retired)", self.hook().stdout)
@@ -339,7 +359,7 @@ class GuideTitleTest(GuideTitleBase):
     def test_new_count_and_context_come_from_a_live_sweep(self):
         self.keep_open_rows_alive()
         self.run_script("mark", self.ledger, "--session", GUIDE)
-        self.assertNotIn("additionalContext", self.hook().stdout)
+        self.assertEqual(self.extra_context(), "")  # only the clock
         self.transcript(GUIDE, "the guide itself")
         self.transcript("3fa9c1d2-0000-4000-8000-000000000000", "has a row")
         self.transcript("b5c6d7e8-0000-4000-8000-000000000000", "watched row")
@@ -367,7 +387,7 @@ class GuideTitleTest(GuideTitleBase):
         self.assertIn("[44444444]", self.hook().stdout)
         with open(self.ledger, "a") as f:
             f.write("\n## Sessions\n| new one [444444] | ACTIVE | | | | | |\n")
-        self.assertNotIn("additionalContext", self.hook().stdout)
+        self.assertEqual(self.extra_context(), "")
         self.assertIn("1 active · 0 new", self.guide_title())
 
     def test_workers_and_retired_guides_get_no_sweep(self):
@@ -375,7 +395,9 @@ class GuideTitleTest(GuideTitleBase):
         self.run_script("guided", WORKER)
         self.assertNotIn("additionalContext", self.hook(WORKER, title="billing lead").stdout)
         self.run_script("retire", GUIDE)
-        self.assertNotIn("additionalContext", self.hook().stdout)
+        context = self.extra_context()
+        self.assertNotIn("new one", context)
+        self.assertIn("RETIRED guide", context)  # its only context: it is retired
 
     def test_active_session_gets_the_blue_blocks(self):
         self.assertEqual(self.run_script("active", WORKER).returncode, 0)
@@ -582,7 +604,7 @@ class SettleTest(GuideTitleBase):
 
     def context(self):
         out = self.hook().stdout
-        return json.loads(out)["hookSpecificOutput"].get("additionalContext", "") if out else ""
+        return without_now(json.loads(out)["hookSpecificOutput"].get("additionalContext", "")) if out else ""
 
     def set_remind(self, value):
         lines = open(self.ledger).read().splitlines(True)
@@ -749,7 +771,7 @@ class ResultsTest(GuideTitleBase):
 
     def context(self):
         out = self.hook().stdout
-        return json.loads(out)["hookSpecificOutput"].get("additionalContext", "") if out else ""
+        return without_now(json.loads(out)["hookSpecificOutput"].get("additionalContext", "")) if out else ""
 
     def result(self, *args):
         r = self.run_script("result", *args)
@@ -858,7 +880,7 @@ class FollowupsTest(GuideTitleBase):
 
     def context(self, **env):
         out = self.hook(**env).stdout
-        return json.loads(out)["hookSpecificOutput"].get("additionalContext", "") if out else ""
+        return without_now(json.loads(out)["hookSpecificOutput"].get("additionalContext", "")) if out else ""
 
     def assistant_line(self, text, age=0, sidechain=False):
         stamp = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - age))
