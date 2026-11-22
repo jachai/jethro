@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.2.3] - 2026-11-22
 - Phone width, summary: the table no longer runs off the screen when cards carry ticket ids. Below 560px a row
   shows the id and the answer on one line with the question under them, and an id breaks only when it is wider
   than its own space.
