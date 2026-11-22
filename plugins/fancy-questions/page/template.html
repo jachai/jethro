@@ -173,7 +173,16 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-b
 .sum td:nth-child(2){overflow-wrap:break-word}
 .sum td:last-child{text-align:right;width:1%;min-width:5.5em;max-width:42vw}
 .sum .pill{white-space:nowrap}
-@media (max-width:559px){.sum td:first-child{white-space:normal;overflow-wrap:break-word;min-width:5.5em;max-width:7.5em}.sum td:last-child{max-width:38vw}.sum .pill{white-space:normal;text-align:left;overflow-wrap:break-word;border-radius:10px}}
+/* an id stays whole unless it is wider than the line by itself */
+.sum .tid{display:inline-block;max-width:100%;overflow-wrap:anywhere}
+/* phone: three columns do not fit, so a row is id + answer on one line and the question under them */
+@media (max-width:559px){
+  .sum table,.sum tbody{display:block}
+  .sum tr{display:grid;grid-template-columns:minmax(0,1fr) fit-content(60%);gap:4px 12px;padding:10px 0;border-top:1px solid var(--line)}
+  .sum td,.sum td:first-child,.sum td:last-child{display:block;width:auto;min-width:0;max-width:none;padding:0;border:none;white-space:normal;overflow-wrap:anywhere}
+  .sum td:nth-child(2){grid-row:2;grid-column:1/-1}
+  .sum .pill{white-space:normal;text-align:left;border-radius:10px}
+}
 .pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--surface-2);color:var(--muted)}
 .pill.yes{background:var(--yes-soft);color:var(--yes)} .pill.no{background:var(--no-soft);color:var(--no)} .pill.discuss{background:var(--discuss-soft);color:var(--discuss)}
 .sum .note{color:var(--muted);font-size:13px;display:block;margin-top:2px}
@@ -278,7 +287,12 @@ button.chip{cursor:pointer;font-family:inherit;line-height:inherit}
 .qv-table{overflow-x:auto}
 .qv-table table{border-collapse:collapse;width:100%;font-size:13.5px}
 .qv-table th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:4px 8px;border-bottom:1px solid var(--line)}
-.qv-table td{padding:6px 8px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.qv-table td{padding:6px 8px;border-bottom:1px solid var(--line)}
+/* numbers and short ids stay on one line; only an over-long token may break inside (cellHTML marks both) */
+.qv-table .nb{white-space:nowrap}
+.qv-table .lb{overflow-wrap:anywhere}
+.qv-table td:has(.lb){min-width:8em}
+@media (max-width:559px){.qv-table th,.qv-table td{padding-inline:5px}}
 .qv-table tr.hl-row td{background:var(--accent-soft);font-weight:600}
 .qv-img{display:block;max-width:100%;height:auto;border-radius:10px;border:1px solid var(--line)}
 .nosave{max-width:760px;width:100%;margin:12px auto 0;border:2px solid var(--no);background:var(--no-soft);color:var(--fg);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
