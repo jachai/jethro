@@ -5,6 +5,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.21] - 2026-11-22
+
+With many sessions on many projects, a title or a question did not say which project it was about. Now each stream has one
+icon, and its sessions, questions and status lines carry it.
+
+### Added
+
+- Streams (`scripts/guide_streams.py`, `guide_title.py stream add | rename | end | list | suggest | assign | strip |
+  table`): a registry, `streams.json` next to the ledger, of each stream's key, icon, name and sessions. An icon belongs
+  to one open stream on a machine; an ended stream's icon is free again after 7 days; out of icons, a stream gets a
+  two-letter tag (`[TW]`).
+- A session's title has its stream's icon right after its level prefix ("🟧🟧 (g) 🏠 billing lead"), put back after a
+  rename and kept through DONE. A session on no stream keeps the title it had.
+- `launch --stream <key>` and `launch --successor-of <id>` start a session on a stream, or on its predecessor's.
+- Icons on the hook's lines, `settle` and `STATE.md` (which has a Streams section), and an Icon column in the ledger's
+  Streams table. They are added when a row is shown, never stored in an Open items, Results, owed-question or Owner cell.
+- `SESSION_GUIDE_STREAM_ICONS=0` turns every icon off; `stream strip` takes the ones shown off titles.
+
+### Changed
+
+- Reconcile reads a Sessions row with the icon outside the quotes, a "(g·scope)" prefix, and a result line with the icon
+  alone before its protocol word ("🏠 BLOCKED: …").
+- The skill, the worker contract and the ledger template say where an icon goes and where it never does.
+
 ## [0.1.20] - 2026-11-19
 
 Two failure modes with one cause: the ledger said one thing, the facts another, and only the guide's memory joined

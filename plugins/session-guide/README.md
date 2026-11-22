@@ -192,6 +192,28 @@ Every WATCHED session's title starts with `⬜⬜ `, from `guide_title.py watche
   keep it short, because the agents view and claude-top cut long names. claude-top spots a guide by its marker file
   and falls back to the `🟥🟥 Sessions Manager` start. The closed prefix is `SESSION_GUIDE_DONE_PREFIX`.
 
+### Stream icons
+
+One icon and one short name per stream (project), shared by every session that works on it, so you can tell at a glance
+which project a session, a question or a status line is about. The icon goes right after the prefix: `🟧🟧 (g) 🏠 billing
+lead`. It comes back after a rename and stays through DONE. A session on no stream keeps exactly the title it has today.
+
+| Command (`guide_title.py …`) | What it does |
+|---|---|
+| `stream add <key> "<name>" [--icon 🏠]` | A new stream, or an ended one reopened; without `--icon` it gets a free icon |
+| `stream rename <key> [--name …] [--icon …]` | A new name or icon, which reaches its sessions' titles |
+| `stream list [--all]`, `stream suggest [n]` | The streams, their sessions, and the sessions on none; free icons |
+| `stream assign <key> <id>… [--active-ok]` | Put sessions on a stream; your own sessions only with `--active-ok`, after your yes |
+| `stream end <key>` | Finished; its icon is free again after 7 days |
+| `stream strip <id>… \| --all` | Take the icon off titles |
+| `stream table [--end-unlisted]` | Refresh the ledger's Streams table; mark rows of unregistered streams ended |
+| `launch --stream <key>`, `launch --successor-of <id>` | Start a session on a stream, or on its predecessor's |
+
+The registry is `streams.json` next to the ledger. An icon belongs to one open stream on this machine; when the icons run
+out, a stream gets a two-letter tag such as `[TW]`. Icons are added when a row is shown, never stored in an Open items,
+Results, owed-question or Owner cell, whose rows are matched by their text. `SESSION_GUIDE_STREAM_ICONS=0` turns every
+icon off.
+
 ## What the guide will and won't do
 
 The guide is **advisory**. It never branches, commits, pushes, merges or edits code: merges stay with you, and
@@ -382,6 +404,7 @@ Set them in the `env` block of `settings.json`, so the hooks see them too.
 | `SESSION_GUIDE_TITLE` | `🟥🟥 Sessions Manager · {slug} (…) 🟥🟥` | The guide's title format (see Titles) |
 | `SESSION_GUIDE_RETIRED_TITLE` | `🎟️🎟️ Sessions Manager (retired) 🎟️🎟️` | A retired guide's title |
 | `SESSION_GUIDE_GUIDED_PREFIX`, `_WATCHED_PREFIX`, `_ACTIVE_PREFIX`, `_DONE_PREFIX` | `🟧🟧 (g) `, `⬜⬜ `, `🟦🟦 `, `✅ ` | The title prefixes |
+| `SESSION_GUIDE_STREAM_ICONS` | on | `0` turns every stream icon off (titles, hook lines, `STATE.md`); `stream strip --all` takes the ones already shown off |
 | `SESSION_GUIDE_GRACE_MINUTES` | 3 | How long after a worker's job ends before reconcile lists it |
 | `SESSION_GUIDE_IDLE_HOURS` | 12 | An idle decided item older than this, with no question to you, is nagged about |
 | `SESSION_GUIDE_AUDIT_HOURS` | 12 | How often the full audit is due; 0 turns the audit off |
