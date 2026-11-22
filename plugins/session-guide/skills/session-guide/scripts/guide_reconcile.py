@@ -198,7 +198,8 @@ def row_name(cell):
     name = SUCCESSOR.sub("", cell)
     name = re.sub(r"\s*\[[0-9a-fA-F]{6,36}\].*", "", name)
     name = re.sub(r"^(?:%s\s*)?" % ICON_TAG, "", name)
-    name = re.sub(r"^(?:[^\w(']+)?(?:%s\s*(?:[^\w(']+)?(?:%s\s*)?)?" % (gt.GUIDED_TAG.pattern, ICON_TAG), "", name).strip("'\" ")
+    tagged = r"%s\s*(?:[^\w('\[]+)?(?:%s\s*)?" % (gt.GUIDED_TAG.pattern, ICON_TAG)
+    name = re.sub(r"^(?:[^\w(']+)?(?:%s)?" % tagged, "", name).strip("'\" ")
     return " ".join(name.lower().split())
 
 

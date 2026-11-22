@@ -411,6 +411,41 @@ class ReviewFixesTest(ReconcileBase):
     def test_row_name_skips_a_leading_successor_reference(self):
         self.assertEqual(gr.row_name("successor of [12345678] 'other' [fedcba98]"), "other")
 
+    def test_row_name_skips_levels_and_stream_icons(self):
+        for cell in ("'Atlas Plan' [e1e1e1]", "\U0001f3e0 'Atlas Plan' [e1e1e1]", "\U0001f3e0 Atlas  plan [e1e1e1]",
+                     "\U0001f7e7\U0001f7e7 (g) \U0001f3e0 atlas plan [e1e1e1]",
+                     "\U0001f7e7\U0001f7e7 (g\u00b7hub) \U0001f3e0 atlas plan [e1e1e1]",
+                     "\U0001f7e7\U0001f7e7 (g\u00b7hub) atlas plan [e1e1e1]", "[TW] 'atlas plan' [e1e1e1]",
+                     "\U0001f7e7\U0001f7e7 (g) [TW] atlas plan [e1e1e1]"):
+            self.assertEqual(gr.row_name(cell), "atlas plan", cell)
+        self.assertEqual(gr.row_name("(gone) atlas [e1e1e1]"), "(gone) atlas")  # not a level tag
+
+    def test_own_id_is_never_the_streams_tag(self):
+        self.assertEqual(gr.own_id("[TW] 'atlas plan' [e1e1e1]"), "e1e1e1")
+
+    def test_a_successor_row_with_an_icon_clears_the_handoff(self):
+        self.handed_off_relay()
+        for cell in ("\U0001f3e0 'atlas plan rewrite (3)' [e1e1e1]", "[TW] 'atlas plan rewrite (3)' [e1e1e1]",
+                     "\U0001f3e0 'atlas relay' [e1e1e1] successor of [a7a7a7]"):
+            self.write_ledger(LEDGER.replace("| ledger cleanup [b8b8b8]",
+                                             "| %s | MANAGED | plan rewrite | uds |\n| ledger cleanup [b8b8b8]" % cell))
+            self.assertEqual(self.kinds(), [], cell)
+        # and a predecessor whose own row carries the icon
+        self.write_ledger(LEDGER.replace("| atlas plan rewrite (2) [", "| \U0001f3e0 'atlas plan rewrite (2)' [")
+                          .replace("| ledger cleanup [b8b8b8]", "| atlas plan rewrite (3) [e1e1e1] | MANAGED | plan | uds |\n"
+                                                                "| ledger cleanup [b8b8b8]"))
+        self.assertIn("\U0001f3e0 'atlas plan rewrite (2)' [", open(self.ledger).read())
+        self.assertEqual(self.kinds(), [])
+
+    def test_the_icon_alone_before_the_protocol_word(self):
+        for result in ("\U0001f3e0 BLOCKED: needs a ruling", "[TW] BLOCKED: needs a ruling",
+                       "result: \U0001f3e0 BLOCKED: x", "\U0001f3e0 result: BLOCKED x", "result: [TW] WAITING on x"):
+            self.assertTrue(gr.is_blocked(result), result)
+        for result in ("\U0001f3e0 Name \u00b7 BLOCKED", "\U0001f3e0 Billing twin BLOCKED: x", "[TW] DONE: nothing needs you"):
+            self.assertFalse(gr.is_blocked(result), result)
+        for result in ("\U0001f3e0 HANDED OFF to the guide", "[TW] HANDED OFF: resume in x", "\U0001f3e0 handed off at 140k"):
+            self.assertTrue(gr.is_handoff(result), result)
+
     def test_a_successor_named_in_the_title_cell_clears_the_handoff_and_keeps_its_own_id(self):
         self.mark_guide()
         self.handed_off_relay()
