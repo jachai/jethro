@@ -169,7 +169,9 @@ class StreamIconsTest(AuditCase):
                                    "ended": None, "sessions": [sid]}}, f)
         found = self.audit(full=True)
         self.assertEqual(seen(), before)
-        self.assertIn("\U0001f3e0 'lead' [3fa9c1]", ga.state_file(self.ledger, found))  # shown there
+        ga.state_file(self.ledger, found)
+        with open(os.path.join(os.path.dirname(self.ledger), "STATE.md")) as f:
+            self.assertIn("\U0001f3e0 'lead' [3fa9c1]", f.read())  # shown there
         with open(self.ledger) as f:
             self.assertEqual(f.read(), text)
         self.assertNotIn("\U0001f3e0", "".join(r["owner"] for r in found["rows"] + found["hidden"]))
