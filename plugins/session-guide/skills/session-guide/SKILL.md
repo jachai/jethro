@@ -226,8 +226,8 @@ one. Everything you need from the user goes through `AskUserQuestion`:
    first: while a dialog is open, you are likely paused and worker messages wait.
 2. **Each question stands alone,** because the user may see only the dialog: session title [id6], the full link or
    `!` command, what you checked. Recommended option first. A question about a stream that has an icon carries it:
-   the header is the icon and a name of at most 8 characters ("🏠 Twin", 12 at most in all), and the question starts
-   with the icon and the stream's name ("🏠 Billing twin · 'billing lead' [3fa9c1]: …").
+   the header is the icon and a name of at most 8 characters ("🏠 Billing", 12 at most in all), and the question starts
+   with the icon and the stream's name ("🏠 Billing export · 'billing lead' [3fa9c1]: …").
 3. **Order:** approvals a worker is blocked on, decisions, results with no verdict, owed questions that are due, new
    sessions, model switches, open items (a broken verification first, proposed follow-ups last, §7). At most 4
    questions per call.
@@ -296,7 +296,7 @@ Guide context: <N>k (hand off at 120k)
 - "Decided, not moving" is the audit's table (§7, Audit), top rows first, each with the one action you propose; each
   is a question in the interview that follows. Leave the heading out only when the audit lists nothing. A status
   reply that says "nothing is due" while this list has rows is wrong: those rows are what is due.
-- **Stream icons.** A Streams line starts with its stream's icon ("🏠 Billing twin: …"), and so may any line that names
+- **Stream icons.** A Streams line starts with its stream's icon ("🏠 Billing export: …"), and so may any line that names
   one of its sessions. In the ledger the icon goes in two places only: the Streams table's Icon column (`stream table`
   writes it) and a Sessions row's first cell, outside the quotes: "🏠 'billing lead' [3fa9c1]". It goes never in Open
   items, Results, owed-question or Owner cells: those rows are matched by their text, so an icon would make a second

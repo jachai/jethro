@@ -441,7 +441,7 @@ class ReviewFixesTest(ReconcileBase):
         for result in ("\U0001f3e0 BLOCKED: needs a ruling", "[TW] BLOCKED: needs a ruling",
                        "result: \U0001f3e0 BLOCKED: x", "\U0001f3e0 result: BLOCKED x", "result: [TW] WAITING on x"):
             self.assertTrue(gr.is_blocked(result), result)
-        for result in ("\U0001f3e0 Name \u00b7 BLOCKED", "\U0001f3e0 Billing twin BLOCKED: x", "[TW] DONE: nothing needs you"):
+        for result in ("\U0001f3e0 Name \u00b7 BLOCKED", "\U0001f3e0 Billing export BLOCKED: x", "[TW] DONE: nothing needs you"):
             self.assertFalse(gr.is_blocked(result), result)
         for result in ("\U0001f3e0 HANDED OFF to the guide", "[TW] HANDED OFF: resume in x", "\U0001f3e0 handed off at 140k"):
             self.assertTrue(gr.is_handoff(result), result)

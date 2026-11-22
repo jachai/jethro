@@ -14,7 +14,7 @@
 
 The registry is `streams.json` next to the ledger, written only by this script (a lock, then an atomic replace):
 
-    {"twin": {"icon": "🏠", "name": "Billing twin", "state": "open", "since": "2026-11-22", "ended": null,
+    {"billing": {"icon": "🏠", "name": "Billing export", "state": "open", "since": "2026-11-22", "ended": null,
               "sessions": ["<session id>", …]}}
 
 `assign` also writes `$CLAUDE_CONFIG_DIR/session-guide/streams/<session id>` ({"icon", "key", "old"}), so a worker's

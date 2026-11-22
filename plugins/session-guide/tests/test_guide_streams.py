@@ -143,8 +143,8 @@ class RegistryTest(Case):
         self.assertEqual(gs.read(self.ledger), {})
 
     def test_a_tag_is_fine(self):
-        self.stream("add", "twin", "Twin", "--icon", "[TW]")
-        self.stream("assign", "twin", LEAD)
+        self.stream("add", "two", "Two", "--icon", "[TW]")
+        self.stream("assign", "two", LEAD)
         self.assertEqual(self.title(LEAD, "lead"), "🟧🟧 (g) [TW] lead")
 
     def test_one_icon_per_open_stream_on_this_machine(self):
@@ -178,7 +178,7 @@ class RegistryTest(Case):
         self.put(gs.registry_path(self.ledger), json.dumps(
             {"s%d" % n: {"icon": i, "name": "S"} for n, i in enumerate(gs.ICONS)}))
         self.assertIn("two-letter tag", self.stream("suggest"))
-        self.assertIn("[TW]", self.refused("add", "twin", "Twin"))
+        self.assertIn("[TW]", self.refused("add", "two", "Two"))
 
     def test_concurrent_writers_lose_nothing(self):
         def add(n):
