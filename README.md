@@ -110,8 +110,7 @@ In Claude Code:
 /plugin marketplace add jachai/jethro
 ```
 
-or from a shell: `claude plugin marketplace add jachai/jethro`. While the repo is private, this needs
-git access to it (your usual GitHub SSH key or credential helper).
+or from a shell: `claude plugin marketplace add jachai/jethro`.
 
 ### 2. Install
 
