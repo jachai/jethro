@@ -1146,17 +1146,19 @@ def state_file(ledger, found, state=None):
                                                            "full" if found["full"] else "quick"), ""]
     live = live_sessions(tables, now, transcripts(now - 30 * 86400))
     out += ["## Open sessions (%d)" % len(live)]
-    out += ["- %s %s, %s" % (cell(s["cell"], 70), s["level"], session_state(rid, s, now))
+    out += ["- %s %s, %s" % (cell(gt.with_icon(ledger, s["cell"]), 70), s["level"], session_state(rid, s, now))
             for rid, s in list(live.items())[:25]] + ["- and %d more" % (len(live) - 25)] * (len(live) > 25)
     settle = gt.settle_status(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
     results = gt.results_status(ledger)["due"]
     notes = found.get("reminders") or {}
     out += ["", "## Reminders (%d due, %d asleep)" % (len(settle["due"]), len(settle["asleep"]))]
-    out += ["- %s %s: %s%s" % ("DUE" if r in settle["due"] else "until " + r["remind"], cell(r["session"], 40),
+    out += ["- %s %s: %s%s" % ("DUE" if r in settle["due"] else "until " + r["remind"],
+                               cell(gt.with_icon(ledger, r["session"], r["what"]), 40),
                                cell(r["what"], 150), " (%s)" % cell(notes[r["id"]], 160) if notes.get(r["id"]) else "")
             for r in (settle["due"] + settle["asleep"])[:20]]
     out += ["", "## Results with no verdict (%d)" % len(results)]
-    out += ["- " + cell(gt.describe_result(r), 200) for r in results[:12]]
+    out += ["- " + cell(gt.describe_result(r, ledger), 200) for r in results[:12]]
+    out += gt.stream_lines(ledger)
     if found.get("future"):
         out += ["", "## Ledger lines dated after now (%d): run `date` before writing a time" % len(found["future"])]
         out += ["- L%d %s: %s" % (n, written, cell(text, 120)) for n, written, text in found["future"][:10]]

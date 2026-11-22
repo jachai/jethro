@@ -50,7 +50,9 @@ GRACE_MINUTES = 3  # a job that ended this recently is left alone (SESSION_GUIDE
 TRANSCRIPT_TAIL = 300 * 1024  # how much of an ended worker's transcript is read for its last SendMessage
 TIMELINE_TAIL = 64 * 1024
 OPEN_LEVELS = ("MANAGED", "WATCHED")
-FIRST = r"^[\W_]*(?:result:[\W_]*)?"  # a result line's first token, past markdown and a "result:" label
+ICON_TAG = r"\[[A-Z0-9]{2}\]"  # a stream's tag when it has no icon
+# A result line's first token, past markdown, a stream's icon and a "result:" label.
+FIRST = r"^[\W_]*(?:%s[\W_]*)?(?:result:[\W_]*)?(?:%s[\W_]*)?" % (ICON_TAG, ICON_TAG)
 # The protocol word, upper case anywhere in the result line, or any case as its first token.
 HANDED = re.compile(r"\bHAND(?:ED|ING)[ -]?OFF\b")
 HANDED_FIRST = re.compile(FIRST + r"HAND(?:ED|ING)[ -]?OFF\b")
@@ -191,10 +193,12 @@ def own_id(cell):
 
 
 def row_name(cell):
-    """A Sessions row's title, without its [id], quotes and level prefixes, lower case and single spaced."""
+    """A Sessions row's title, without its [id], quotes, level prefixes and the stream icon outside the quotes, lower
+    case and single spaced."""
     name = SUCCESSOR.sub("", cell)
     name = re.sub(r"\s*\[[0-9a-fA-F]{6,36}\].*", "", name)
-    name = re.sub(r"^(?:[^\w(']+)?(?:\(g\)\s*)?", "", name).strip("'\" ")
+    name = re.sub(r"^(?:%s\s*)?" % ICON_TAG, "", name)
+    name = re.sub(r"^(?:[^\w(']+)?(?:%s\s*(?:[^\w(']+)?(?:%s\s*)?)?" % (gt.GUIDED_TAG.pattern, ICON_TAG), "", name).strip("'\" ")
     return " ".join(name.lower().split())
 
 
