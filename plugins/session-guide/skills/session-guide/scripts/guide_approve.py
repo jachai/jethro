@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 
-__version__ = "0.1.20"
+__version__ = "0.1.21"
 WRONG_PLACE = ("Run this in a new terminal tab, not with ! inside a Claude window: `!` cannot switch windows.")
 
 

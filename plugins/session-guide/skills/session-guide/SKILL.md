@@ -122,8 +122,13 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
    first interview or gets a `guide_audit.py set` mark this turn. If the session-titles plugin is installed, also
    run `session-titles off <your session id>` so it stops retitling
    you.
-7. Reply to the user in the status shape (§5), then open the interview (§4).
-8. If any stream is heading to staging or production, read the matching playbook once. That is your own
+7. Streams and their icons: `python3 <skill dir>/scripts/guide_title.py stream list` prints every open stream, its
+   icon and its sessions, and the MANAGED and WATCHED sessions on no stream. Give each stream with more than one
+   session, or with questions for the user, one line (`stream add <key> "<name>" [--icon 🏠]`; no `--icon` picks a
+   free one), then `stream assign <key> <id> …`. Streams live in `streams.json` next to the ledger, so a takeover
+   finds them there; never edit that file by hand. Where an icon shows, and where it never does: §5.
+8. Reply to the user in the status shape (§5), then open the interview (§4).
+9. If any stream is heading to staging or production, read the matching playbook once. That is your own
    `<config>/session-guide/playbooks/*.md` if one fits, else `references/release-playbook.md`.
 
 ### 3. Messaging workers
@@ -135,7 +140,8 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
   deployed at …", "STAND DOWN"), then the facts, then what you need back and when. Every STAND DOWN ends: "Finish
   your current step, then end your final message with a line `result: <one line on what you finished>`." Without
   that line the session's state shows waiting, not done.
-- Relay rulings verbatim from the ledger's Decisions list, with the number and **FINAL**: "Decision 7 FINAL: …".
+- Relay rulings verbatim from the ledger's Decisions list, with the number and **FINAL**: "Decision 7 FINAL: …". To a
+  worker on a stream, the first line starts with its icon alone: "🏠 Decision 7 FINAL: …".
 - **Look before done.** Every worker prompt and contract says it: before a worker reports a user-visible deliverable
   (a rendered slide or deck, a published page, a doc section, a PR ready for the user) as done, it opens it the way the
   user will, rendered and at the exact link, and confirms the change shows. A report that doesn't say it looked is
@@ -219,7 +225,9 @@ one. Everything you need from the user goes through `AskUserQuestion`:
 1. **Same turn.** Write the status in text if it changed (§5), then call the tool. Finish your relays and ledger writes
    first: while a dialog is open, you are likely paused and worker messages wait.
 2. **Each question stands alone,** because the user may see only the dialog: session title [id6], the full link or
-   `!` command, what you checked. Recommended option first.
+   `!` command, what you checked. Recommended option first. A question about a stream that has an icon carries it:
+   the header is the icon and a name of at most 8 characters ("🏠 Billing", 12 at most in all), and the question starts
+   with the icon and the stream's name ("🏠 Billing export · 'billing lead' [3fa9c1]: …").
 3. **Order:** approvals a worker is blocked on, decisions, results with no verdict, owed questions that are due, new
    sessions, model switches, open items (a broken verification first, proposed follow-ups last, §7). At most 4
    questions per call.
@@ -269,7 +277,7 @@ one. Everything you need from the user goes through `AskUserQuestion`:
 **Asleep**
 - <session title [id6]>: <what it needs from the user>, reminder at HH:MM
 **Streams**
-- <stream>: <where it is> → next: <action> (<session title [id6]> or you)
+- 🏠 <stream>: <where it is> → next: <action> (<session title [id6]> or you)
 **Decided, not moving**
 - <audit row>, idle <age> → <start it / ask <who> / drop> (<key>)
 **Proposed actions**
@@ -288,6 +296,11 @@ Guide context: <N>k (hand off at 120k)
 - "Decided, not moving" is the audit's table (§7, Audit), top rows first, each with the one action you propose; each
   is a question in the interview that follows. Leave the heading out only when the audit lists nothing. A status
   reply that says "nothing is due" while this list has rows is wrong: those rows are what is due.
+- **Stream icons.** A Streams line starts with its stream's icon ("🏠 Billing export: …"), and so may any line that names
+  one of its sessions. In the ledger the icon goes in two places only: the Streams table's Icon column (`stream table`
+  writes it) and a Sessions row's first cell, outside the quotes: "🏠 'billing lead' [3fa9c1]". It goes never in Open
+  items, Results, owed-question or Owner cells: those rows are matched by their text, so an icon would make a second
+  row of the same one. The scripts add it when they print such a row. A stream with no icon stays as it was.
 - "Needs you now" lists only the user's actions, most urgent first. A merge comes with its PR link and what you
   checked (checks green, mergeable, deploy queue clear).
 - Every Streams line ends with "→ next: <action> (owner)". A stream with no next action is DONE or gets one.
@@ -313,6 +326,12 @@ Guide context: <N>k (hand off at 120k)
   `references/model-choice.md` for the task it does first: money and business-rule fixes, release gates and design
   reviews get the top model at high effort; mechanical edits, CI reads, read-only checks and status reports get
   `sonnet` at low. Record its title, id and pick (`sonnet/low`) in the ledger as MANAGED.
+- **Its stream.** `launch --stream <key> -- …` starts it on that stream; `launch --successor-of <id> -- …` puts it on
+  its predecessor's. Its title then reads "🟧🟧 (g) 🏠 <name>" from its first prompt. Give the icon in the prompt:
+  "Your stream's icon is 🏠: start each report with it, alone". A session already running: `stream assign <key> <id>`.
+  The user's own sessions (ACTIVE, or with no row) get an icon only after the user said yes in the interview; then
+  `stream assign <key> <id> --active-ok`. A finished or dropped stream: `stream end <key>` (its icon is free again
+  after 7 days, and stays on its sessions' titles). `stream strip <id>` takes the icon off.
 - **Mark it guided as early as it can be.** A `claude --bg` worker marked a moment after launch got a cost-guard
   stop on its first tool call. `claude --bg` picks its own session id (it ignores `--session-id`), so a new session
   can't be marked before it exists: `launch` runs `claude --bg` and writes the guided marker the moment the id is

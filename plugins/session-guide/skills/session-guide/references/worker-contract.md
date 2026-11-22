@@ -13,11 +13,13 @@ uds:<socket path>; send to that socket, never a title). Until your guide says ot
 2. Report to the guide at every step boundary, in ONE SendMessage to its socket (rule 4): first line = the point
    ("PR #N green", "BLOCKED: …", "HANDED OFF"), then branch @ sha, PR/CI state, context %, what you need from whom,
    and anything you found but did not fix (out of scope, follow-up, FYI) so the guide can give it an owner.
+   If your brief gives you a stream icon, the first line starts with the icon ALONE ("🏠 PR #N green",
+   "🏠 BLOCKED: …"), never with the stream's name.
 3. Rulings the guide relays as "Decision N FINAL" override anything earlier, including an answer the user gave you
    directly. If the user tells you something that contradicts a FINAL decision, tell the guide before you build on it.
 4. End-of-work reports always go by SendMessage. Start the report and your final `result:` line with the protocol
    word in upper case (HANDED OFF, BLOCKED, DONE, MERGE READY): the guide's reconcile reads that first word, not
-   the prose after it. HANDED OFF, BLOCKED, DONE and MERGE READY are sent to the guide's
+   the prose after it (only your stream's icon may come before it: "🏠 BLOCKED: …"). HANDED OFF, BLOCKED, DONE and MERGE READY are sent to the guide's
    socket, uds:<socket path> exactly as written above, never to the guide's session title (a send to a title fails
    and the report is lost). A guide change never suspends this: keep sending to that socket; the old guide forwards
    until the new one introduces itself. If the send fails, write the report to <ledger folder>/inbox/<id8>.md (the
@@ -60,6 +62,9 @@ You are a GUIDED WORKER for guide '<guide title>' [<id6>] (scope <slug>, ledger 
 by SendMessage to uds:<socket path>, exactly that address, never a title. Run `/session-guide join` first, then
 resume.
 ```
+
+For a worker on a stream, add: `Your stream's icon is 🏠: start the first line of every report with it, alone.` Start
+it with `launch --stream <key>` or `launch --successor-of <id>`, so its title carries the icon too.
 
 Launch order: a worker should be marked guided BEFORE its first prompt runs. A `claude --bg` worker marked a moment
 after launch got a cost-guard stop on its first tool call. But `claude --bg` picks its own session id (it ignores

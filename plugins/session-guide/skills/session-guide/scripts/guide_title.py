@@ -8,6 +8,9 @@
     python3 guide_title.py guided [<id>]                       a MANAGED worker: orange blocks + "(g) " first
     python3 guide_title.py launch [--watched] -- <claude args…>
                                                                start a worker with `claude --bg`, marked guided at once
+                                     [--stream <key> | --successor-of <id>] its stream (project) icon, or the one its
+                                                               predecessor had
+    python3 guide_title.py stream add | assign | end | list …  streams and their icons (guide_streams.py)
     python3 guide_title.py reconcile [--ledger <ledger.md>]    open rows whose session ended, blocked or handed off
     python3 guide_title.py watched [<id>]                      a WATCHED session: light gray blocks first
     python3 guide_title.py active [<id>]                       running, not managed or watched: blue blocks first
@@ -89,6 +92,8 @@ list as additionalContext, until each session has a row, so a new session can't 
 A closed session (marker `done`, from `done <id>`: the guide closed a finished or obsolete worker) gets DONE_PREFIX in
 place of the guided prefix (override: SESSION_GUIDE_DONE_PREFIX), the same way. `guided`, `watched`, `active` and `mark`
 refuse it, so it is never orange, gray, blue or red again; `done` refuses a guide or a retired guide (retire a guide instead).
+A session on a stream (`stream assign`, `launch --stream`; guide_streams.py, its docstring is the spec) has the stream's
+icon right after its prefix: "🟧🟧 (g) 🏠 billing lead". A session on no stream keeps the same title as without streams.
 The session-titles plugin answers the same hook events later and its title wins, so the prefix also goes into its
 stored origin ($CLAUDE_CONFIG_DIR/session-titles/<session id>.json), whenever a marker is written and on every prompt:
 then both hooks give the same title. Guides and retired guides get its `off` flag instead. No state file, no change.
@@ -288,6 +293,48 @@ def claims_module():
         return None
 
 
+def streams_module():
+    """guide_streams (streams and their icons), next to this script; None when it can't be loaded."""
+    try:
+        sys.modules.setdefault("guide_title", sys.modules[__name__])
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import guide_streams
+        return guide_streams
+    except Exception:
+        return None
+
+
+def with_icon(ledger, text, *more):
+    """`text` with its stream's icon in front, for a line that is shown (never for a cell that is stored)."""
+    try:
+        return streams_module().shown(ledger, text, *more)
+    except Exception:  # an icon is never worth an error
+        return text
+
+
+def without_icon(ledger, text):
+    """`text` without a stream icon in front, for a cell whose key is made from its text."""
+    try:
+        return streams_module().unmarked(ledger, text)
+    except Exception:
+        return text
+
+
+def streams_context(ledger):
+    try:
+        return streams_module().context(ledger)
+    except Exception:  # fail open
+        return None
+
+
+def stream_lines(ledger):
+    """STATE.md's Streams section, or []."""
+    try:
+        return streams_module().state_lines(ledger)
+    except Exception:
+        return []
+
+
 def claims_context(ledger):
     try:
         lines = claims_module().hook_lines(ledger)
@@ -462,6 +509,9 @@ def guide_context(session_id):
     reconciled = reconcile_context(ledger, session_id)
     if reconciled:
         parts.append(reconciled)
+    streams = streams_context(ledger)  # small local files
+    if streams:
+        parts.append(streams)
     late = []
     # The audit closes rows whose closes: tag happened and checks the due reminders, so it runs before settle; it
     # (and claims, below) may ask gh, so each runs within what is left of the hook's time.
@@ -485,7 +535,7 @@ def guide_context(session_id):
                      % (len(shut), os.path.abspath(__file__), ", ".join(s[:8] for s in shut)))
     if settling["unsettled"]:
         rows = settling["unsettled"]
-        lines = ["- " + describe_unsettled(s) for s in rows[:8]] + ["- and %d more" % (len(rows) - 8)] * (len(rows) > 8)
+        lines = ["- " + describe_unsettled(s, ledger) for s in rows[:8]] + ["- and %d more" % (len(rows) - 8)] * (len(rows) > 8)
         parts.append("session-guide settle: %d session(s) have gone quiet and aren't settled:\n%s\n"
                      "Peek each. Finished, nothing left on it or its subject: close it (`python3 %s done <id>`; ask the "
                      "user first if it is WATCHED or you aren't sure). Still needs the user: `python3 %s waiting <id> "
@@ -493,15 +543,16 @@ def guide_context(session_id):
                      % (len(rows), "\n".join(lines), os.path.abspath(__file__), os.path.abspath(__file__)))
     ask, covered = split_due(settling["due"], reminder_notes(ledger))
     if covered:
-        lines = ["- %s: %s -> %s" % (r["session"], r["what"], r["note"]) for r in covered[:8]]
+        lines = ["- %s: %s -> %s" % (with_icon(ledger, r["session"], r["what"]), r["what"], r["note"])
+                 for r in covered[:8]]
         lines += ["- and %d more" % (len(covered) - 8)] * (len(covered) > 8)
         parts.append("session-guide settle: %d due reminder(s) look done already; later ledger rows cover them. Do not "
                      "ask the user: confirm each from its evidence, then close it as its line says:\n%s"
                      % (len(covered), "\n".join(lines)))
     if ask:
         rows = ask
-        lines = ["- %s: %s (asked %s)%s" % (r["session"], r["what"], r["asked"], "; " + r["note"] if r["note"] else "")
-                 for r in rows[:8]]
+        lines = ["- %s: %s (asked %s)%s" % (with_icon(ledger, r["session"], r["what"]), r["what"], r["asked"],
+                                            "; " + r["note"] if r["note"] else "") for r in rows[:8]]
         lines += ["- and %d more" % (len(rows) - 8)] * (len(rows) > 8)
         parts.append("session-guide settle: %d reminder(s) due:\n%s\n"
                      "Check each still applies (peek, PR state), then ask with AskUserQuestion, one question each, "
@@ -512,7 +563,7 @@ def guide_context(session_id):
                      % (len(rows), "\n".join(lines), os.path.abspath(__file__)))
     results = results_status(ledger)["due"]
     if results:
-        lines = ["- " + describe_result(r) for r in results[:8]] + ["- and %d more" % (len(results) - 8)] * (len(results) > 8)
+        lines = ["- " + describe_result(r, ledger) for r in results[:8]] + ["- and %d more" % (len(results) - 8)] * (len(results) > 8)
         parts.append("session-guide results: %d finished deliverable(s) have no verdict from the user:\n%s\n"
                      "List each under **Results for you** with its link and one line on the result, then ask with "
                      "AskUserQuestion, one question each: Satisfied / Change it / Drop it / Haven't looked yet. Record "
@@ -666,26 +717,44 @@ def active_prefix():
     return os.environ.get("SESSION_GUIDE_ACTIVE_PREFIX") or ACTIVE_PREFIX
 
 
-def worker_title(content, current):
+GUIDED_TAG = re.compile(r"\(g(?:\u00b7[^()\s]+)?\)")  # "(g)", or "(g·hub)" from a guide with a scope of its own
+
+
+def worker_title(content, current, icon="", old=()):
     """The guided / watched / active / unguided / done title for `current`, or None when it is already right (or there is none
-    yet)."""
+    yet). `icon` (its stream's) goes right after the prefix; it and the `old` ones come off wherever they are in front.
+    With no level (content None) and no icons the title is left alone."""
+    if content is None and not icon and not old:
+        return None
     marks = [guided_prefix().strip(), watched_prefix().strip(), active_prefix().strip(), GUIDED_PREFIX.strip(),
              WATCHED_PREFIX.strip(), ACTIVE_PREFIX.strip(), "\U0001f7e7\U0001f7e7", "(g)"] + [done_prefix().strip()] * (content == DONE)
+    icons = [i for i in (icon,) + tuple(old) if i]
     bare = current
-    while any(m and bare.startswith(m) for m in marks):
-        mark = next(m for m in marks if m and bare.startswith(m))
+    while True:
+        tag = GUIDED_TAG.match(bare)
+        mark = next((m for m in marks if m and bare.startswith(m)), None) or tag and tag.group()
+        mark = mark or next((i for i in icons if bare == i or bare.startswith(i + " ")), None)
+        if not mark:
+            break
         bare = bare[len(mark):].lstrip()
+    bare = icon + " " + bare if icon and bare else bare
     want = {GUIDED: guided_prefix() + bare, WATCHED: watched_prefix() + bare, ACTIVE: active_prefix() + bare,
             DONE: done_prefix() + bare}.get(content, bare)
     return want if bare and want != current else None
 
 
+def title_icons(session_id):
+    """(its stream's icon, the icons to take off its title); ("", ()) for a session on no stream, or on any error."""
+    try:
+        return streams_module().title_icons(session_id)
+    except Exception:
+        return "", ()
+
+
 def title_for(session_id, current=""):
     content = marker_content(session_id)
-    if content is None:
-        return None
-    if content in WORKER_MARKERS + (DONE,):
-        return worker_title(content, current)
+    if content in WORKER_MARKERS + (DONE, None):
+        return worker_title(content, current, *title_icons(session_id))
     if content == RETIRED:
         return os.environ.get("SESSION_GUIDE_RETIRED_TITLE") or RETIRED_TITLE
     ledger = os.path.expanduser(content)
@@ -704,7 +773,7 @@ def cmd_hook():
         current = (event.get("session_title") or "").strip()
         HOOK_STARTED[0] = time.time()
         gh_budget()  # before the audit and the claims, which may call gh
-        if marker_content(sid):
+        if marker_content(sid) or any(title_icons(sid)):
             sync_session_titles(sid, marker_content(sid))
         context = guide_context(sid)  # first: it refreshes the audit counts the title shows
         if marker_content(sid) == RETIRED:
@@ -712,6 +781,8 @@ def cmd_hook():
         title = title_for(sid, current)
         if marker_content(sid) == UNGUIDED and current and not title:
             os.remove(marker(sid))  # the prefix is off: nothing left to undo
+        if current and not title and any(title_icons(sid)):
+            streams_module().forget_stripped(sid)
         output = {"hookEventName": event.get("hook_event_name", "UserPromptSubmit")}
         if title:
             output["sessionTitle"] = title
@@ -1053,14 +1124,16 @@ def results_status(ledger, now=None):
     return dict(due=sorted(due, key=lambda r: r["at"]), asleep=sorted(asleep, key=lambda r: r["at"]))
 
 
-def describe_result(row):
-    return "%s %s (delivered %s, asked %s)" % (row["deliverable"], row["link"], row["delivered"], row["asked"])
+def describe_result(row, ledger=None):
+    text = "%s %s (delivered %s, asked %s)" % (row["deliverable"], row["link"], row["delivered"], row["asked"])
+    return with_icon(ledger, text) if ledger else text
 
 
-def describe_unsettled(row):
+def describe_unsettled(row, ledger=None):
+    session = with_icon(ledger, row["session"]) if ledger else row["session"]
     if row["idle"] is None:
-        return "%s, %s: its transcript is gone, so set its row's Level to DONE by hand" % (row["session"], row["level"])
-    return "%s, %s: quiet %.0f h%s" % (row["session"], row["level"], row["idle"] / 3600,
+        return "%s, %s: its transcript is gone, so set its row's Level to DONE by hand" % (session, row["level"])
+    return "%s, %s: quiet %.0f h%s" % (session, row["level"], row["idle"] / 3600,
                                        ", job state " + row["state"] if row["state"] else "")
 
 
@@ -1079,17 +1152,17 @@ def cmd_settle(args):
     for line in reconcile_lines(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))[1]:
         print("Reconcile: " + line)  # first: these ended minutes ago, not hours
     for row in found["unsettled"]:
-        print("Unsettled: " + describe_unsettled(row))
+        print("Unsettled: " + describe_unsettled(row, ledger))
     for row in covered:
-        print("Likely done: %s: %s -> %s" % (row["session"], row["what"], row["note"]))
+        print("Likely done: %s: %s -> %s" % (with_icon(ledger, row["session"], row["what"]), row["what"], row["note"]))
     for row in ask:
-        print("Due: %s: %s (asked %s)%s" % (row["session"], row["what"], row["asked"],
+        print("Due: %s: %s (asked %s)%s" % (with_icon(ledger, row["session"], row["what"]), row["what"], row["asked"],
                                              "; " + row["note"] if row["note"] else ""))
     for row in found["asleep"]:
-        print("Asleep until %s: %s: %s" % (row["remind"], row["session"], row["what"]))
+        print("Asleep until %s: %s: %s" % (row["remind"], with_icon(ledger, row["session"], row["what"]), row["what"]))
     results = results_status(ledger)
     for row in results["due"]:
-        print("Unanswered result: " + describe_result(row))
+        print("Unanswered result: " + describe_result(row, ledger))
     for row in results["asleep"]:
         print("Result asleep until %s: %s %s" % (time.strftime(TIME_FORMAT, time.localtime(row["at"])),
                                                   row["deliverable"], row["link"]))
@@ -1121,7 +1194,7 @@ def cmd_waiting(args):
     if args.at and args.hours:
         raise SystemExit("pass --hours or --at, not both")
     if args.session == "ask":
-        return owed_question(ledger, what, args)
+        return owed_question(ledger, without_icon(ledger, what), args)
     if args.at or args.hours:
         raise SystemExit("--hours and --at are for `waiting ask`; a session's reminder is due now, then `sleep` it")
     sid = resolve_session(args.session)
@@ -1191,7 +1264,7 @@ def cmd_unwait(args):
 
 def cmd_result(args):
     ledger = os.path.expanduser(args.ledger or require_ledger())
-    deliverable, link = " ".join(args.deliverable.split()), " ".join(args.link.split())
+    deliverable, link = without_icon(ledger, " ".join(args.deliverable.split())), " ".join(args.link.split())
     if not deliverable or not link:
         raise SystemExit("say what was delivered and give its link, the exact one the user opens")
     rows = results_rows(ledger)
@@ -1199,7 +1272,7 @@ def cmd_result(args):
     if old and not args.source:
         deliverable = old["deliverable"]  # the row keeps its name (and the session noted on it)
     elif args.source:
-        deliverable += " (%s)" % " ".join(args.source.split())
+        deliverable += " (%s)" % without_icon(ledger, " ".join(args.source.split()))
     now = time.strftime(TIME_FORMAT)
     write_result(ledger, key or result_key(deliverable), [deliverable, link, now, now, UNANSWERED])
     shared_note(ledger, "%s %s" % (deliverable, link))
@@ -1568,6 +1641,7 @@ def cmd_launch(args):
         extra = extra[1:]
     if not extra:
         raise SystemExit("pass the claude arguments after --, for example: launch -- --model sonnet \"<brief>\"")
+    stream = launch_stream(args)  # first: a wrong key starts nothing
     command = shlex.split(os.environ.get("SESSION_GUIDE_CLAUDE") or "claude")
     command += [] if "--bg" in extra or "--background" in extra else ["--bg"]
     command += extra
@@ -1578,6 +1652,7 @@ def cmd_launch(args):
         if marker_content(sid) not in (None,) + WORKER_MARKERS:
             raise SystemExit("%s is a guide or closed; it is not launched as a worker" % sid[:8])
         write_marker(sid, level)  # before the command: the resumed session's first tool call already sees it
+        put_on_stream(stream, sid)
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     printed = None
     for line in proc.stdout:
@@ -1590,6 +1665,7 @@ def cmd_launch(args):
                 sid = full_id(printed)
                 if sid:
                     write_marker(sid, level)  # now, while the worker's first model call is still in flight
+                    put_on_stream(stream, sid)
     code = proc.wait()
     if code or not printed:
         print("claude exited %d%s; nothing marked for it" % (code, "" if printed else " without printing a session id"))
@@ -1601,6 +1677,37 @@ def cmd_launch(args):
     print("launched [%s] %s, marked %s the moment it started. Give it its Sessions row now: | <title> [%s] | %s | "
           "... |" % (sid[:8], sid, level, sid[:6], "WATCHED" if args.watched else "MANAGED"))
     return 0
+
+
+def launch_stream(args):
+    """(ledger, key) of the stream `launch` puts the worker on, or None. SystemExit when the stream can't be had: nothing
+    has started yet. A predecessor on no stream (or on one that ended) gives none, with a line that says so."""
+    if not args.stream and not args.successor_of:
+        return None
+    streams = streams_module()
+    if streams is None:
+        raise SystemExit("guide_streams.py can't be loaded; launch without --stream / --successor-of")
+    ledger = os.path.expanduser(require_ledger())
+    key = args.stream
+    if not key:
+        before = resolve_session(args.successor_of)
+        key = streams.stream_key_of(ledger, before)
+        found = streams.read(ledger).get(key) if key else None
+        if not found or found["state"] != "open":
+            print("%s is on no open stream, so its successor gets no icon" % before[:8])
+            return None
+    if streams.stream(streams.read(ledger), key)["state"] != "open":
+        raise SystemExit("stream %s has ended; `stream add %s` reopens it" % (key, key))
+    return ledger, key
+
+
+def put_on_stream(stream, session_id):
+    """Best effort: the worker runs already, so a failure is a line to act on, never a stop."""
+    if stream:
+        try:
+            print(streams_module().assign(stream[0], stream[1], session_id))
+        except (Exception, SystemExit) as error:
+            print("no stream icon for %s: %s" % (session_id[:8], error))
 
 
 def cmd_unguided(args):
@@ -1662,8 +1769,8 @@ def session_alive(session_id):
     return False
 
 
-def retitle_stopped_job(session_id):
-    """Put the closed title into the job's state.json `name`, which is what `claude agents` and claude-top show, when
+def retitle_stopped_job(session_id, content=DONE):
+    """Put the closed title (or the one for `content`) into the job's state.json `name`, which is what `claude agents` and claude-top show, when
     no process holds the session. Returns a line to print, or None when there is nothing to do.
 
     Claude Code has no command that renames a session without running a turn in it (the hook answer and /rename both
@@ -1678,7 +1785,7 @@ def retitle_stopped_job(session_id):
         if session_alive(session_id):
             return ("its process is still running: its title changes on its next prompt (send it CLOSE), or at a guide's "
                     "next prompt after the process ends")
-        name = worker_title(DONE, state["name"])
+        name = worker_title(content, state["name"], *title_icons(session_id))
         if not name:
             return None
         state["name"] = name
@@ -1706,7 +1813,8 @@ def settle_closed():
                 state = json.load(f)
         except (OSError, ValueError):
             continue
-        if state.get("sessionId") != sid or not worker_title(DONE, state.get("name") or ""):
+        if state.get("sessionId") != sid or not worker_title(
+                DONE, state.get("name") or "", *title_icons(sid)):
             continue
         if not session_alive(sid):
             retitle_stopped_job(sid)
@@ -1757,9 +1865,10 @@ def sync_session_titles(session_id, content):
             with open(path) as f:
                 state = json.load(f)
             before = json.dumps(state)
-            if content in WORKER_MARKERS + (DONE,):
-                state["origin"] = worker_title(content, state.get("origin") or "") or state.get("origin") or ""
-                last_set = worker_title(content, state.get("last_set") or "")
+            if content in WORKER_MARKERS + (DONE, None):
+                icons = title_icons(session_id)
+                state["origin"] = worker_title(content, state.get("origin") or "", *icons) or state.get("origin") or ""
+                last_set = worker_title(content, state.get("last_set") or "", *icons)
                 if last_set:  # a resume restores last_set; keep the old one known, so it isn't read as a rename
                     state["history"] = (state.get("history") or []) + [last_set]
                     state["last_set"] = last_set
@@ -1790,6 +1899,8 @@ def main(argv=None):
     retire.add_argument("--check", action="store_true", help="only run the gate: exit 1 while open rows need a guide")
     launch = sub.add_parser("launch", help="start a worker with `claude --bg`, marked guided before its first tool call")
     launch.add_argument("--watched", action="store_true", help="mark it watched, not guided")
+    launch.add_argument("--stream", metavar="KEY", help="the stream (project) it works on: its icon goes into the title")
+    launch.add_argument("--successor-of", metavar="ID", help="it takes over from this session, and keeps its stream")
     launch.add_argument("claude_args", nargs=argparse.REMAINDER, help="-- then the claude arguments")
     rec = sub.add_parser("reconcile", help="open rows whose session ended, is blocked or handed off; never writes")
     rec.add_argument("--ledger", help="any ledger (default: this guide's)")
@@ -1855,6 +1966,9 @@ def main(argv=None):
     claims = claims_module()
     if claims is not None:
         claims.add_parser(sub)
+    streams = streams_module()
+    if streams is not None:
+        streams.add_parser(sub)
     args = p.parse_args(argv)
     commands = {"hook": lambda a: cmd_hook(), "mark": cmd_mark, "unmark": cmd_unmark, "retire": cmd_retire,
                 "guided": lambda a: set_level(a, GUIDED, guided_prefix()),
@@ -1864,7 +1978,7 @@ def main(argv=None):
                 "settle": cmd_settle, "waiting": cmd_waiting, "sleep": cmd_sleep, "unwait": cmd_unwait,
                 "followups": cmd_followups, "verification": cmd_verification, "result": cmd_result,
                 "result-answer": cmd_result_answer, "launch": cmd_launch, "reconcile": cmd_reconcile,
-                "claim": lambda a: claims.cmd_claim(a)}
+                "claim": lambda a: claims.cmd_claim(a), "stream": lambda a: streams.cmd_stream(a)}
     return commands[args.cmd](args)
 
 

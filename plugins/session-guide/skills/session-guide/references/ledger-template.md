@@ -31,6 +31,12 @@ still needed a guide when the old guide retired (a handoff with no successor, an
 undelivered or inbox report), with its kind, what was open and when. The new guide reads it first, acts on each row,
 and deletes the row once it is handled. The table is absent when the last handoff was clean.
 
+**Streams** has an Icon column, written by `guide_title.py stream table`, for the streams in `streams.json`, the
+registry next to the ledger (key, icon, name, open or ended, its sessions), which only `guide_title.py stream …` writes.
+A Sessions row of a stream's session may carry the icon in its first cell, outside the quotes: "🧾 'billing export lead'
+[3fa9c1]". No icon goes in an Owner cell or in Open items, Results for you or Waiting on the user: those rows are
+matched by their text, and the scripts add the icon when they print them.
+
 **Sessions** has a Model / effort column: the guide's pick for a session it started (`sonnet/low`), or what a session it
 took over runs, read from claude-top or peek. "kept <date>" records that the user turned down a switch, so the guide
 doesn't ask again until the session's task changes (`references/model-choice.md`).
@@ -94,11 +100,11 @@ Updated: <date HH:MM>   Usage: <plan usage, if you track it>
 | reindex lead [d4e5f6] | handoff | HANDED OFF: 'reindex lead' [d4e5f6a1] ended 12 min ago and no Sessions row is its successor. … | 2026-10-27 09:00 |
 
 ## Streams
-| Stream | Where now | Next step | Owner | Blocked on |
-|---|---|---|---|---|
-| Billing export | develop a1b2c3d on staging | fix rounding row → copy PR | 'billing export lead' [3fa9c1] | — |
-| Search reindex | prod since 10-26 11:47Z, verified | read-only prod audit | worker TBD | traffic |
-| Docs refresh | DONE | — | — | — |
+| Icon | Stream | Where now | Next step | Owner | Blocked on |
+|---|---|---|---|---|---|
+| 🧾 | Billing export | develop a1b2c3d on staging | fix rounding row → copy PR | 'billing export lead' [3fa9c1] | — |
+| 🔍 | Search reindex | prod since 10-26 11:47Z, verified | read-only prod audit | worker TBD | traffic |
+| | Docs refresh | DONE | — | — | — |
 
 ## Order / gates
 - Prod order: billing export → search reindex. One production merge at a time, each after the previous deploy.
@@ -107,7 +113,7 @@ Updated: <date HH:MM>   Usage: <plan usage, if you track it>
 ## Sessions
 | Title [id6] | Level | Role / stream | Model / effort | Worktree @ sha | Address | Ctx | Last seen |
 |---|---|---|---|---|---|---|---|
-| billing export lead [3fa9c1] | MANAGED | billing lead | opus/high | worktrees/billing @a1b2c3d | <from= address> | 140k | 12:35 |
+| 🧾 'billing export lead' [3fa9c1] | MANAGED | billing lead | opus/high | worktrees/billing @a1b2c3d | <from= address> | 140k | 12:35 |
 | billing CI reader [2b3c4d] | MANAGED | billing CI reads | sonnet/low | worktrees/billing @a1b2c3d | <from= address> | 40k | 12:30 |
 | design spike [b5c6d7] | WATCHED | — | opus/xhigh, kept 10-27 | — | — | 90k | 12:02 |
 | notes cleanup [f1a2b3] | ACTIVE | — | — | — | — | — | 12:20 |

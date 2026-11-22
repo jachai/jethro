@@ -151,6 +151,32 @@ class AuditCase(unittest.TestCase):
         return out.getvalue()
 
 
+class StreamIconsTest(AuditCase):
+    """A stream's icon is added when a session's row is shown; the audit never reads or writes one in a cell."""
+    def test_owners_keys_and_the_ledger_are_the_same_with_streams(self):
+        self.make(open_=["| Alpha | new session | 11-17 |", "| Beta | 'lead' [3fa9c1] | 11-16 |"],
+                  sessions=[session_row("'lead'", "3fa9c1")])
+        sid = self.transcript("3fa9c1")
+
+        def seen():
+            found = self.audit(full=True)
+            return [(r["key"], r["owner"], r["what"]) for r in found["rows"] + found["hidden"]]
+        before = seen()
+        with open(self.ledger) as f:
+            text = f.read()
+        with open(os.path.join(os.path.dirname(self.ledger), "streams.json"), "w") as f:
+            json.dump({"billing": {"icon": "\U0001f3e0", "name": "Billing", "state": "open", "since": "2026-11-01",
+                                   "ended": None, "sessions": [sid]}}, f)
+        found = self.audit(full=True)
+        self.assertEqual(seen(), before)
+        ga.state_file(self.ledger, found)
+        with open(os.path.join(os.path.dirname(self.ledger), "STATE.md")) as f:
+            self.assertIn("\U0001f3e0 'lead' [3fa9c1]", f.read())  # shown there
+        with open(self.ledger) as f:
+            self.assertEqual(f.read(), text)
+        self.assertNotIn("\U0001f3e0", "".join(r["owner"] for r in found["rows"] + found["hidden"]))
+
+
 class OpenItemsTest(AuditCase):
     def test_three_cells_date_in_status(self):
         self.make(open_=["| Alpha | new session | 11-17 |"])
