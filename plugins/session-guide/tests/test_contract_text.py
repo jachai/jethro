@@ -69,5 +69,34 @@ class ContractSaysSocket(unittest.TestCase):
         self.assertIn("guide_title.py launch", text)
 
 
+class StreamIconWording(unittest.TestCase):
+    """The icon stands alone before the protocol word, which the guide's reconcile reads as the first word."""
+    def test_the_contract_says_the_icon_alone(self):
+        self.assertIn("the first line starts with the icon ALONE", contract_rule(2))
+        self.assertIn("never with the stream's name", contract_rule(2))
+        self.assertIn("\U0001f3e0 BLOCKED: \u2026", contract_rule(4))
+        self.assertIn("start the first line of every report with it, alone",
+                      flat(read(os.path.join(REFS, "worker-contract.md"))))
+
+    def test_the_skill_says_where_an_icon_goes_and_where_it_does_not(self):
+        text = flat(read(SKILL))
+        self.assertIn("outside the quotes", text)
+        self.assertIn("never in Open items, Results, owed-question or Owner cells", text)
+        self.assertIn("\U0001f3e0 Decision 7 FINAL", text)
+        self.assertIn("launch --stream <key>", text)
+        self.assertIn("launch --successor-of <id>", text)
+        self.assertIn("--active-ok", text)
+
+    def test_the_question_header_in_the_skill_fits_twelve_characters(self):
+        header = re.search(r"at most 8 characters \(\"([^\"]+)\"", flat(read(SKILL))).group(1)
+        self.assertLessEqual(len(header) + 1, 12)  # an icon is two cells wide
+
+    def test_the_ledger_template_has_the_icon_column_and_no_icon_in_owner(self):
+        text = read(os.path.join(REFS, "ledger-template.md"))
+        self.assertIn("| Icon | Stream | Where now | Next step | Owner | Blocked on |", text)
+        table = text.split("\n## Open items")[1].split("\n## ")[0]
+        self.assertNotRegex(table, "[\U0001f300-\U0001faff]")
+
+
 if __name__ == "__main__":
     unittest.main()
