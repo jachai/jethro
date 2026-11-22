@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+- Phone width, summary: the table no longer runs off the screen when cards carry ticket ids. Below 560px a row
+  shows the id and the answer on one line with the question under them, and an id breaks only when it is wider
+  than its own space.
+- Phone width, `table` visual: numbers, dates and short ids stay on one line, and words no longer break in the
+  middle. Only a token over 16 characters (a record id, a range) may break, after its own dash or slash first.
+  A table too wide for the phone scrolls inside its box.
+
 ## [0.2.2] - 2026-11-19
 - Moved into the [jethro](https://github.com/jachai/jethro) suite: install with `/plugin marketplace add jachai/jethro`
   and `/plugin install fancy-questions@jethro`. Its own marketplace.json and CI are gone; the suite's CI runs

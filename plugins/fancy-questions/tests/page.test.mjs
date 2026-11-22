@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { join } from 'node:path';
 import { build } from '../scripts/qw.mjs';
+import { load, check } from '../scripts/lint.mjs';
 const root = new URL('..', import.meta.url).pathname;
 const { app } = build(join(root, 'skills/build/examples/minimal'));
 
@@ -197,4 +198,35 @@ test('reduced motion: no fireworks sound, even with sound on', async () => {
   const p = await run({ reduce: true });
   await pickFirst(p);
   assert.deepEqual([...p.T.celebrations], ['card']); assert.equal(p.T.sounds.length, 0);
+});
+
+// phone layout (390px)
+const css = build(join(root, 'skills/build/examples/minimal')).html.match(/<style>[\s\S]*?<\/style>/)[0];
+const phone = [...css.matchAll(/@media \(max-width:559px\)\{((?:[^{}]*\{[^{}]*\})+)\s*\}/g)].map(m => m[1]).join('\n');
+test('table cells: numbers and short ids stay on one line, only a long token may break inside', async () => {
+  const { T: { cellHTML } } = await run();
+  for (const n of ['6', '$1,234.56', '−$1,000.00', '$10,500.00', '48.5%', '2026-03-01', 'ABC-10425']) assert.equal(cellHTML(n), `<span class="nb">${n}</span>`);
+  assert.equal(cellHTML('$4,444.00 per day'), '<span class="nb">$4,444.00</span> per day');
+  assert.equal(cellHTML('Install labor'), 'Install labor');
+  assert.equal(cellHTML('9Zdef3PkqrT7kXc1VaCD'), '<span class="lb">9Zdef3PkqrT7kXc1VaCD</span>');
+  assert.equal(cellHTML('$12,345.00–$13,456.00'), '<span class="nb">$12,345.00–</span><wbr><span class="nb">$13,456.00</span>');
+  assert.equal(cellHTML('-----------------------').replace(/<[^>]+>/g, ''), '-----------------------');
+  assert.equal(cellHTML('a<b&c 1<2'), 'a&lt;b&amp;c <span class="nb">1&lt;2</span>');
+  assert.equal(cellHTML(null), '');
+  assert.match(css, /\.qv-table \.nb\{white-space:nowrap\}/);
+  assert.match(css, /\.qv-table \.lb\{overflow-wrap:anywhere\}/);
+  assert.doesNotMatch(css.match(/\.qv-table td\{[^}]*\}/)[0], /overflow-wrap|word-break/, 'a cell must not let every word break');
+});
+test('summary: each ticket id is one unit, and a phone row stacks the question under the id and the answer', async () => {
+  const html = (await run()).T.summaryHTML();
+  assert.ok(html.includes('<td><span class="tid">T-1</span></td>'));
+  const { page, cards } = load(join(root, 'skills/build/examples/minimal'));
+  check(page, cards); // fills the empty tickets lists
+  const bare = cards.find(c => !c.tickets.length);
+  assert.ok(html.includes(`<td>${bare.short}</td>`), 'no tickets: the short name');
+  assert.match(css, /\.sum \.tid\{display:inline-block;max-width:100%/);
+  assert.match(phone, /\.sum tr\{display:grid/);
+  assert.match(phone, /\.sum td:nth-child\(2\)\{grid-row:2;grid-column:1\/-1\}/);
+  assert.match(phone, /\.sum td,[^{]*\{[^}]*min-width:0;max-width:none/);
+  assert.doesNotMatch(phone, /\.sum [^{]*\{[^}]*min-width:[1-9]/, 'a fixed minimum width is what pushed the table off the screen');
 });

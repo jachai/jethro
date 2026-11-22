@@ -38,6 +38,12 @@ function paintBroken(loud){
   if(loud) toast('Not sent to '+AUTHOR+'. Copy all your answers.');
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+/* A table cell: numbers and short ids never break across lines; a token too long for a phone (a record id, a
+   range) breaks after its own - – — / first, and inside a piece only when that piece is long too. */
+function cellHTML(s){
+  const piece=t=>t.length>16?`<span class="lb">${esc(t)}</span>`:/\d/.test(t)?`<span class="nb">${esc(t)}</span>`:esc(t);
+  return String(s==null?'':s).split(/(\s+)/).map(t=>t.length>16?t.match(/[–—/-]*[^–—/-]+[–—/-]*|[–—/-]+/g).map(piece).join('<wbr>'):piece(t)).join('');
+}
 const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
 const done1 = x => !!(answers[x.id] && answers[x.id].optionId);
 const isDone = q => parts(q).every(done1);
@@ -82,7 +88,7 @@ const V = {
     return `<ol class="qv-steps">${v.items.map((s,i)=>`<li class="t-${esc(s.tone||'accent')}" style="--i:${i}"><span class="num">${esc(s.when||'')}</span><b>${esc(s.label)}</b>${s.note?`<span>${esc(s.note)}</span>`:''}</li>`).join('')}</ol>`;
   },
   table(v){
-    return `<div class="qv-table"><table><thead><tr>${v.cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${v.rows.map((r,i)=>`<tr style="--i:${i}"${(v.highlight||[]).includes(i)?' class="hl-row"':''}>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    return `<div class="qv-table"><table><thead><tr>${v.cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${v.rows.map((r,i)=>`<tr style="--i:${i}"${(v.highlight||[]).includes(i)?' class="hl-row"':''}>${r.map(c=>`<td>${cellHTML(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   },
   image(v){ return `<img class="qv-img" src="${esc(v.src)}" alt="${esc(v.alt)}" loading="lazy">`; },
   pair(v){ return `<div class="two side">${visual(v.a)}${visual(v.b)}</div>`; },
@@ -209,7 +215,7 @@ function summaryHTML(){
   <p class="lead">${broken.size?`Your answers are NOT reaching ${esc(AUTHOR)} yet. Copy them below and send them in Slack or email.`:done===TOTAL?esc(PAGE.thanks||'Everything is saved on this page.'):'Tap “answer” on a row to jump back to it. Everything picked so far is already saved.'}</p>
   <div class="sum${done===TOTAL?' all':''}">
     <div><h3>Your answers</h3><table>${rows().map(([q,k,pi,c],ri)=>{ const a=answers[q.id]||{}; const o=optOf(q,a);
-      return `<tr style="--i:${Math.min(ri,14)}"><td>${esc(c.tickets.map(t=>t.label||t.id).join(', ')||c.short)}${pi?` (part ${pi+1})`:''}</td><td>${esc(q.question)}${a.picks&&a.picks.length?`<span class="note">${esc(a.picks.join(', '))}</span>`:''}${a.note?`<span class="note">Note: ${esc(a.note)}</span>`:''}</td><td>${o?`<span class="pill ${esc(o.tone)}">${esc(o.name)}</span>`:`<button class="jump" data-go="${k+1}">answer</button>`}</td></tr>`;}).join('')}</table></div>
+      return `<tr style="--i:${Math.min(ri,14)}"><td>${c.tickets.length?c.tickets.map(t=>`<span class="tid">${esc(t.label||t.id)}</span>`).join(', '):esc(c.short)}${pi?` (part ${pi+1})`:''}</td><td>${esc(q.question)}${a.picks&&a.picks.length?`<span class="note">${esc(a.picks.join(', '))}</span>`:''}${a.note?`<span class="note">Note: ${esc(a.note)}</span>`:''}</td><td>${o?`<span class="pill ${esc(o.tone)}">${esc(o.name)}</span>`:`<button class="jump" data-go="${k+1}">answer</button>`}</td></tr>`;}).join('')}</table></div>
     <div><h3>All my answers, as text</h3><textarea class="copybox" id="copybox" readonly>${esc(answersText())}</textarea></div>
   </div>
   <div class="nav">
@@ -477,6 +483,6 @@ async function boot(){
     }, err=>{ clearTimeout(timer); console.warn('db listener', err); fail('listener',1); });
   }catch(e){ console.warn('boot', e); fail('nodb',1); }
 }
-if(globalThis.__QW_TEST__) globalThis.__QW_TEST__.api={answersText, celebrateKind, shellPlan, saveFailReason, sounds, toggleSound, muted:()=>muted, milestoneAt, milestoneText, celebrations, milestone:()=>{ const b=$('milestone'); return b?b.textContent:''; }, broken, pick:(i,p)=>pick(i,p), go:n=>go(n), state:()=>({idx, answers})};
+if(globalThis.__QW_TEST__) globalThis.__QW_TEST__.api={answersText, cellHTML, summaryHTML, celebrateKind, shellPlan, saveFailReason, sounds, toggleSound, muted:()=>muted, milestoneAt, milestoneText, celebrations, milestone:()=>{ const b=$('milestone'); return b?b.textContent:''; }, broken, pick:(i,p)=>pick(i,p), go:n=>go(n), state:()=>({idx, answers})};
 boot();
 })();
