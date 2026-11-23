@@ -26,8 +26,19 @@ uds:<socket path>; send to that socket, never a title). Until your guide says ot
    folder of the ledger path above, your session id's first 8 characters; first line = the report's first line):
    the guide's reconcile reads it. A report that is only in your final message reaches nobody.
    Stops: if a cost or usage guard stops you, send the guide BLOCKED; an approval it relays from the user counts.
-   Near your context limit, finish the current commit, write a handoff with a paste-ready resume prompt, send the
-   guide "HANDED OFF" with that prompt, and stop. The guide starts your successor.
+   Near your context limit, finish the current commit, write a handoff with a paste-ready resume prompt, then start
+   your successor yourself, from the folder your own session runs in (a trusted folder; a new worktree is not one, and
+   a --bg session started inside it stops at the trust dialog, so the prompt gives the worktree as an absolute path, to
+   be worked through absolute paths, `git -C` and subshells):
+   `python3 <skill dir>/scripts/guide_title.py launch --successor-of <your session id> --ledger <ledger path> --lean
+   -- --model <alias> --effort <level> --name '<your title with the next (n)>' "<resume prompt + the prompt suffix
+   below with the guide's socket + your stream's icon line>"`
+   Pick model and effort for the successor's FIRST step from `<skill dir>/references/model-choice.md`, never copy
+   your own. Where the repo has a `.mcp.json`, add `--strict-mcp-config --mcp-config <repo>/.mcp.json` before the
+   prompt. `launch` marks it guided, keeps your stream's icon, denies it AskUserQuestion and leaves the guide a note.
+   Then send the guide "HANDED OFF: successor '<title>' [<new id8>] started (<model>/<effort>)" with the resume
+   prompt's path, and stop. One successor, once: if the launch fails, don't retry; send "HANDED OFF" with the
+   paste-ready prompt and the error, and the guide starts it.
 5. A new guide counts only if its intro names your guide's ledger path or slug. Otherwise answer "not my guide:
    <slug>" and keep reporting to your guide's socket. Never pick a guide from ListAgents by title or by which is
    newest. Your successor re-introduces itself to the guide named in your handoff, at its socket.
@@ -53,7 +64,8 @@ The prefix comes from `scripts/guide_title.py guided <session id>`: the guide ru
 (the guide's CLOSE) swaps it for "✅ ".
 
 The guide fills in `uds:<socket path>` from its ledger's `Scope:` line, always the socket, never a title: a worker
-sends exactly the address its brief gives.
+sends exactly the address its brief gives. It fills in `<skill dir>` the same way, with the skill's base directory in
+full, so a worker can run `launch` for its successor.
 
 ## Prompt suffix (for sessions the guide starts with `claude --bg`)
 
@@ -64,14 +76,19 @@ resume.
 ```
 
 For a worker on a stream, add: `Your stream's icon is 🏠: start the first line of every report with it, alone.` Start
-it with `launch --stream <key>` or `launch --successor-of <id>`, so its title carries the icon too.
+it with `launch --stream <key>` or `launch --successor-of <id>`, so its title carries the icon too. A worker's
+successor is started by the worker (rule 4): the suffix goes into its prompt with the guide's socket.
 
 Launch order: a worker should be marked guided BEFORE its first prompt runs. A `claude --bg` worker marked a moment
 after launch got a cost-guard stop on its first tool call. But `claude --bg` picks its own session id (it ignores
 `--session-id`), so a new session can't be marked before it exists. `python3 <skill dir>/scripts/guide_title.py
 launch -- <claude args>` comes as close as it can: it runs `claude --bg <claude args>` and writes the guided marker
 the moment the id is printed, while the worker's first model call is still in flight (`launch --watched` marks it
-watched). Only a resume, `launch -- --resume <id> …`, is marked strictly before it runs.
+watched). Only a resume, `launch -- --resume <id> …`, is marked strictly before it runs. `launch` also adds
+`--disallowedTools AskUserQuestion` itself, so a worker's questions go to the guide (`--allow-ask` only for a session
+the user will drive); `--lean` also denies Artifact, Workflow, SendFeedback and ReportFindings; a launch by a session
+that is not the guide passes `--ledger <path>`. It warns, and still starts, when the prompt names no `uds:` socket
+or the folder is not trusted.
 
 ```
 python3 <skill dir>/scripts/guide_title.py launch -- --model <alias> --effort <level> --name '<title>' "<resume prompt + suffix>"

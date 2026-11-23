@@ -69,6 +69,20 @@ class ContractSaysSocket(unittest.TestCase):
         self.assertIn("guide_title.py launch", text)
 
 
+class SuccessorAndBookkeepingWording(unittest.TestCase):
+    def test_the_contract_has_the_worker_start_its_successor(self):
+        rule = contract_rule(4)
+        self.assertIn("launch --successor-of", rule)
+        self.assertIn("--ledger", rule)
+        self.assertNotIn("The guide starts your successor", rule)
+
+    def test_the_skill_names_the_fewer_dialog_commands(self):
+        text = flat(read(SKILL))
+        for word in ("needs input:", "guide_title.py working", "sweep --defaults", "done --closable",
+                     "results-defer", "sleep --due"):
+            self.assertIn(word, text)
+
+
 class StreamIconWording(unittest.TestCase):
     """The icon stands alone before the protocol word, which the guide's reconcile reads as the first word."""
     def test_the_contract_says_the_icon_alone(self):
