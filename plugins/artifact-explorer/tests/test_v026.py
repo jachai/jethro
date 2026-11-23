@@ -142,17 +142,30 @@ class Singleton(unittest.TestCase):
         with open(os.path.join(d, "watcher.json"), "w") as f:
             json.dump({"pid": pid, "t": time.time()}, f)
 
-    def test_refuses_when_other_watcher_alive(self):
+    def test_stands_by_silently_when_other_watcher_alive(self):
         d = helpers.tmp()
         self.write(d, 99999)
         buf = io.StringIO()
         with mock.patch.object(common, "_pid_alive", return_value=True), \
                 mock.patch.object(common, "pid_cmdline", return_value="/usr/bin/python3 /x/scripts/ae.py --data /d watch"), \
-                mock.patch.object(watch, "tick") as tick, redirect_stdout(buf):
-            self.assertEqual(watch.loop(d, tick_seconds=0, max_ticks=1), 0)
+                mock.patch.object(watch, "tick") as tick, redirect_stdout(buf), \
+                mock.patch.object(os, "getppid", return_value=os.getppid()):
+            self.assertEqual(watch.loop(d, tick_seconds=0, max_ticks=3), 0)
         tick.assert_not_called()
-        self.assertIn("already running", buf.getvalue())
+        self.assertEqual(buf.getvalue(), "")  # any stdout line would be a Monitor event in the session
         self.assertEqual(json.load(open(os.path.join(d, "watcher.json")))["pid"], 99999)
+
+    def test_takes_over_when_other_watcher_goes(self):
+        d = helpers.tmp()
+        self.write(d, 99999)
+        alive = iter([True, False])
+        with mock.patch.object(common, "_pid_alive", side_effect=lambda pid: next(alive, False)), \
+                mock.patch.object(common, "pid_cmdline", return_value="/usr/bin/python3 /x/scripts/ae.py --data /d watch"), \
+                mock.patch.object(watch, "tick") as tick, mock.patch.object(watch, "superseded", return_value=None), \
+                mock.patch.object(os, "getppid", return_value=os.getppid()):
+            watch.loop(d, tick_seconds=0, max_ticks=2)
+        tick.assert_called_once()
+        self.assertEqual(json.load(open(os.path.join(d, "watcher.json")))["pid"], os.getpid())
 
     def test_starts_when_pid_reused_or_dead(self):
         for alive, cmd in ((True, "/usr/bin/vim notes.txt"), (False, None)):

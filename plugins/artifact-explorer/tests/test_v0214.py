@@ -1,4 +1,4 @@
-"""0.2.13: link-only stubs (no title, no owner) are not shown; Remove from list on the page."""
+"""0.2.14: link-only stubs (no title, no owner) are not shown; Remove from list on the page."""
 import json
 import os
 import shutil

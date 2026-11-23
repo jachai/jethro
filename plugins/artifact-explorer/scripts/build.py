@@ -234,7 +234,7 @@ def collect(data, cfg):
             "guessed": not (o.get("category") or _known(rules, r["category"]) or _known_kind(rules, r["kind"])),
             "topics": topics, "suggested": suggested,
             "mine": not others,
-            # 0.2.13: "Mine only" keeps rows the claude.ai list says are yours; an unknown owner is not yours
+            # 0.2.14: "Mine only" keeps rows the claude.ai list says are yours; an unknown owner is not yours
             "own": r["owned"] == 1,
             "access": access if access in SHARE_LEVELS else "", "other_org": bool(r["other_org"]),
             "revoked": bool(others and r["shared_gone"] is not None), "copy": copy.replace(os.sep, "/"),
