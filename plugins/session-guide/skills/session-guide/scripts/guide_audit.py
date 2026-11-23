@@ -82,7 +82,6 @@ prompt (at most every 10 minutes), nags with the top rows when an idle item is o
 Python 3 stdlib only.
 """
 import argparse
-import calendar
 import glob
 import hashlib
 import json
@@ -405,12 +404,7 @@ def newest(text, now):
     return max(found) if found else None
 
 
-def iso_time(text):
-    """Epoch of gh's "2026-11-15T10:00:00Z", or None."""
-    try:
-        return calendar.timegm(time.strptime(text[:19], "%Y-%m-%dT%H:%M:%S"))
-    except (TypeError, ValueError):
-        return None
+iso_time = gt.iso_epoch  # gh writes "2026-11-15T10:00:00Z"
 
 
 def slug(text):

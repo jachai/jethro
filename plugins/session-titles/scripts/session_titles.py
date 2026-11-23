@@ -45,6 +45,7 @@ GUARD_ENV = "SESSION_TITLES_CHILD"  # set on our own `claude -p` calls so they n
 LOG_MAX_BYTES = 1_000_000
 STATE_TTL_DAYS = 30
 HISTORY_KEEP = 8
+PINNED_KEEP = 32  # titles another tool (session-guide's sync) vouched for: kept outside the HISTORY_KEEP cap
 
 DEFAULTS = {
     "model": "haiku",
@@ -449,10 +450,22 @@ def resolve_origin(state: dict, current_title: str, cfg: dict) -> Optional[str]:
     """The origin to keep, or None when the visible title is one we never set (a manual rename)."""
     if not current_title:
         return state.get("origin") or None
-    ours = set(state.get("history") or []) | {state.get("last_set") or ""}
+    ours = set(state.get("history") or []) | set(state.get("pinned") or []) | {state.get("last_set") or ""}
     if current_title in ours:
         return state.get("origin") or split_title(current_title, cfg["separator"])
     return None
+
+
+def decoration(state: dict) -> str:
+    """What the stored origin carries in front of a bare title that session-guide's sync pinned (a stream icon, a
+    level prefix such as "🟧🟧 (g) "), or "" when no pinned title is the origin's tail after such a prefix."""
+    origin = state.get("origin") or ""
+    found = ""
+    for bare in state.get("pinned") or []:
+        front = origin[:-len(bare)] if bare and origin.endswith(bare) else ""
+        if front and not front[-1].isalnum() and len(front) > len(found):
+            found = front
+    return found
 
 
 def remember(state: dict, title: str) -> None:
@@ -491,6 +504,9 @@ def on_prompt(hook_in: dict, cfg: dict) -> Optional[str]:
         origin = resolve_origin(state, current, cfg)
         if origin is None and current:
             origin = split_title(current, cfg["separator"])
+            front = decoration(state)  # a rename keeps the stream icon the origin carried
+            if front and not origin.startswith(front.strip()):
+                origin = front + origin
             if origin != state.get("origin"):
                 log(f"{sid8} origin <- {origin!r} (title was {current!r})")
             # a resume that forks to a new session id inherits "<origin> · <focus>"; keep that focus to start from

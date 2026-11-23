@@ -49,6 +49,8 @@ LOOSE = re.compile(r"\b(?:not (?:yet )?(?:done|finished|completed?|verified|test
                    r"unfinished|incomplete|follow[- ]?ups?|blocked|refus(?:ed|es|al)|declined|denied|could ?not|"
                    r"couldn['’]t|unable to|failed|left (?:open|undone)|still (?:open|owed|failing|broken)|todo)\b",
                    re.I)
+FAILED = re.compile(r"\b(?:fail(?:ed|ure|ures)|errors?|crash(?:ed|es)|timed out|(?:could not|couldn['’]t|unable to)|"
+                    r"abort(?:ed|s))\b", re.I)
 REFUSED = re.compile(r"\b(?:I (?:can(?:no|['’])t|won['’]t|will not|am (?:not able|unable))|"
                      r"I['’]m (?:not able|unable)|refus(?:ed?|es|al|ing)|declin(?:ed?|es|ing)|"
                      r"not (?:allowed|permitted|authori[sz]ed)|permission (?:was )?denied)\b", re.I)
@@ -222,6 +224,9 @@ def run_failure(last, result):
         return "stopped with no final message"
     if FAILED_FIRST.match(result):
         return "failed: " + one_line(result, 160)
+    failed = worded(FAILED, result) or worded(FAILED, last["text"][-600:])
+    if failed:
+        return "failed: " + one_line(failed, 160)
     said = worded(REFUSED, result) or worded(REFUSED, last["text"][:600])
     return "refused: " + one_line(said, 160) if said else ""
 
@@ -324,13 +329,14 @@ def context(ledger, me="", script="guide_title.py"):
         return None
     loose = sum(1 for s in found["sessions"] if s["why"]) + len(found["jobs"])
     lines = ["- " + describe(e) for e in entries[:8]] + ["- and %d more" % (len(entries) - 8)] * (len(entries) > 8)
+    more = " With more than 8, run `%s finished` for the rest." % script if len(entries) > 8 else ""
     return ("session-guide finished: %d session(s) or job(s) ended on their own in the last %g h with nobody managing "
             "them, %d with a loose end:\n%s\n"
             "List each in your status under **Finished on their own** (title [id6], one line of result, link). A "
             "loose end becomes an Open items row or a question in this round: read its final message first (`peek`), "
-            "and never message an ACTIVE session. Then `%s finished --reviewed` marks the clean ones, and `%s finished "
-            "--reviewed <id8> ...` each loose end you recorded, so none is shown twice."
-            % (len(entries), finished_hours(), loose, "\n".join(lines), script, script))
+            "and never message an ACTIVE session. Then `%s finished --reviewed <id8> ...` with each one you listed "
+            "(clean ones and recorded loose ends alike), so none is shown twice.%s"
+            % (len(entries), finished_hours(), loose, "\n".join(lines), script, more))
 
 
 def mark_reviewed(ledger, ids, me=""):

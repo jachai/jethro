@@ -168,6 +168,36 @@ class OriginTests(Base):
         self.assertEqual(self.prompt("next", title="billing"), "[x] billing · step two")
         self.assertEqual(self.state()["origin"], "[x] billing")
 
+    def test_a_new_manual_rename_after_guide_sync_keeps_the_stream_icon(self):
+        st.write_state(SID, {"origin": "🟧🟧 (g) billing", "focus": "", "last_set": "🟧🟧 (g) billing",
+                             "history": ["billing", "🟧🟧 (g) billing"], "pinned": ["billing"]})
+        self.add_assistant("step one done")
+        self.replies("step two")
+        self.assertEqual(self.prompt("next", title="docs sprint"), "🟧🟧 (g) docs sprint · step two")
+        self.assertEqual(self.state()["origin"], "🟧🟧 (g) docs sprint")
+        self.prompt("again", title="🟧🟧 (g) ops")
+        self.assertEqual(self.state()["origin"], "🟧🟧 (g) ops")  # no icon twice
+
+    def test_a_rename_with_no_pinned_bare_title_gets_no_decoration(self):
+        st.write_state(SID, {"origin": "🟧🟧 (g) billing", "focus": "", "last_set": "🟧🟧 (g) billing",
+                             "history": ["🟧🟧 (g) billing"]})
+        self.add_assistant("step one done")
+        self.replies("step two")
+        self.assertEqual(self.prompt("next", title="docs sprint"), "docs sprint · step two")
+
+    def test_pinned_bare_titles_survive_more_than_eight_prompts(self):
+        st.write_state(SID, {"origin": "🟧🟧 (g) billing", "focus": "", "last_set": "🟧🟧 (g) billing",
+                             "history": ["billing", "🟧🟧 (g) billing"], "pinned": ["billing"]})
+        title = "🟧🟧 (g) billing"
+        for n in range(10):
+            self.add_assistant("step %d done" % n)
+            self.replies("step %d" % n)
+            title = self.prompt("next", title=title)
+        self.assertNotIn("billing", self.state()["history"])
+        self.assertEqual(self.state()["pinned"], ["billing"])
+        self.prompt("flip", title="billing")  # still read as ours, not as a rename
+        self.assertEqual(self.state()["origin"], "🟧🟧 (g) billing")
+
     def test_an_origin_changed_while_the_focus_was_generated_is_kept(self):
         st.write_state(SID, {"origin": "billing", "focus": "", "last_set": "billing", "history": ["billing"]})
         self.add_assistant("step one done")

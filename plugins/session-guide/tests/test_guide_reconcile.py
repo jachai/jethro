@@ -66,7 +66,7 @@ class ReconcileBase(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_CODE_SESSION_ID", "SESSION_GUIDE_GRACE_MINUTES",
                                                                  "SESSION_GUIDE_CLAUDE")}
         env.update(CLAUDE_CONFIG_DIR=self.cfg, HOME=self.cfg, SESSION_GUIDE_AUDIT_HOURS="0", SESSION_GUIDE_FOLLOWUP_HOURS="0",
-                   SESSION_GUIDE_GH="0")
+                   SESSION_GUIDE_GH="0", PYTHONDONTWRITEBYTECODE="1")  # macOS python caches bytecode under HOME
         self.env = mock.patch.dict(os.environ, env, clear=True)
         self.env.start()
 
@@ -325,7 +325,8 @@ class WiringTest(ReconcileBase):
 
         def tree():
             found = {}
-            for top, _, files in os.walk(self.cfg):
+            for top, dirs, files in os.walk(self.cfg):
+                dirs[:] = [d for d in dirs if d != "Library"]  # macOS python's bytecode cache is not ours
                 for name in files:
                     path = os.path.join(top, name)
                     found[path] = (os.path.getmtime(path), open(path, "rb").read())

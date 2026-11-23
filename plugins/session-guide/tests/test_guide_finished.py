@@ -353,6 +353,16 @@ class ScriptRunTest(FinishedBase):
         self.assertEqual(job["id"], sid)
         self.assertTrue(job["why"].startswith("refused"), job["why"])
 
+    def test_a_run_that_says_it_failed_counts_as_failed(self):
+        self.run_final(0x40, "nightly backup", "The nightly backup failed: disk full.")
+        job = self.scan()["jobs"][0]
+        self.assertEqual(job["why"], "failed: The nightly backup failed: disk full.")
+
+    def test_runs_that_report_no_errors_or_no_failures_ended_well(self):
+        self.run_final(0x40, "lint repo", "Done, no errors.")
+        self.run_final(0x44, "run tests", "All 12 tests passed, 0 failed")
+        self.assertEqual(self.scan(), dict(sessions=[], jobs=[]))
+
     def test_run_with_no_final_message_counts_as_failed(self):
         self.cut(sid_of(0x40), entrypoint="sdk-cli", prompt="build report")
         job = self.scan()["jobs"][0]
@@ -483,6 +493,17 @@ class HookTest(FinishedBase):
         super().setUp()
         self.marker(GUIDE, self.ledger)
         self.convo(sid_of(0x40), "result: fine", title="hook worker")
+
+    def test_hook_tells_the_guide_to_mark_the_ids_it_listed(self):
+        context = self.hook()
+        self.assertIn("finished --reviewed <id8> ...` with each one you listed", context)
+        self.assertNotIn("finished --reviewed` marks", context)
+        self.assertNotIn("for the rest", context)
+        for n in range(0x50, 0x50 + 9):
+            self.convo(sid_of(n), "result: fine", title="extra %d" % n)
+        context = self.hook()
+        self.assertIn("- and 2 more", context)
+        self.assertIn("finished` for the rest", context)
 
     def test_hook_lists_finished_sessions_until_reviewed(self):
         context = self.hook()

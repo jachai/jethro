@@ -259,10 +259,11 @@ guide was busy without one). So:
    - **Verdicts and reminders that still need the user:** ONE batched question per round, results and due reminders
      together, oldest first, at most 4 options: a multi-select "Tick what is settled" with options "Satisfied:
      <deliverable>" (link and one line on the result in the description) and "Done: <reminder action>". Ticked:
-     `result-answer … satisfied`, or verify and close / `unwait`. Not ticked: `results-defer` and `sleep --due`.
-     "Change it" and "Drop it" are what the user writes in Other or in text ("change <deliverable>: <what>"). Past 4,
-     the rest wait for the next round. Bookkeeping never blocks a worker, so while workers are working this is a text
-     list (rule 1), not a dialog.
+     `result-answer … satisfied`, or verify and close / `unwait`. Not ticked: when everything due was shown,
+     `results-defer` and `sleep --due`; when some were not shown, only the shown, unticked ones, one by one
+     (`result-answer <it> not-looked`, `sleep <id>`). "Change it" and "Drop it" are what the user writes in Other or
+     in text ("change <deliverable>: <what>"). Bookkeeping never blocks a worker, so while workers
+     are working this is a text list (rule 1), not a dialog.
 5. **Shapes:**
    - Approval you can relay (a cost-guard `guard ok`, a go-ahead): Approve / Not now. On Approve, relay it and log it
      as a decision. It unblocks only what the user approved (§3).
@@ -409,7 +410,8 @@ Guide context: <N>k (hand off at 120k)
   `python3 <skill dir>/scripts/guide_title.py sweep <ledger>` if you didn't get that list. It needs neither
   claude-top nor ListAgents, and it reads only this machine's transcripts. A `ListAgents` row you add by hand must
   not be Remote Control (§2, step 4): another machine's sessions belong to its own guide. Run
-  `guide_title.py active <session id>` on each, so it shows blue at once. One with no row for 15 minutes
+  `guide_title.py active <session id>` on each one not shown as marked guided or watched, so it shows blue at once.
+  One with no row for 15 minutes
   (`SESSION_GUIDE_NEW_SESSION_MINUTES`) takes its default level: run `sweep --defaults` and tell the user in one text
   line (§4, Bookkeeping answers itself); the younger ones are named in text, nothing asked. With the minutes at 0,
   peek it, put it in this turn's interview ("'X' [id6] is building the billing fix: manage it?") and keep asking until
@@ -421,8 +423,8 @@ Guide context: <N>k (hand off at 120k)
   same), loose ends first; `claude -p` and launchd runs come as one line per job, only when a run failed or was
   refused. List each in the status (§5). A loose end becomes an Open items row or a question in this round, after you
   read its final message (`peek`); the script's "why" is a first look, yours is the call. Then mark them, so none is
-  shown twice: `finished --reviewed` (every clean finish) and `finished --reviewed <id8> …` (each loose end you
-  recorded). The look never messages the session: ACTIVE stays never-messaged. A new session that already ended
+  shown twice: `finished --reviewed <id8> …` with each one you listed (clean and recorded loose ends alike). The
+  look never messages the session: ACTIVE stays never-messaged. A new session that already ended
   still gets this look after `sweep --defaults` gave it its ACTIVE row.
 - **Reconcile on every prompt**: the ledger against the sessions' real state. The hook prints a line for each
   MANAGED or WATCHED row whose job ended more than 3 minutes ago (`SESSION_GUIDE_GRACE_MINUTES`) and still needs you,

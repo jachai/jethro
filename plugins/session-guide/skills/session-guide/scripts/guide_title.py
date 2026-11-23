@@ -192,6 +192,7 @@ GUIDED, UNGUIDED = "guided", "unguided"  # marker content for a MANAGED worker, 
 WATCHED, ACTIVE = "watched", "active"  # marker content for a WATCHED session and for an ACTIVE one
 WORKER_MARKERS = (GUIDED, WATCHED, ACTIVE, UNGUIDED)
 DONE = "done"  # marker content for a session the guide closed
+WORKING_QUIET_SECONDS = 120  # an interactive session whose transcript changed this recently is working
 IDLE_HOURS = 2  # a MANAGED or WATCHED session quiet this long has to settle
 SLEEP_HOURS = (1, 2, 8, 12, 24, 48)  # the periods the guide offers; `sleep` takes any positive number
 SLEEP_DEFAULT_HOURS = 2  # `sleep` with no hours (SESSION_GUIDE_SLEEP_HOURS)
@@ -492,10 +493,10 @@ def refresh_audit(ledger, full=False):
 
 
 def iso_epoch(text):
-    """Epoch of an ISO time such as 2026-11-19T15:59:55.617Z (UTC), or None."""
+    """Epoch of an ISO time such as 2026-11-19T15:59:55.617Z (UTC), or None (also for a non-string)."""
     try:
-        return calendar.timegm(time.strptime(text[:19], "%Y-%m-%dT%H:%M:%S"))
-    except ValueError:
+        return calendar.timegm(time.strptime(str(text)[:19], "%Y-%m-%dT%H:%M:%S"))
+    except (ValueError, TypeError):
         return None
 
 
@@ -555,7 +556,10 @@ def untracked(ledger, session_id="", hours=12):
 
 
 def describe(session):
-    return "'%s' [%s], active %dm ago" % (session["title"] or "no title yet", session["id"][:8], session["age"] // 60)
+    note = ", marked %s" % {GUIDED: "guided", WATCHED: "watched"}[session["marker"]] \
+        if session["marker"] in (GUIDED, WATCHED) else ""
+    return "'%s' [%s], active %dm ago%s" % (
+        session["title"] or "no title yet", session["id"][:8], session["age"] // 60, note)
 
 
 def new_session_minutes():
@@ -581,12 +585,15 @@ def default_at(session, minutes):
 
 
 def working_workers(ledger, session_id=""):
-    """[{id, session}] of the MANAGED Sessions rows (not closed, not this session) whose job state is `working` with a
-    live process: workers whose reports queue behind any dialog the guide opens. `session` is the row's first cell."""
+    """[{id, session}] of the MANAGED Sessions rows (not closed, not this session) with a live process that is
+    working: job state `working`, or, for an interactive session with no job folder, a transcript that changed in the
+    last WORKING_QUIET_SECONDS. Their reports queue behind any dialog the guide opens. `session` is the row's first
+    cell."""
     found, closed = [], closed_ids()
     for rid, (level, cell) in session_levels(ledger).items():
         seen = last_write(rid) if level == "MANAGED" and rid not in closed and rid != session_id[:6].lower() else None
-        if seen and job_state(seen[0]) == "working" and session_alive(seen[0]):
+        state = job_state(seen[0]) if seen else ""
+        if seen and (state == "working" or (not state and seen[1] < WORKING_QUIET_SECONDS)) and session_alive(seen[0]):
             found.append(dict(id=rid, session=cell))
     return found
 
@@ -621,8 +628,9 @@ def sweep_context(found, minutes):
             "%s\n")
     if minutes <= 0:
         return [head % (len(found), lines(found)) +
-                "Run `python3 %s active <id>` on each, then ask about them in this turn with AskUserQuestion (Manage / "
-                "Watch / Leave active / Ignore), and give each a row at the level the user picks." % script]
+                "Run `python3 %s active <id>` on each one not marked guided or watched, then ask about them in this "
+                "turn with AskUserQuestion (Manage / Watch / Leave active / Ignore), and give each a row at the level "
+                "the user picks." % script]
     past = [s for s in found if now >= default_at(s, minutes)]
     young = [s for s in found if s not in past]
     out = []
@@ -701,7 +709,8 @@ def guide_context(session_id):
                      "(\"Tick what is settled\"), one option per item, repeating the full action: \"Done: <action>\". "
                      "Ticked: verify it, then close the session (`python3 %s done <id>`) or `python3 %s unwait <id>`. "
                      "Not ticked: `python3 %s sleep --due` puts every one of them off by the default, with no second "
-                     "question. Change it / Drop it come as the user's own words. While workers are working, this list "
+                     "question (if some were not shown, only the shown, unticked ones, one by one with `sleep <id>`). "
+                     "Change it / Drop it come as the user's own words. While workers are working, this list "
                      "goes in your text, not a dialog. Afterwards keep a wake scheduled for the next reminder that "
                      "`settle` prints: over 60 minutes away, a one-shot CronCreate rather than chained wakeups."
                      % (len(rows), "\n".join(lines), os.path.abspath(__file__), os.path.abspath(__file__),
@@ -714,7 +723,9 @@ def guide_context(session_id):
                      "round's ONE multi-select question (\"Tick what is settled\", option \"Satisfied: <deliverable>\"). "
                      "Ticked: `python3 %s result-answer \"<deliverable>\" satisfied`. Not ticked: `python3 %s "
                      "results-defer` asks again at each row's own cadence (no second question, and no verdict "
-                     "written). Change it / Drop it come as the user's own words: `result-answer ... change|drop`. "
+                     "written); if some were not shown, only the shown, unticked ones, one by one: `result-answer "
+                     "<it> not-looked`. Change it / Drop it come as the user's own words: `result-answer ... "
+                     "change|drop`. "
                      "While workers are working, this list goes in your text, not a dialog. A deliverable is DONE, "
                      "and its stream's loose ends close, only on the user's Satisfied."
                      % (len(results), "\n".join(lines), os.path.abspath(__file__), os.path.abspath(__file__)))
@@ -2246,6 +2257,12 @@ def write_marker(session_id, content):
     sync_session_titles(session_id, content)
 
 
+def pin(state, title):
+    """state["pinned"] plus `title`: session-titles keeps these past the cap on its own history of 8 titles."""
+    pinned = [t for t in (state.get("pinned") or []) if t != title] + [title]
+    return pinned[-32:]
+
+
 def sync_session_titles(session_id, content):
     """Make session-titles give the title we want, since its hook's answer overrides ours. Best effort."""
     home = os.path.join(config_dir(), "session-titles")
@@ -2266,13 +2283,16 @@ def sync_session_titles(session_id, content):
                 last_set = worker_title(content, state.get("last_set") or "", *icons)
                 if last_set:  # a resume restores last_set; keep the old one known, so it isn't read as a rename
                     state["history"] = (state.get("history") or []) + [last_set]
+                    state["pinned"] = pin(state, last_set)
                     state["last_set"] = last_set
                 # `launch -- --name X` makes Claude Code set the bare name after our prefixed title: that flip must read
                 # as ours, not as a rename the plugin adopts as the origin (and so loses the icon for good)
                 for title in (state["origin"], state.get("last_set") or ""):
                     bare = worker_title(None, title, "", (icons[0],) + icons[1] + ("\0",))  # "\0": strip with no icons
-                    if bare and bare not in (state.get("history") or []):
-                        state["history"] = (state.get("history") or []) + [bare]
+                    if bare and bare not in (state.get("pinned") or []):
+                        if bare not in (state.get("history") or []):
+                            state["history"] = (state.get("history") or []) + [bare]
+                        state["pinned"] = pin(state, bare)
             else:
                 state["off"] = True
             if json.dumps(state) != before:

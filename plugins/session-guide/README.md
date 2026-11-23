@@ -267,7 +267,7 @@ $ python3 skills/session-guide/scripts/guide_title.py finished
 LOOSE END 'export retry spike' [9c1d2e3f] (no row), ended 14:05: tests pass locally | why: asks: Should I open the PR?
 clean 'docs typo sweep' [7a8b9c0d] (ACTIVE row), ended 13:40: DONE: 4 typos fixed | https://github.com/acme/billing/pull/151
 Finished on their own: 2 (1 with a loose end)
-$ python3 skills/session-guide/scripts/guide_title.py finished --reviewed
+$ python3 skills/session-guide/scripts/guide_title.py finished --reviewed 7a8b9c0d
 Reviewed: clean 'docs typo sweep' [7a8b9c0d] (ACTIVE row), ended 13:40: DONE: 4 typos fixed | https://github.com/acme/billing/pull/151
 ```
 

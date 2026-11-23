@@ -13,6 +13,8 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(ROOT, "skills", "session-guide", "scripts", "guide_title.py")
+sys.path.insert(0, os.path.dirname(SCRIPT))
+import guide_title as gt  # noqa: E402
 GUIDE = "c0ffee12-3456-4789-8abc-def012345678"
 WORKER = "fa11ed00-1234-4567-89ab-cdef01234567"
 TITLE = "🟥🟥 Sessions Manager · release-2026-10-27 (2 managed · 1 watched · 0 active · 0 new) 🟥🟥"
@@ -332,6 +334,7 @@ class GuideTitleTest(GuideTitleBase):
         self.assertIn("billing lead", state["history"])
         self.assertIn("billing lead · Waiting on CI", state["history"])
         self.assertIn("🟧🟧 (g) billing lead · Waiting on CI", state["history"] + [state["last_set"]])
+        self.assertIn("billing lead", state["pinned"])  # session-titles keeps these past its 8-title cap
         self.assertEqual(len(state["history"]), len(set(state["history"])))
         self.assertNotIn("", state["history"])
         self.run_script("guided", WORKER)  # again: nothing is added twice
@@ -661,6 +664,16 @@ class ThroughputTest(GuideTitleBase):
         self.assertNotIn("design spike", text.split("session-guide workers:")[1].split("\n")[0])
         self.assertNotIn("holds nobody up", text)
 
+    def test_an_interactive_session_with_no_job_counts_while_its_transcript_moves(self):
+        self.run_job(self.BILLING, state="")  # a live process, but no job state: an interactive session
+        self.transcript(self.BILLING, age=10)
+        self.assertIn("1 MANAGED worker(s) working right now (billing export lead [3fa9c1])", self.hook_text())
+        self.transcript(self.BILLING, age=gt.WORKING_QUIET_SECONDS + 60)  # quiet for a while: not working
+        self.assertIn(IDLE_WORKERS, self.hook_text())
+        self.run_job(self.BILLING, state="done")  # an explicit state other than working stays out
+        self.transcript(self.BILLING, age=10)
+        self.assertIn(IDLE_WORKERS, self.hook_text())
+
     def test_with_nobody_working_the_full_interview_holds_nobody_up(self):
         self.run_job(self.BILLING, state="done")
         self.assertIn(IDLE_WORKERS, self.hook_text())
@@ -678,6 +691,8 @@ class ThroughputTest(GuideTitleBase):
         self.assertIn("2 MANAGED worker(s) working right now (billing export lead [3fa9c1], search reindex [a1a1a1])", out)
         os.remove(os.path.join(self.cfg, "jobs", self.BILLING[:8], "state.json"))
         os.remove(os.path.join(self.cfg, "jobs", self.SEARCH[:8], "state.json"))
+        for sid in (self.BILLING, self.SEARCH):  # and no process: neither is working
+            os.remove(os.path.join(self.cfg, "sessions", sid[:8] + ".json"))
         self.assertEqual(self.run_ok("working", self.ledger), IDLE_WORKERS + "\n")
 
     def test_the_hook_names_six_workers_at_most(self):
@@ -728,6 +743,12 @@ class ThroughputTest(GuideTitleBase):
         again = self.run_ok("sweep", self.ledger, "--defaults", CLAUDE_CODE_SESSION_ID=GUIDE)  # nothing left to default
         self.assertNotIn("Defaulted", again)
         self.assertEqual(len(self.sessions_rows()), len(rows))
+
+    def test_describe_names_a_guided_or_watched_marker(self):
+        found = dict(title="x", id="aa0051ee-0000", age=60)
+        self.assertEqual(gt.describe(dict(found, marker=gt.GUIDED)), "'x' [aa0051ee], active 1m ago, marked guided")
+        self.assertEqual(gt.describe(dict(found, marker=gt.WATCHED)), "'x' [aa0051ee], active 1m ago, marked watched")
+        self.assertEqual(gt.describe(dict(found, marker="")), "'x' [aa0051ee], active 1m ago")
 
     def test_sweep_defaults_with_minutes_zero_keeps_the_plain_listing(self):
         self.transcript("aa0051ee-0000-4000-8000-000000000000", "old one", started=time.time() - 3600)

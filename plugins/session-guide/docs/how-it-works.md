@@ -127,7 +127,8 @@ tool. The guide keeps a wake scheduled while any session is active, because noth
 A session nobody manages can also end unseen: a prompt fired and forgotten. So the hook gives the guide every session
 that ended in the last 24 hours with no row or an ACTIVE row (`guide_title.py finished`, `scripts/guide_finished.py`),
 with its result line and any loose end found in its final message. The guide lists each once under "Finished on their
-own", turns a loose end into an open item or a question, and marks it reviewed. It never messages such a session.
+own", turns a loose end into an open item or a question, and marks each one it listed reviewed by id. It never
+messages such a session.
 
 What the guide needs from you goes through `AskUserQuestion` when no worker is working: decisions, approvals it can
 relay, Done / Not yet for what only you can do, and one batched "Tick what is settled" question for result verdicts and

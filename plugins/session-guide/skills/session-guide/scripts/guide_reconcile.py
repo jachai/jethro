@@ -37,7 +37,6 @@ MANAGED row costs a transcript read, its last 300 KB. Rows with no job folder (i
 to `settle`. job_facts(<id>) gives the same facts for one session. Python 3 stdlib only.
 """
 import argparse
-import calendar
 import datetime
 import glob
 import json
@@ -79,12 +78,7 @@ def default_grace():
         return GRACE_MINUTES
 
 
-def epoch(text):
-    """Epoch of an ISO time as the job files write it (2026-11-19T15:59:55.617Z, UTC), or None."""
-    try:
-        return calendar.timegm(time.strptime(str(text)[:19], "%Y-%m-%dT%H:%M:%S"))
-    except (ValueError, TypeError):
-        return None
+epoch = gt.iso_epoch  # the job files write ISO times such as 2026-11-19T15:59:55.617Z (UTC)
 
 
 def tail_lines(path, size):
