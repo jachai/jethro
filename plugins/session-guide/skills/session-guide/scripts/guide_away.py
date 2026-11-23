@@ -50,7 +50,8 @@ MACHINE = re.compile(r"^\s*(?:guide wake\b|<cross-session-message|<task-notifica
 HOURS = r"(\d+(?:\.\d+)?)\s*(?:h\b|hrs?\b|hours?\b)"
 LEAVING = re.compile(r"\b(?:going to (?:sleep|bed)|off to (?:sleep|bed)|heading to bed|good ?night|"
                      r"(?:i'?m|i am|going|will be|i'?ll be) (?:away|afk|out(?!\s+of\b)|offline|off)\b|\bafk\b|"
-                     r"stepping (?:away|out)|back (?:in|by|at|tomorrow|later)\b|back in the morning)", re.I)
+                     r"stepping (?:away|out)|(?:be|i'?ll be|i will be) back\b|back in the morning|back tomorrow)", re.I)
+RETURNING = re.compile(r"\b(?:(?:i'?m|i am|we'?re) back\b|back now\b|just got back)", re.I)
 FOR_HOURS = re.compile(r"\b(?:for|in|next|another)\s+(?:about\s+|~)?" + HOURS, re.I)
 MORNING = re.compile(r"\b(?:sleep|bed|good ?night|morning|tomorrow)\b", re.I)
 MORNING_AT = 9  # "back in the morning", "going to sleep": the suggested window ends at 09:00
@@ -122,8 +123,12 @@ def cell(text):
 # --- the ledger block
 
 def ledger_lines(ledger):
-    with open(ledger, encoding="utf-8", errors="replace") as f:
-        return f.read().splitlines(True)
+    """The ledger's lines, read strictly: a ledger that isn't valid UTF-8 is never rewritten."""
+    try:
+        with open(ledger, encoding="utf-8") as f:
+            return f.read().splitlines(True)
+    except UnicodeDecodeError as error:
+        raise SystemExit("%s isn't valid UTF-8 (%s); fix it first, nothing was changed" % (ledger, error))
 
 
 def block(state):
@@ -294,6 +299,9 @@ def cmd_decide(args, ledger):
     now = time.time()
     with editing(ledger):
         state = load_for_write(ledger)
+        if not away_now(state, now) and not (args.timed_out and ask_minutes()):
+            raise SystemExit("not away (the window is over or was never opened): ask the user instead. Only an owed "
+                             "question past SESSION_GUIDE_AWAY_ASK_MINUTES is decided outside it, with --timed-out")
         old = next((r for r in state["decided"] if same(r["item"], item) and not r.get("reversed_by")), None)
         if old:
             print("already decided as #%d (Decision %s): %s" % (old["n"], old["decision"], old["option"]))
@@ -307,8 +315,8 @@ def cmd_decide(args, ledger):
             if same(r["item"], item) and not r.get("done"):
                 r["done"] = now
         save(ledger, state)
-    print("away #%d decided, Decision %d (%s)%s" % (n, decision, AUTO, "" if away_now(state) else
-                                                    "; note: no away window is open"))
+    print("away #%d decided, Decision %d (%s)%s" % (n, decision, AUTO, "" if away_now(state, now) else
+                                                    ", on a question that timed out"))
     return 0
 
 
@@ -409,7 +417,7 @@ def need(words, n, usage):
 
 def suggest(prompt, now=None):
     """The `away` command a leaving phrase suggests, or None when the prompt says nothing about leaving."""
-    if not prompt or MACHINE.match(prompt) or not LEAVING.search(prompt):
+    if not prompt or MACHINE.match(prompt) or RETURNING.search(prompt) or not LEAVING.search(prompt):
         return None
     hours = FOR_HOURS.search(prompt)
     if hours:
@@ -474,17 +482,19 @@ def context(ledger, prompt=None, event="UserPromptSubmit"):
                 % (stamp(state["until"]), stamp(state["since"]), script, script, len(state["decided"]),
                    len([r for r in state["held"] if not r.get("done")])), True)
     decided, held = summary(state)
-    if state.get("ended") and (decided or held):
-        why = {"window": "the window ended", "prompt": "they typed a prompt", "end": "`away end`"}.get(
-            state.get("ended_by"), "the window ended")
-        return ("session-guide away: the user is back (%s, %s). Your first status reply leads with **Decided while "
+    if decided or held:
+        why = ({"window": "the window ended", "prompt": "they typed a prompt", "end": "`away end`"}.get(
+            state.get("ended_by"), "the window ended") + ", " + stamp(state["ended"]) if state.get("ended")
+            else "questions decided after SESSION_GUIDE_AWAY_ASK_MINUTES")
+        return ("session-guide away: the user is back (%s). Your first status reply leads with **Decided while "
                 "you were away** (each row with how to reverse it) and **Waiting for you** (each with its exact "
                 "action), then ONE AskUserQuestion, multi-select, \"Tick any to reverse\", one option per decided row "
-                "(\"Reverse #N: <item>\"; over 4 rows, more questions in the same call, the rest by number in your "
-                "text). Ticked: `python3 %s away reverse <#>…` (a Decision that strikes the auto one), then do what "
+                "(\"Reverse #N: <item>\"; over 4 rows, up to 4 such questions in the call; past 16, list the rest by "
+                "number in your text and wait for the user's answer on them before `away clear`). Ticked: "
+                "`python3 %s away reverse <#>…` (a Decision that strikes the auto one), then do what "
                 "its row says. Settled waiting rows: `away done <#>…`. Then `python3 %s away clear`.\n"
                 "Decided while you were away:\n%s\nWaiting for you:\n%s"
-                % (why, stamp(state["ended"]), script, script, "\n".join(decided) or "- none",
+                % (why, script, script, "\n".join(decided) or "- none",
                    "\n".join(held) or "- none"), False)
     hint = suggest(prompt) if event == "UserPromptSubmit" else None
     if hint:
@@ -494,11 +504,12 @@ def context(ledger, prompt=None, event="UserPromptSubmit"):
     minutes = ask_minutes()
     if minutes:
         late = [r for r in gt.waiting_rows(ledger).values()
-                if r["owed"] and gt.read_time(r["asked"]) <= now - minutes * 60]
+                if r["owed"] and max(gt.read_time(r["asked"]), gt.read_time(r["remind"])) <= now - minutes * 60]
         if late:
             return ("session-guide away: %d owed question(s) unanswered for over %g min "
                     "(SESSION_GUIDE_AWAY_ASK_MINUTES): treat the user as away for each. Inside the boundary: "
-                    "`away decide \"<question>\" \"<recommended option>\" --reverse \"<how>\"`, then `unwait <key>`; "
+                    "`away decide \"<question>\" \"<recommended option>\" --reverse \"<how>\" --timed-out`, then "
+                    "`unwait <key>`; "
                     "outside it, leave the row. They are listed on return:\n%s"
                     % (len(late), minutes, "\n".join("- [%s] %s" % (gt.row_id(r["session"]), r["what"])
                                                     for r in late[:8])), False)
@@ -508,11 +519,15 @@ def context(ledger, prompt=None, event="UserPromptSubmit"):
 def state_lines(ledger):
     """STATE.md's away section; [] while there is nothing in the block."""
     state = read(ledger)
-    decided, held = summary(state)
-    if not away_now(state) and not decided and not held:
+    if not away_now(state) and not state["decided"] and not state["held"]:
         return []
-    head = ("away until %s" % stamp(state["until"])) if away_now(state) else "user back, not reviewed yet"
-    return (["", "## Away mode (%s; %d decided, %d waiting)" % (head, len(decided), len(held))] + decided + held)
+    decided, held = summary(state)
+    head = ("away until %s" % stamp(state["until"])) if away_now(state) else "user back, `away clear` not run yet"
+    settled = ["- #%d %s: %s" % (r["n"], r["item"], "reversed by Decision %s" % r["reversed_by"]
+                                 if r.get("reversed_by") else "done") for r in state["decided"] + state["held"]
+               if r.get("reversed_by") or r.get("done")]
+    title = "## Away mode (%s; %d decided, %d waiting)" % (head, len(decided), len(held))
+    return ["", title] + decided + held + settled
 
 
 def cmd_away(args):
@@ -535,5 +550,7 @@ def add_parser(sub):
     p.add_argument("--hours", type=float, help="away for this many hours")
     p.add_argument("--until", help="away until this local time, YYYY-MM-DD HH:MM")
     p.add_argument("--reverse", help="decide: how to reverse it")
+    p.add_argument("--timed-out", action="store_true",
+                   help="decide: an owed question past SESSION_GUIDE_AWAY_ASK_MINUTES, outside any window")
     p.add_argument("--note", help="reverse: what the user said")
     p.add_argument("--ledger", help="any ledger (default: this guide's)")

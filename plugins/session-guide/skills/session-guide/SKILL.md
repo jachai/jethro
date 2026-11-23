@@ -592,4 +592,5 @@ Guide context: <N>k (hand off at 120k)
   Decision that strikes the auto one), then do the reversal. Settled held rows: `away done <#>…`. Then `away clear`:
   the block goes, and held rows still open become `waiting ask` rows.
 - **Optional:** `SESSION_GUIDE_AWAY_ASK_MINUTES=M` (off by default) treats an owed question (`waiting ask`) left
-  unanswered for M minutes as away for that question: decide it inside the boundary, then `unwait` it.
+  unanswered for M minutes after it came due as away for that question: decide it inside the boundary with
+  `away decide … --timed-out`, then `unwait` it. Outside a window, `decide` refuses anything else.

@@ -237,7 +237,8 @@ and so are reminders and owed questions that come due. The window ends at its ti
 wake, a cron or a worker's message), or with `away end`; the guide's next status leads with both tables and one
 "Tick any to reverse" question. The state is `away.json` next to the ledger plus the ledger's `## AWAY MODE` block, so
 it survives a guide handoff, and `STATE.md` lists it while it has rows. `SESSION_GUIDE_AWAY_ASK_MINUTES=M` (off by
-default) also treats an owed question left unanswered for M minutes as away for that question.
+default) also treats an owed question left unanswered for M minutes after it came due as away for that question
+(`away decide … --timed-out`); outside a window, `decide` refuses anything else.
 
 ## What the guide will and won't do
 

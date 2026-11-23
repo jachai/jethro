@@ -208,6 +208,29 @@ class DecideAndHold(Case):
                                       r"To reverse: c \(away #1\)\n\n## Waiting on the user")
 
 
+class Boundaries(Case):
+    def test_decide_outside_a_window_is_refused(self):
+        r = self.run_script("away", "decide", "a", "b", "--reverse", "c", "--ledger", self.ledger)
+        self.assertIn("not away", r.stderr)
+        self.away("--hours", "1")
+        self.set_state(since=time.time() - 7200, until=time.time() - 60)  # the window has passed
+        r = self.run_script("away", "decide", "a", "b", "--reverse", "c", "--ledger", self.ledger)
+        self.assertIn("not away", r.stderr)
+        r = self.run_script("away", "decide", "a", "b", "--reverse", "c", "--timed-out", "--ledger", self.ledger)
+        self.assertIn("not away", r.stderr)  # --timed-out only with SESSION_GUIDE_AWAY_ASK_MINUTES on
+        self.assertEqual(self.state()["decided"], [])
+        self.assertNotIn("auto: user away", self.text())
+
+    def test_a_ledger_that_is_not_utf8_is_never_rewritten(self):
+        self.away("--hours", "1")
+        with open(self.ledger, "ab") as f:
+            f.write(b"\xff\xfe broken\n")
+        before = open(self.ledger, "rb").read()
+        r = self.run_script("away", "decide", "a", "b", "--reverse", "c", "--ledger", self.ledger)
+        self.assertIn("isn't valid UTF-8", r.stderr)
+        self.assertEqual(open(self.ledger, "rb").read(), before)
+
+
 class Hook(Case):
     def test_a_leaving_phrase_prints_the_command_and_enters_nothing(self):
         title, context = self.hook("ok, going to sleep, back in the morning")
@@ -220,6 +243,12 @@ class Hook(Case):
         _, context = self.hook("I'm out of ideas, what next?")
         self.assertNotIn("session-guide away", context)
 
+    def test_back_in_the_office_brings_the_user_back(self):
+        self.away("--hours", "8")
+        _, context = self.hook("I'm back in the office, let's review")
+        self.assertEqual(self.state()["ended_by"], "prompt")
+        self.assertNotIn("is away until", context)
+
     def test_suggest(self):
         noon = time.mktime((2026, 11, 24, 12, 0, 0, 0, 0, -1))
         night = time.mktime((2026, 11, 24, 1, 0, 0, 0, 0, -1))
@@ -227,7 +256,9 @@ class Hook(Case):
         self.assertEqual(ga.suggest("good night", night), 'away --until "2026-11-24 09:00"')
         self.assertEqual(ga.suggest("I am away for 3h"), "away --hours 3")
         self.assertEqual(ga.suggest("stepping out"), "away --hours <N from their words>")
-        for prompt in ("I'm back", "", None, "Guide wake: going to sleep", "<cross-session-message>afk</x>"):
+        self.assertEqual(ga.suggest("I'll be back in 2 hours"), "away --hours 2")
+        for prompt in ("I'm back", "I'm back in the office", "back in the repo, run tests", "", None,
+                       "Guide wake: going to sleep", "<cross-session-message>afk</x>"):
             self.assertIsNone(ga.suggest(prompt), prompt)
 
     def test_while_away_no_interview_and_the_title_shows_it(self):
@@ -281,7 +312,7 @@ class Hook(Case):
     def test_ask_minutes_treats_an_old_owed_question_as_away(self):
         r = self.run_script("waiting", "ask", "Which icon for billing?", CLAUDE_CODE_SESSION_ID=GUIDE)
         self.assertEqual(r.returncode, 0, r.stderr)
-        text = self.text().replace(time.strftime(gt.TIME_FORMAT), "2026-01-01 10:00", 1)
+        text = self.text().replace(time.strftime(gt.TIME_FORMAT), "2026-01-01 10:00")
         with open(self.ledger, "w") as f:
             f.write(text)
         _, off = self.hook("hello")
@@ -289,6 +320,23 @@ class Hook(Case):
         _, on = self.hook("hello", SESSION_GUIDE_AWAY_ASK_MINUTES="30")
         self.assertIn("1 owed question(s) unanswered for over 30 min", on)
         self.assertIn("Which icon for billing?", on)
+        self.assertIn("--timed-out", on)
+        r = self.run_script("away", "decide", "Which icon for billing?", "\U0001f3e0", "--reverse", "rename the "
+                            "stream", "--timed-out", "--ledger", self.ledger, SESSION_GUIDE_AWAY_ASK_MINUTES="30")
+        self.assertIn("on a question that timed out", r.stdout)
+        _, back = self.hook("hello")  # no window was open: the decision still comes up for keep / reverse
+        self.assertIn("the user is back (questions decided after SESSION_GUIDE_AWAY_ASK_MINUTES)", back)
+        self.assertIn("Which icon for billing?", back)
+
+    def test_ask_minutes_skips_a_question_deferred_to_later(self):
+        later = time.strftime(gt.TIME_FORMAT, time.localtime(time.time() + 3600))
+        r = self.run_script("waiting", "ask", "Which icon for billing?", "--at", later, CLAUDE_CODE_SESSION_ID=GUIDE)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        text = self.text().replace(time.strftime(gt.TIME_FORMAT), "2026-01-01 10:00", 1)  # asked long ago
+        with open(self.ledger, "w") as f:
+            f.write(text)
+        _, on = self.hook("hello", SESSION_GUIDE_AWAY_ASK_MINUTES="30")
+        self.assertNotIn("session-guide away", on)
 
     def test_state_md_lists_the_block_while_it_has_rows(self):
         self.assertEqual(ga.state_lines(self.ledger), [])
@@ -298,6 +346,13 @@ class Hook(Case):
         self.assertRegex(lines[1], r"^## Away mode \(away until .*; 0 decided, 1 waiting\)$")
         self.assertIn("merge #12", lines[2])
         self.assertEqual(gt.away_lines(self.ledger), lines)
+        self.away("done", "1")
+        self.away("end")
+        lines = ga.state_lines(self.ledger)  # settled, but still in the block until `away clear`
+        self.assertRegex(lines[1], r"`away clear` not run yet; 0 decided, 0 waiting")
+        self.assertEqual(lines[2:], ["- #1 merge #12: done"])
+        self.away("clear")
+        self.assertEqual(ga.state_lines(self.ledger), [])
 
     def test_a_broken_state_file_fails_open_and_writers_refuse(self):
         with open(ga.path_of(self.ledger), "w") as f:
