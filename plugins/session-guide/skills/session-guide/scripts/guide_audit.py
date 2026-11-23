@@ -1153,6 +1153,7 @@ def state_file(ledger, found, state=None):
     out += ["", "## Results with no verdict (%d)" % len(results)]
     out += ["- " + cell(gt.describe_result(r, ledger), 200) for r in results[:12]]
     out += gt.stream_lines(ledger)
+    out += gt.away_lines(ledger)
     if found.get("future"):
         out += ["", "## Ledger lines dated after now (%d): run `date` before writing a time" % len(found["future"])]
         out += ["- L%d %s: %s" % (n, written, cell(text, 120)) for n, written, text in found["future"][:10]]

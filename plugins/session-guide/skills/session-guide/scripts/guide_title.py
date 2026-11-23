@@ -339,6 +339,33 @@ def streams_module():
         return None
 
 
+def away_module():
+    """guide_away (away mode), next to this script; None when it can't be loaded."""
+    try:
+        sys.modules.setdefault("guide_title", sys.modules[__name__])
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import guide_away
+        return guide_away
+    except Exception:
+        return None
+
+
+def away_context(ledger, prompt=None, event="UserPromptSubmit"):
+    """(the hook's away line or None, away now); (None, False) on any error."""
+    try:
+        return away_module().context(ledger, prompt, event)
+    except Exception:  # fail open
+        return None, False
+
+
+def away_lines(ledger):
+    """STATE.md's Away mode section, or []."""
+    try:
+        return away_module().state_lines(ledger)
+    except Exception:
+        return []
+
+
 def with_icon(ledger, text, *more):
     """`text` with its stream's icon in front, for a line that is shown (never for a cell that is stored)."""
     try:
@@ -600,8 +627,13 @@ def working_workers(ledger, session_id=""):
     return found
 
 
-def workers_sentence(ledger, working):
-    """The hook's line on the workers running now (and the full-interview line when none is)."""
+def workers_sentence(ledger, working, away=False):
+    """The hook's line on the workers running now (and the full-interview line when none is). While the user is away
+    there is no interview: the line only names the workers."""
+    if away:
+        named = ", ".join(with_icon(ledger, w["session"]) for w in working[:6]) or "none"
+        return ("session-guide workers: %d MANAGED worker(s) working right now (%s). The user is away: act on every "
+                "worker message and relay first, and ask nothing." % (len(working), named))
     if not working:
         return ("session-guide workers: no MANAGED worker is working right now, so the full interview (up to 4 "
                 "questions a call) holds nobody up.")
@@ -647,7 +679,7 @@ def sweep_context(found, minutes):
     return out
 
 
-def guide_context(session_id):
+def guide_context(session_id, prompt=None, event="UserPromptSubmit"):
     """What a guide should hear on this prompt: the sessions it hasn't asked about, the ones whose rows are DONE but
     are still marked, and the closed ones a running process keeps at their old title. None when there are none.
 
@@ -658,12 +690,15 @@ def guide_context(session_id):
     ledger = os.path.expanduser(content)
     if not os.path.isfile(ledger) or not any(l.strip() == "## Sessions" for l in open(ledger, errors="replace")):
         return None  # no ledger to guide by: fail open, say nothing
-    parts = [now_line()]  # the clock and reconcile first: nothing that can call gh comes before them
+    parts = [now_line()]  # the clock, away mode and reconcile first: nothing that can call gh comes before them
+    away, away_now = away_context(ledger, prompt, event)
+    if away:
+        parts.append(away)
     reconciled = reconcile_context(ledger, session_id)
     if reconciled:
         parts.append(reconciled)
     working = working_workers(ledger, session_id)
-    parts.append(workers_sentence(ledger, working))
+    parts.append(workers_sentence(ledger, working, away_now))
     streams = streams_context(ledger)  # small local files
     if streams:
         parts.append(streams)
@@ -924,7 +959,19 @@ def title_for(session_id, current=""):
         return None
     found = dict(found, slug=os.path.basename(os.path.dirname(os.path.abspath(ledger))),
                  host=socket.gethostname().split(".")[0])
-    return (os.environ.get("SESSION_GUIDE_TITLE") or TITLE).format(**found)
+    return away_title((os.environ.get("SESSION_GUIDE_TITLE") or TITLE).format(**found), ledger)
+
+
+def away_title(title, ledger):
+    """The guide's title with "💤 until 09:16 · " after its leading level blocks while the user is away."""
+    try:
+        note = away_module().title_note(ledger)
+    except Exception:
+        note = ""
+    if not note:
+        return title
+    blocks = "\U0001f7e5\U0001f7e5 "
+    return blocks + note + " \u00b7 " + title[len(blocks):] if title.startswith(blocks) else note + " \u00b7 " + title
 
 
 def cmd_hook():
@@ -936,7 +983,8 @@ def cmd_hook():
         gh_budget()  # before the audit and the claims, which may call gh
         if marker_content(sid) or any(title_icons(sid)):
             sync_session_titles(sid, marker_content(sid))
-        context = guide_context(sid)  # first: it refreshes the audit counts the title shows
+        # first: it refreshes the audit counts the title shows, and ends an away window that is over
+        context = guide_context(sid, event.get("prompt"), event.get("hook_event_name", "UserPromptSubmit"))
         if marker_content(sid) == RETIRED:
             context = retired_context(sid)
         title = title_for(sid, current)
@@ -2418,6 +2466,9 @@ def main(argv=None):
     streams = streams_module()
     if streams is not None:
         streams.add_parser(sub)
+    away = away_module()
+    if away is not None:
+        away.add_parser(sub)
     args = p.parse_args(argv)
     commands = {"hook": lambda a: cmd_hook(), "mark": cmd_mark, "unmark": cmd_unmark, "retire": cmd_retire,
                 "guided": lambda a: set_level(a, GUIDED, guided_prefix()),
@@ -2428,7 +2479,8 @@ def main(argv=None):
                 "followups": cmd_followups, "verification": cmd_verification, "result": cmd_result,
                 "result-answer": cmd_result_answer, "results-defer": cmd_results_defer, "working": cmd_working,
                 "finished": cmd_finished, "launch": cmd_launch, "reconcile": cmd_reconcile,
-                "claim": lambda a: claims.cmd_claim(a), "stream": lambda a: streams.cmd_stream(a)}
+                "claim": lambda a: claims.cmd_claim(a), "stream": lambda a: streams.cmd_stream(a),
+                "away": lambda a: away.cmd_away(a)}
     return commands[args.cmd](args)
 
 
