@@ -254,6 +254,22 @@ HANDED OFF: 'reindex lead' [d4e5f6a1] ended 6 min ago and no Sessions row is its
 1 to reconcile
 ```
 
+Reconcile reads the rows the guide manages or watches. The prompt you fired and forgot has no row, or an ACTIVE one,
+so the guide also takes **one look at every session that ended on its own** in the last 24 hours: its result line, a
+question it left open, and wording such as "not done", "follow-up", "blocked" or "refused". You get them in the status
+under "Finished on their own", each once; a loose end becomes an open item or a question for you. Scheduled
+`claude -p` runs show as one line per job, and only when a run failed or was refused. The guide never messages these
+sessions.
+
+```
+$ python3 skills/session-guide/scripts/guide_title.py finished
+LOOSE END 'export retry spike' [9c1d2e3f] (no row), ended 14:05: tests pass locally | why: asks: Should I open the PR?
+clean 'docs typo sweep' [7a8b9c0d] (ACTIVE row), ended 13:40: DONE: 4 typos fixed | https://github.com/acme/billing/pull/151
+Finished on their own: 2 (1 with a loose end)
+$ python3 skills/session-guide/scripts/guide_title.py finished --reviewed
+Reviewed: clean 'docs typo sweep' [7a8b9c0d] (ACTIVE row), ended 13:40: DONE: 4 typos fixed | https://github.com/acme/billing/pull/151
+```
+
 Merges and commands asked of someone are tracked the same way, as **claims** in the ledger: `guide_title.py claim
 merge #142 --repo acme/billing` or `claim run "make backfill-exports" --by Dana`. On every guide prompt the hook
 re-checks open merge claims with `gh pr view` (cached 10 minutes, at most 3 s for all of a prompt's gh calls, never
@@ -411,6 +427,8 @@ Set them in the `env` block of `settings.json`, so the hooks see them too.
 | `SESSION_GUIDE_STREAM_ICONS` | on | `0` turns every stream icon off (titles, hook lines, `STATE.md`); `stream strip --all` takes the ones already shown off |
 | `SESSION_GUIDE_NEW_SESSION_MINUTES` | 15 | A session with no row this long gets its default level (MANAGED if guided, WATCHED if watched, else ACTIVE) with no question; 0 asks as before |
 | `SESSION_GUIDE_SLEEP_HOURS` | 2 | The default snooze for `sleep <id>` and `sleep --due` |
+| `SESSION_GUIDE_FINISHED_HOURS` | 24 | How far back the guide looks for sessions that ended with nobody managing them ("Finished on their own"); 0 turns the look off |
+| `SESSION_GUIDE_FINISHED_QUIET_MINUTES` | 15 | An ended session is left alone this long before that look, so a conversation you are in the middle of is not listed |
 | `SESSION_GUIDE_GRACE_MINUTES` | 3 | How long after a worker's job ends before reconcile lists it |
 | `SESSION_GUIDE_IDLE_HOURS` | 12 | An idle decided item older than this, with no question to you, is nagged about |
 | `SESSION_GUIDE_AUDIT_HOURS` | 12 | How often the full audit is due; 0 turns the audit off |

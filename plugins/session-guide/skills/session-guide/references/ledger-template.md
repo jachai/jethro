@@ -98,6 +98,7 @@ Updated: <date HH:MM>   Usage: <plan usage, if you track it>
 | Session [id6] | Kind | What is open | Written |
 |---|---|---|---|
 | reindex lead [d4e5f6] | handoff | HANDED OFF: 'reindex lead' [d4e5f6a1] ended 12 min ago and no Sessions row is its successor. … | 2026-10-27 09:00 |
+| shard writer [e5f6a7] | successor | SUCCESSOR STARTED: 'shard writer' [e5f6a7b2] handed off and started its own successor 'shard writer (2)' [f6a7b8c9] (sonnet/medium). Record only: … | 2026-10-27 09:00 |
 
 ## Streams
 | Icon | Stream | Where now | Next step | Owner | Blocked on |

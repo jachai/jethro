@@ -10,13 +10,20 @@ All notable changes to this project are documented here. The format is based on
 Across 52 guides and 920 workers, 61% of worker reports reached the guide while its dialog was open (median wait 203 s,
 p90 49 min), about 36% of 2,305 interview questions were bookkeeping, and workers waited a median 4 min (p90 97) for a
 successor after a handoff. Dialogs now wait for workers, bookkeeping takes defaults, and workers start their own
-successor.
+successor. And a prompt you fired and forgot is no longer missed: the guide looks once at every session that ended
+with nobody managing it.
 
 ### Added
 
 - `guide_title.py working`, and a `session-guide workers:` line in the hook: which MANAGED workers are working now.
 - `sweep --defaults` (`SESSION_GUIDE_NEW_SESSION_MINUTES`, default 15; 0 asks as before), `done --closable`,
   `results-defer`, `sleep --due`, and `sleep <id>` with no hours (`SESSION_GUIDE_SLEEP_HOURS`, default 2).
+- `guide_title.py finished` (`scripts/guide_finished.py`) and a `session-guide finished:` paragraph in the hook:
+  every session that ended in the last 24 h (`SESSION_GUIDE_FINISHED_HOURS`) with no row or an ACTIVE row gets one
+  look at its final message (result line, open question, "not done / follow-up / blocked / refused" wording) and a
+  line in the status under "Finished on their own". Loose ends become an Open items row or a question; `finished
+  --reviewed` marks what was looked at, so nothing shows twice. `claude -p` and launchd runs come as one line per
+  job, only when a run failed or was refused. ACTIVE sessions are still never messaged.
 - `launch --successor-of <id> --ledger <path>` for a worker's own successor, a note under `successors/`, reconcile's
   SUCCESSOR STARTED line, and two warnings (no `uds:` socket in the prompt, untrusted folder). `launch --lean` also
   denies Artifact, Workflow, SendFeedback and ReportFindings.

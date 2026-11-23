@@ -23,6 +23,10 @@
     python3 guide_title.py sweep [<ledger>] [--hours 12] [--defaults]   list recently active sessions the ledger doesn't
                                                                have; --defaults gives the old ones their default level
     python3 guide_title.py working [<ledger>]                  the MANAGED workers working right now
+    python3 guide_title.py finished [--ledger <ledger.md>] [--hours 24] [--reviewed [<id> ...]]
+                                                               sessions nobody manages that ended on their own, one
+                                                               look at each final message (guide_finished.py);
+                                                               --reviewed marks the clean ones, or the ids given
     python3 guide_title.py settle [<ledger>] [--idle-hours 2]  which sessions aren't settled, which reminders are due
     python3 guide_title.py waiting <id> "<what the user does>" it waits on the user: a reminder, due now
     python3 guide_title.py waiting ask "<question>" [--hours N | --at "YYYY-MM-DD HH:MM"]
@@ -107,6 +111,9 @@ list as additionalContext, until each session has a row, so a new session can't 
 had no word from the user for SESSION_GUIDE_NEW_SESSION_MINUTES (default 15; 0 = ask about every one, as before)
 takes its default level: MANAGED for a guided marker, WATCHED for a watched one, else ACTIVE. `sweep --defaults`
 writes it: the marker (guided and watched kept, else active) and a Sessions row, padded to the table's width.
+A session nobody manages that already ended (no row or an ACTIVE one; a `claude -p` job that failed) gets one look at
+its final message: the hook lists it as "session-guide finished:" until `finished --reviewed` marks it
+(guide_finished.py), so a prompt fired and forgotten is not missed. An ACTIVE session is still never messaged.
 The hook also tells a guide how many MANAGED workers are working right now (`working` prints the same): their reports
 queue behind any open dialog, so while one works the guide asks only what blocks someone, one question to a call.
 
@@ -188,8 +195,9 @@ DONE = "done"  # marker content for a session the guide closed
 IDLE_HOURS = 2  # a MANAGED or WATCHED session quiet this long has to settle
 SLEEP_HOURS = (1, 2, 8, 12, 24, 48)  # the periods the guide offers; `sleep` takes any positive number
 SLEEP_DEFAULT_HOURS = 2  # `sleep` with no hours (SESSION_GUIDE_SLEEP_HOURS)
-NEW_SESSION_MINUTES = 15  # a session with no row gets its default level after this long (SESSION_GUIDE_NEW_SESSION_MINUTES, 0 = off)
-LEAN_DENIED = ("Artifact", "Workflow", "SendFeedback", "ReportFindings")  # what `launch --lean` denies a worker besides asking
+# A session with no row gets its default level after this long (SESSION_GUIDE_NEW_SESSION_MINUTES, 0 = off).
+NEW_SESSION_MINUTES = 15
+LEAN_DENIED = ("Artifact", "Workflow", "SendFeedback", "ReportFindings")  # `launch --lean` denies these too
 TIME_FORMAT = "%Y-%m-%d %H:%M"  # Asked and Remind at: local time
 WAITING_TABLE = ["| Session [id6] | What the user needs to do | Asked | Remind at |\n", "|---|---|---|---|\n"]
 OWED = "owed question"  # first cell of a waiting row for a question the guide owes the user, then "[<hash6>]"
@@ -409,6 +417,22 @@ def closes_tag(values):
     return " · closes: " + " ".join(values) if values else ""
 
 
+def finished_module():
+    """guide_finished (sessions that ended with nobody managing them), next to this script; None when it can't load."""
+    try:
+        sys.modules.setdefault("guide_title", sys.modules[__name__])
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import guide_finished
+        return guide_finished
+    except Exception:
+        return None
+
+
+def finished_context(ledger, me=""):
+    module = finished_module()
+    return module.context(ledger, me, "python3 " + os.path.abspath(__file__)) if module else None
+
+
 def reconcile_lines(ledger, me="", strict=False):
     """(flags, one line each) from reconcile. ([], []) when it fails, since it must never break a prompt; `strict`
     (the retire gate) raises instead, so a failure never reads as "nothing open"."""
@@ -593,7 +617,8 @@ def sweep_context(found, minutes):
             default_at(s, minutes)))) if at else "") for s in rows[:8]]
         return "\n".join(shown + ["- and %d more" % (len(rows) - 8)] * (len(rows) > 8))
 
-    head = "session-guide sweep: %d session(s) active in the last 12 h have no row in the ledger's Sessions table:\n%s\n"
+    head = ("session-guide sweep: %d session(s) active in the last 12 h have no row in the ledger's Sessions table:\n"
+            "%s\n")
     if minutes <= 0:
         return [head % (len(found), lines(found)) +
                 "Run `python3 %s active <id>` on each, then ask about them in this turn with AskUserQuestion (Manage / "
@@ -643,6 +668,9 @@ def guide_context(session_id):
                      "orange until a prompt reaches them. SendMessage each the CLOSE message: %s"
                      % (len(held), ", ".join(s[:8] for s in held)))
     parts.extend(sweep_context(found, new_session_minutes()))
+    finished = in_time(finished_context, ledger, session_id, late=late, name="finished")
+    if finished:
+        parts.append(finished)
     if shut:
         parts.append("session-guide sweep: %d session(s) have only DONE rows in the ledger but are still marked, so "
                      "their titles stay orange. Run `python3 %s done --closable` to close them all: %s"
@@ -1805,6 +1833,16 @@ def cmd_working(args):
     return 0
 
 
+def cmd_finished(args):
+    """The sessions that ended on their own, or `--reviewed`: mark them looked at. Only `--reviewed` writes (and a
+    listing remembers `claude -p` runs that ended well), in <ledger dir>/finished.json."""
+    module = finished_module()
+    if module is None:
+        raise SystemExit("guide_finished.py can't be loaded from %s" % os.path.dirname(os.path.abspath(__file__)))
+    return module.print_finished(os.path.expanduser(args.ledger or require_ledger()), args.hours, args.reviewed,
+                                 os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
+
+
 def cmd_reconcile(args):
     """Print reconcile's flags for a ledger. Reads only, so it runs against any ledger without being its guide."""
     ledger = os.path.expanduser(args.ledger or require_ledger())
@@ -2037,7 +2075,8 @@ def launch_stream(args, ledger, before=None):
         key = streams.stream_key_of(ledger, before)
         found = streams.read(ledger).get(key) if key else None
         if not found or found["state"] != "open":
-            print("%s is on no open stream, so its successor gets no icon" % before[:8])
+            print("warning: %s is on no open stream, so its successor starts with no icon; `stream assign <key> "
+                  "<new id>` gives it one" % before[:8])
             return None
     if streams.stream(streams.read(ledger), key)["state"] != "open":
         raise SystemExit("stream %s has ended; `stream add %s` reopens it" % (key, key))
@@ -2228,6 +2267,12 @@ def sync_session_titles(session_id, content):
                 if last_set:  # a resume restores last_set; keep the old one known, so it isn't read as a rename
                     state["history"] = (state.get("history") or []) + [last_set]
                     state["last_set"] = last_set
+                # `launch -- --name X` makes Claude Code set the bare name after our prefixed title: that flip must read
+                # as ours, not as a rename the plugin adopts as the origin (and so loses the icon for good)
+                for title in (state["origin"], state.get("last_set") or ""):
+                    bare = worker_title(None, title, "", (icons[0],) + icons[1] + ("\0",))  # "\0": strip with no icons
+                    if bare and bare not in (state.get("history") or []):
+                        state["history"] = (state.get("history") or []) + [bare]
             else:
                 state["off"] = True
             if json.dumps(state) != before:
@@ -2283,6 +2328,11 @@ def main(argv=None):
     settle.add_argument("--idle-hours", type=float, default=IDLE_HOURS)
     working = sub.add_parser("working", help="the MANAGED workers working right now")
     working.add_argument("ledger", nargs="?")
+    fin = sub.add_parser("finished", help="sessions nobody manages that ended on their own, with their result")
+    fin.add_argument("--ledger", help="any ledger (default: this guide's)")
+    fin.add_argument("--hours", type=float, default=None, help="how far back (default SESSION_GUIDE_FINISHED_HOURS or 24)")
+    fin.add_argument("--reviewed", nargs="*", metavar="ID", default=None,
+                     help="mark as looked at: every clean finish, or the listed sessions")
     waiting = sub.add_parser("waiting", help="this session waits on the user: a reminder, due now; or `ask`: a "
                                              "question the guide owes the user")
     waiting.add_argument("session", help="a session id, or `ask` for an owed question")
@@ -2294,7 +2344,8 @@ def main(argv=None):
                               "the reminder itself once every one has happened")
     sleep = sub.add_parser("sleep", help="put a session's reminder off")
     sleep.add_argument("session", nargs="?", help="a session id or owed question's key (not with --due)")
-    sleep.add_argument("hours", nargs="?", type=float, help="default SESSION_GUIDE_SLEEP_HOURS or %g" % SLEEP_DEFAULT_HOURS)
+    sleep.add_argument("hours", nargs="?", type=float,
+                       help="default SESSION_GUIDE_SLEEP_HOURS or %g" % SLEEP_DEFAULT_HOURS)
     sleep.add_argument("--due", action="store_true", help="put off every due reminder that is not likely done")
     unwait = sub.add_parser("unwait", help="it no longer waits on the user: the reminder goes")
     unwait.add_argument("session")
@@ -2304,7 +2355,8 @@ def main(argv=None):
     unwatched.add_argument("session", nargs="?")
     done = sub.add_parser("done", help='closed: "\u2705 " before its title, never orange, gray, blue or red again')
     done.add_argument("session", nargs="?")
-    done.add_argument("--closable", action="store_true", help="close every session whose rows are all DONE but is still marked")
+    done.add_argument("--closable", action="store_true",
+                      help="close every session whose rows are all DONE but is still marked")
     follow = sub.add_parser("followups", help="recent fixes and deployments with no verification recorded")
     follow.add_argument("ledger", nargs="?")
     follow.add_argument("--days", type=float, default=FOLLOWUP_DAYS)
@@ -2346,7 +2398,8 @@ def main(argv=None):
                 "unguided": cmd_unguided, "unwatched": cmd_unguided, "done": cmd_done, "sweep": cmd_sweep,
                 "settle": cmd_settle, "waiting": cmd_waiting, "sleep": cmd_sleep, "unwait": cmd_unwait,
                 "followups": cmd_followups, "verification": cmd_verification, "result": cmd_result,
-                "result-answer": cmd_result_answer, "results-defer": cmd_results_defer, "working": cmd_working, "launch": cmd_launch, "reconcile": cmd_reconcile,
+                "result-answer": cmd_result_answer, "results-defer": cmd_results_defer, "working": cmd_working,
+                "finished": cmd_finished, "launch": cmd_launch, "reconcile": cmd_reconcile,
                 "claim": lambda a: claims.cmd_claim(a), "stream": lambda a: streams.cmd_stream(a)}
     return commands[args.cmd](args)
 

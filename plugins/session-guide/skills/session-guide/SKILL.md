@@ -102,7 +102,8 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
    `python3 <skill dir>/scripts/guide_title.py guided <session id>` on each, so its title starts with "🟧🟧 (g) " (a
    repeat is harmless). Run `guide_title.py watched <session id>` on each WATCHED row, so its title starts with
    "⬜⬜ ", and `guide_title.py active <session id>` on each ACTIVE row, so it starts with "🟦🟦 ". The rest go through
-   the sweep (§7) and into your first interview. For each MANAGED and WATCHED session, read its model and effort
+   the sweep (§7): each takes its default level after 15 minutes, with no question (§4, Bookkeeping answers itself).
+   For each MANAGED and WATCHED session, read its model and effort
    (claude-top's MODEL and EFFORT columns, or peek's first line) into its Sessions row, and check them against
    `references/model-choice.md` for the task it is on: a misfit goes into your first interview as a switch question
    (§4). Then run `python3 <skill dir>/scripts/guide_title.py settle <ledger>` and handle what it lists (§7):
@@ -119,7 +120,8 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
    ledger's slug, the rows at each level, the live count of sessions with no row, and how many decided items have no
    worker with the oldest one's age) and undoes any rename. `mark` also runs the **full audit** (§7) and prints its
    table: a takeover starts from the whole body of work, not from the reminders. Every row it prints goes into your
-   first interview or gets a `guide_audit.py set` mark this turn. If the session-titles plugin is installed, also
+   first interview or gets a `guide_audit.py set` mark this turn; a session with no row is not such a row (it takes
+   its default level, §7). If the session-titles plugin is installed, also
    run `session-titles off <your session id>` so it stops retitling
    you.
 7. Streams and their icons: `python3 <skill dir>/scripts/guide_title.py stream list` prints every open stream, its
@@ -297,6 +299,9 @@ guide was busy without one). So:
 **Results for you**
 - <deliverable>: <link> — <one line on the result> (finished since the last reply)
 - <deliverable>: <link> — <one line>, asked HH:MM, no verdict yet
+**Finished on their own**
+- <session title [id6]>: <one line of result> — <link> (clean, or: loose end → Open item / question)
+- job '<name>': <N> runs failed or refused, latest HH:MM — <why>
 **Asleep**
 - <session title [id6]>: <what it needs from the user>, reminder at HH:MM
 **Streams**
@@ -314,6 +319,8 @@ Guide context: <N>k (hand off at 120k)
   the user never saw the link for is not reported. The heading also carries the older deliverables still without a
   verdict (with when they were asked), and comes off only when the table has nothing unanswered. Each line there is a
   question in the interview that follows (§4, Results for you).
+- "Finished on their own" lists what the hook's `session-guide finished:` paragraph gave you (§7): sessions nobody
+  manages that ended since the last reply. Each is shown once; leave the heading out when there are none.
 - "Asleep" lists the reminders the user put off, and the results the user hasn't looked at yet with their re-ask time;
   leave the heading out when there are none. Due reminders and due owed questions belong in "Needs you now".
 - "Decided, not moving" is the audit's table (§7, Audit), top rows first, each with the one action you propose; each
@@ -407,6 +414,16 @@ Guide context: <N>k (hand off at 120k)
   line (§4, Bookkeeping answers itself); the younger ones are named in text, nothing asked. With the minutes at 0,
   peek it, put it in this turn's interview ("'X' [id6] is building the billing fix: manage it?") and keep asking until
   the user picks a level. When it moves to Manage or Watch, check its model and effort as on a takeover (§2, step 4).
+- **Finished on their own, on every prompt**: a prompt the user fired and forgot is the session nobody follows up.
+  Every session that ended in the last 24 h (`SESSION_GUIDE_FINISHED_HOURS`) with no row or an ACTIVE row, also one
+  that ended before the sweep saw it, gets one look at its final message: its result line, a question left open, and
+  "not done / follow-up / blocked / refused" wording. The hook lists them (`guide_title.py finished` prints the
+  same), loose ends first; `claude -p` and launchd runs come as one line per job, only when a run failed or was
+  refused. List each in the status (§5). A loose end becomes an Open items row or a question in this round, after you
+  read its final message (`peek`); the script's "why" is a first look, yours is the call. Then mark them, so none is
+  shown twice: `finished --reviewed` (every clean finish) and `finished --reviewed <id8> …` (each loose end you
+  recorded). The look never messages the session: ACTIVE stays never-messaged. A new session that already ended
+  still gets this look after `sweep --defaults` gave it its ACTIVE row.
 - **Reconcile on every prompt**: the ledger against the sessions' real state. The hook prints a line for each
   MANAGED or WATCHED row whose job ended more than 3 minutes ago (`SESSION_GUIDE_GRACE_MINUTES`) and still needs you,
   and for each report a worker left in `<ledger folder>/inbox/`; `guide_title.py reconcile` prints the same. Act on
