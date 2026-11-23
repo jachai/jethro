@@ -8,7 +8,8 @@ records every such choice, and puts them in front of the user, with how to rever
     guide_title.py away decide "<item>" "<option taken>" --reverse "<how>"
                                                                   a row, and a Decision "auto: user away"
     guide_title.py away hold "<item>" "<why>" "<exact action>"    a row the guide could not decide
-    guide_title.py away reverse <#>… [--note "<text>"]            the user ticked these: Decisions that strike the auto ones
+    guide_title.py away reverse <#>… [--note "<text>"]            the user ticked these: Decisions that strike the
+                                                                  auto ones
     guide_title.py away done <#>…                                 these held rows are settled
     guide_title.py away clear                                     after the return round: the block goes, open held
                                                                   rows become `waiting ask` rows
