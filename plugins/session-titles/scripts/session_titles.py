@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 from typing import Callable, Iterator, Optional
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 GUARD_ENV = "SESSION_TITLES_CHILD"  # set on our own `claude -p` calls so they never retitle themselves
 LOG_MAX_BYTES = 1_000_000
@@ -449,10 +449,16 @@ def resolve_origin(state: dict, current_title: str, cfg: dict) -> Optional[str]:
     """The origin to keep, or None when the visible title is one we never set (a manual rename)."""
     if not current_title:
         return state.get("origin") or None
-    ours = set(state.get("history") or []) | {state.get("last_set") or ""}
+    ours = set(state.get("history") or []) | set(state.get("pinned") or []) | {state.get("last_set") or ""}
     if current_title in ours:
         return state.get("origin") or split_title(current_title, cfg["separator"])
     return None
+
+
+def decoration(state: dict) -> str:
+    """What session-guide's sync put in front of the origin (a level prefix and stream icon such as "🟧🟧 (g) 🏠 "),
+    or "". The sync records it, so it holds across any number of renames until the next sync."""
+    return state.get("decoration") or ""
 
 
 def remember(state: dict, title: str) -> None:
@@ -491,6 +497,9 @@ def on_prompt(hook_in: dict, cfg: dict) -> Optional[str]:
         origin = resolve_origin(state, current, cfg)
         if origin is None and current:
             origin = split_title(current, cfg["separator"])
+            front = decoration(state)  # a rename keeps the stream icon the origin carried
+            if front and not origin.startswith(front.strip()):
+                origin = front + origin
             if origin != state.get("origin"):
                 log(f"{sid8} origin <- {origin!r} (title was {current!r})")
             # a resume that forks to a new session id inherits "<origin> · <focus>"; keep that focus to start from
@@ -498,6 +507,7 @@ def on_prompt(hook_in: dict, cfg: dict) -> Optional[str]:
             state["focus"] = state.get("focus") if origin == state.get("origin") else inherited
         state.pop("pending_origin", None)
         state["origin"] = origin or ""
+        stored_origin = state["origin"]
         write_state(session_id, state)
 
     if not origin:
@@ -525,6 +535,10 @@ def on_prompt(hook_in: dict, cfg: dict) -> Optional[str]:
     title = compose(origin, focus, cfg["separator"])
     with session_lock(session_id):
         state = read_state(session_id)
+        if state.get("origin") and state["origin"] != stored_origin:
+            # someone (session-guide's sync) changed it while the model ran: theirs is newer than ours
+            origin = state["origin"]
+            title = compose(origin, focus, cfg["separator"])
         state["origin"] = origin
         if not fast:
             state["focus"] = focus

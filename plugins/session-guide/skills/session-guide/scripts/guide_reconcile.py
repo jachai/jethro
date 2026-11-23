@@ -12,6 +12,9 @@ guide:
     handoff      a MANAGED or WATCHED row whose job ended with a result line that says HANDED OFF, and no Sessions row
                  is its successor ("successor of [id6]" in any cell, or the same title with the next "(n)"): start the
                  successor now, from the resume prompt or state file its final text names.
+    successor    a handoff whose worker already started its own successor (`launch --successor-of` run by the worker
+                 leaves <ledger dir>/successors/<new id8>.json) and no Sessions row names the new session yet: record
+                 the row and set this one to HANDED OFF; do not start another.
     blocked      its result says blocked / needs / waiting (or the job is blocked on input), and the Waiting table has
                  no row for it: answer it, or ask the user.
     ended        a MANAGED row whose job ended any other way: record the result and close it.
@@ -34,7 +37,6 @@ MANAGED row costs a transcript read, its last 300 KB. Rows with no job folder (i
 to `settle`. job_facts(<id>) gives the same facts for one session. Python 3 stdlib only.
 """
 import argparse
-import calendar
 import datetime
 import glob
 import json
@@ -76,12 +78,7 @@ def default_grace():
         return GRACE_MINUTES
 
 
-def epoch(text):
-    """Epoch of an ISO time as the job files write it (2026-11-19T15:59:55.617Z, UTC), or None."""
-    try:
-        return calendar.timegm(time.strptime(str(text)[:19], "%Y-%m-%dT%H:%M:%S"))
-    except (ValueError, TypeError):
-        return None
+epoch = gt.iso_epoch  # the job files write ISO times such as 2026-11-19T15:59:55.617Z (UTC)
 
 
 def tail_lines(path, size):
@@ -222,6 +219,20 @@ def successor(row, rows):
     return None
 
 
+def successor_note(ledger, rid):
+    """The note `launch --successor-of` left in <ledger dir>/successors/ for a session whose id starts with `rid`, or
+    None."""
+    for path in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(ledger)), "successors", "*.json"))):
+        try:
+            with open(path) as f:
+                note = json.load(f)
+            if str(note["of"]).lower().startswith(rid) and note.get("id"):
+                return note
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return None
+
+
 def resume_paths(text):
     """Up to 2 files a final message names, resume prompts and state files first."""
     found = []
@@ -352,6 +363,11 @@ def reconcile(ledger, now=None, grace_minutes=None, me=""):
             if successor(row, rows):
                 continue
             kind = "handoff"
+            started = successor_note(ledger, rid)
+            if started:
+                if any(other["id"] == str(started["id"])[:6].lower() for other in rows):
+                    continue  # its successor has a row
+                kind = "successor"
         elif is_blocked(said, facts["state"]):
             if rid in waiting:
                 continue
@@ -366,6 +382,8 @@ def reconcile(ledger, now=None, grace_minutes=None, me=""):
                     level=row["level"], result=" ".join(said.split()), ago=max(0, now - ended),
                     state=facts["state"] if facts["alive"] or facts["state"] != "working" else "working, no process",
                     prompts=resume_paths(facts["text"]) if kind == "handoff" else [], why="")
+        if kind == "successor":
+            flag["started"] = started
         flags.append(flag)
         why = undelivered(facts, said) if row["level"] == "MANAGED" else None
         if why:
@@ -379,10 +397,18 @@ def describe(flag, script="guide_title.py"):
     ago = " %d min ago" % (flag["ago"] // 60) if flag["ago"] is not None else ""
     result = ' Result: "%s"' % flag["result"][:220] if flag["result"] else ""
     if flag["kind"] == "handoff":
-        start = " from %s" % " or ".join(flag["prompts"]) if flag["prompts"] else " (its final text has the resume prompt)"
+        start = (" from %s" % " or ".join(flag["prompts"]) if flag["prompts"]
+                 else " (its final text has the resume prompt)")
         return ("HANDED OFF: %s ended%s and no Sessions row is its successor. Start the successor now%s; give it a row "
                 "saying \"successor of [%s]\" and set this row's Level to HANDED OFF.%s"
                 % (who, ago, start, flag["id"], result))
+    if flag["kind"] == "successor":
+        new = flag["started"]
+        return ("SUCCESSOR STARTED: %s handed off and started its own successor '%s' [%s] (%s/%s). Record only: "
+                "give it a Sessions row saying \"successor of [%s]\", Level MANAGED, and set this row's Level to "
+                "HANDED OFF. Do not start another."
+                % (who, new.get("name") or "", str(new["id"])[:8], new.get("model") or "default",
+                                           new.get("effort") or "default", flag["id"]))
     if flag["kind"] == "blocked":
         return ("BLOCKED: %s ended%s waiting on something, and the Waiting table has no row for it. Answer it, or ask "
                 "the user and record it (`%s waiting %s \"<exact action>\"`).%s"

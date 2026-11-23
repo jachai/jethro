@@ -50,8 +50,8 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
   Browser checks, test batteries on shared environments, and database and log checks belong to a worker or to the
   user. Ask a worker to run them, or tell the user what to click.
 - **Name sessions by title,** with the short id in brackets: 'billing export lead' [3fa9c1]. Never a bare id.
-- **Interview, don't announce.** Anything left for the user ends your turn in `AskUserQuestion`, never in text (§4,
-  The interview). Ask in plain words. A money or business-rule decision always comes with a worked numeric example
+- **Interview, don't announce.** Anything left for the user ends your turn in `AskUserQuestion`, not in text, with one
+  exception: while a worker is working, only a blocking question gets a dialog (§4, The interview). Ask in plain words. A money or business-rule decision always comes with a worked numeric example
   and your recommendation first. Use no internal plan codes unless the user used them first.
 - **Workers never AskUserQuestion the user.** Their decisions come to you (§4).
 - **Not your PR, not your branch.** Before you send ANY session to write to a PR's branch (merge another branch
@@ -102,7 +102,8 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
    `python3 <skill dir>/scripts/guide_title.py guided <session id>` on each, so its title starts with "🟧🟧 (g) " (a
    repeat is harmless). Run `guide_title.py watched <session id>` on each WATCHED row, so its title starts with
    "⬜⬜ ", and `guide_title.py active <session id>` on each ACTIVE row, so it starts with "🟦🟦 ". The rest go through
-   the sweep (§7) and into your first interview. For each MANAGED and WATCHED session, read its model and effort
+   the sweep (§7): each takes its default level after 15 minutes, with no question (§4, Bookkeeping answers itself).
+   For each MANAGED and WATCHED session, read its model and effort
    (claude-top's MODEL and EFFORT columns, or peek's first line) into its Sessions row, and check them against
    `references/model-choice.md` for the task it is on: a misfit goes into your first interview as a switch question
    (§4). Then run `python3 <skill dir>/scripts/guide_title.py settle <ledger>` and handle what it lists (§7):
@@ -119,7 +120,8 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
    ledger's slug, the rows at each level, the live count of sessions with no row, and how many decided items have no
    worker with the oldest one's age) and undoes any rename. `mark` also runs the **full audit** (§7) and prints its
    table: a takeover starts from the whole body of work, not from the reminders. Every row it prints goes into your
-   first interview or gets a `guide_audit.py set` mark this turn. If the session-titles plugin is installed, also
+   first interview or gets a `guide_audit.py set` mark this turn; a session with no row is not such a row (it takes
+   its default level, §7). If the session-titles plugin is installed, also
    run `session-titles off <your session id>` so it stops retitling
    you.
 7. Streams and their icons: `python3 <skill dir>/scripts/guide_title.py stream list` prints every open stream, its
@@ -148,7 +150,7 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
   "delivered, unchecked": send "CHECK: open <link> as the user will and confirm <the change> shows; reply with what you
   saw" and present the result to the user only after that reply.
 - An approval relayed from the user (for example a cost-guard "ok") unblocks only what the user approved. It cannot
-  stand in for a worker's own context limit. A worker over its limit hands off, and you start its successor (§6).
+  stand in for a worker's own context limit. A worker over its limit hands off and starts its own successor (§6).
 - Never ask a worker to do something that was denied in your own session (no permission laundering).
 - WATCHED sessions: read them, never message them, with one exception. When peek shows a WATCHED session's
   **unanswered question**, put it in your next interview (its words, your recommendation first). Relay the
@@ -167,7 +169,7 @@ the guide "LEAVE: <title> [id8]", and from then on ask the user directly again.
 ### 4. Decisions
 1. When a worker sends a question, check the ledger first. If it's already decided, relay that decision and don't
    ask again.
-2. Otherwise ask the user (AskUserQuestion, at most 4 questions, recommended option first, with a worked example).
+2. Otherwise ask the user (§4, The interview: recommended option first, with a worked example).
 3. Write the answer to the ledger as **Decision N (date time, source) FINAL**, and relay it to every worker it
    touches. Strike through any decision it supersedes; don't delete it.
 4. If the user answered a worker directly anyway (peek shows it), adopt that answer as the decision. If it
@@ -204,14 +206,16 @@ a PR ready for them) is not done until the user has seen it and said so.
    `guide_title.py result "<deliverable>" <link> --from "<title [id6]>"`. That writes a row in the ledger's Results for
    you table, unanswered. Put it in this turn's status under **Results for you** (§5), with its link and one line on the
    result, and in this turn's interview.
-2. The question: "<deliverable>: <link>. <one line on the result>." Satisfied / Change it / Drop it / Haven't looked yet.
-   Record the answer: `guide_title.py result-answer "<deliverable>" satisfied|change|drop|not-looked`.
+2. The user's verdict comes in the round's one batched question (§4, Bookkeeping answers itself): ticked is Satisfied;
+   Change it and Drop it are the user's own words. Record it: `guide_title.py result-answer "<deliverable>"
+   satisfied|change|drop|not-looked`. A deliverable is DONE only on the user's Satisfied; a default never writes a verdict.
    - Satisfied: the stream may close its loose ends and go DONE.
    - Change it: the change goes to its worker (or a successor) as the stream's next step, with `--note`; when it is
      delivered again, run `result` again and ask again.
    - Drop it: the stream is dropped; its worker closes.
-   - Haven't looked yet: ask which cadence to re-ask on (1, 2 or 8 hours; the default is 1) and record it with
-     `--every <hours>`. `settle` and the hook list it again when it is due, and you ask again, until answered.
+   - Haven't looked yet, or not ticked: no second question. `result-answer "<deliverable>" not-looked` re-asks on the
+     row's last cadence, else 1 hour; add `--every <hours>` only when the user named one. `results-defer` does it for
+     every due row. `settle` and the hook list it again when it is due, until answered.
 3. Until the answer is in, the stream is not DONE, its loose ends stay open, and its row stays in the table. The
    worker session may close in the meantime (its state is saved); the ledger row is what waits, not the session.
 
@@ -220,20 +224,47 @@ afternoon", "ask again when the deploy is done"), run `guide_title.py waiting as
 came from>" --hours N` (or `--at "YYYY-MM-DD HH:MM"`). That is a dated row in the waiting table, so `settle` surfaces
 it, in your session or a successor's, when it is due. A note in the log or a line in your head is not a reminder.
 
-**The interview.** A question, decision or approval in your text is one the user can miss, so never end a turn on
-one. Everything you need from the user goes through `AskUserQuestion`:
-1. **Same turn.** Write the status in text if it changed (§5), then call the tool. Finish your relays and ledger writes
-   first: while a dialog is open, you are likely paused and worker messages wait.
-2. **Each question stands alone,** because the user may see only the dialog: session title [id6], the full link or
-   `!` command, what you checked. Recommended option first. A question about a stream that has an icon carries it:
-   the header is the icon and a name of at most 8 characters ("🏠 Billing", 12 at most in all), and the question starts
-   with the icon and the stream's name ("🏠 Billing export · 'billing lead' [3fa9c1]: …").
-3. **Order:** approvals a worker is blocked on, decisions, results with no verdict, owed questions that are due, new
-   sessions, model switches, open items (a broken verification first, proposed follow-ups last, §7). At most 4
-   questions per call.
-   When the user answers, open the next round straight away until nothing is left.
-4. **Shapes:**
-   - New session: Manage / Watch / Leave active / Ignore. It gets a row at that level, and its title follows (§3).
+**The interview.** A question in your text is one the user can miss, and a dialog pauses the guide: worker reports
+queue behind it (61% of reports arrived while a dialog was open; median wait 203 s, p90 49 min, against 11 s when the
+guide was busy without one). So:
+1. **Workers first.** Before every `AskUserQuestion`: act on every worker message, send the relays, write the ledger,
+   then read the hook's `session-guide workers:` line (or run `guide_title.py working`).
+   - None working: the full interview, at most 4 questions per call, as below.
+   - One or more working: a dialog only for a BLOCKING question (a worker or the user's own next step can't move
+     without it: an approval a worker is blocked on, a decision a worker waits for, a merge that holds a stream), ONE
+     question in the call. The next blocking one gets its own call, after you drain worker messages again.
+   - Everything else (verdicts, reminders, model switches, open items, proposals) goes in your text under **Needs you
+     now**, each standing alone, and the turn ends with a line `needs input: <what you need>`. Each has a row behind it
+     so it survives: `waiting ask "<question>"`, or the Results or Waiting row it already has. An answer the user types
+     counts like a dialog answer. Once no worker is working, what is still unanswered goes into the full interview.
+2. **Each question stands alone,** because the user may see only the dialog or the text line: session title [id6], the
+   full link or `!` command, what you checked. Recommended option first. A question about a stream that has an icon
+   carries it: the header is the icon and a name of at most 8 characters ("🏠 Billing", 12 at most in all), and the
+   question starts with the icon and the stream's name ("🏠 Billing export · 'billing lead' [3fa9c1]: …").
+3. **Order:** approvals a worker is blocked on, decisions, the batched bookkeeping question, owed questions that are
+   due, model switches, open items (a broken verification first, proposed follow-ups last, §7). At most 4 questions
+   per call. When the user answers, open the next round straight away until nothing is left.
+4. **Bookkeeping answers itself.** Defaults replace a question the user would answer the same way every time:
+   - **New session:** no question. `guide_title.py sweep --defaults` gives every session with no row for 15 minutes
+     (`SESSION_GUIDE_NEW_SESSION_MINUTES`; 0 asks as before) its default level and a Sessions row: MANAGED with a
+     guided marker (a worker started it as its successor, or it joined), WATCHED with a watched marker, else ACTIVE.
+     Tell the user in one text line ("3 new sessions set ACTIVE: …; say 'manage X' or 'watch X' to change one"); the
+     younger ones are named in text, nothing asked. A level the user names always wins. On a move to Manage or Watch,
+     check model and effort (§2, step 4).
+   - **Closes:** a finished MANAGED session (§6's conditions) and every row DONE but still marked close with no
+     question: `guide_title.py done --closable`, one line in the status. A WATCHED session closes only on the user's yes.
+   - **Snoozes:** no second question. `guide_title.py sleep <id>` with no hours sleeps the default (2 hours,
+     `SESSION_GUIDE_SLEEP_HOURS`); pass hours only when the user named a period. A due reminder that was asked and got
+     no answer sleeps the default too (`sleep --due`), so it returns once per period, not on every wake.
+   - **Verdicts and reminders that still need the user:** ONE batched question per round, results and due reminders
+     together, oldest first, at most 4 options: a multi-select "Tick what is settled" with options "Satisfied:
+     <deliverable>" (link and one line on the result in the description) and "Done: <reminder action>". Ticked:
+     `result-answer … satisfied`, or verify and close / `unwait`. Not ticked: when everything due was shown,
+     `results-defer` and `sleep --due`; when some were not shown, only the shown, unticked ones, one by one
+     (`result-answer <it> not-looked`, `sleep <id>`). "Change it" and "Drop it" are what the user writes in Other or
+     in text ("change <deliverable>: <what>"). Bookkeeping never blocks a worker, so while workers
+     are working this is a text list (rule 1), not a dialog.
+5. **Shapes:**
    - Approval you can relay (a cost-guard `guard ok`, a go-ahead): Approve / Not now. On Approve, relay it and log it
      as a decision. It unblocks only what the user approved (§3).
    - Something only the user can do (a merge, a `!` command, a dialog open in another session's window, which a relay
@@ -253,18 +284,13 @@ one. Everything you need from the user goes through `AskUserQuestion`:
      <model>/<effort>? Type `/model <alias>` and `/effort <level>` in its window." Switched / Keep as is. You can't
      switch another session yourself. On Switched, check it on its next turn; on Keep as is, write "kept" in its row
      and don't ask again until its task changes.
-   - Result with no verdict (§4, Results for you): "<deliverable>: <link>. <one line on the result>." Satisfied /
-     Change it / Drop it / Haven't looked yet. A "Haven't looked yet" gets a second question straight away for the
-     cadence (1, 2 or 8 hours), then `guide_title.py result-answer "<deliverable>" not-looked --every <hours>`.
    - Owed question that is due: the question itself, in its words, your recommendation first; then it is answered
-     (`unwait <key>`) or the user picks when to ask again (`sleep <key> <hours>`).
-   - Reminder that is due (§7), one question per session, with its full action: Done it / Nothing more to do: close it /
-     Sleep 1, 2 or 8 hours / Sleep 12, 24 or 48 hours. A sleep answer gets a second question straight away with the exact
-     periods, then `guide_title.py sleep <session id> <hours>`. On Done it, verify, then close the session or, if it has
-     more to do, run `unwait` and send it the next step. If the check fails, say so and ask again.
-5. **Unanswered means ask again,** at the next wake. Nothing is settled by your having mentioned it.
-6. **Fallback.** Only when the tool is refused or unavailable (a `claude -p` run), put the question in your text and
-   end with a line `needs input: <exactly what you need>`.
+     (`unwait <key>`) or put off (`sleep <key>`, the default period unless the user named one).
+   - Reminder that is due (§7), with its full action, in the batched question above. On Done, verify, then close the
+     session or, if it has more to do, run `unwait` and send it the next step. If the check fails, say so and ask again.
+6. **Unanswered means ask again,** at the next wake. Nothing is settled by your having mentioned it.
+7. **Fallback.** When the tool is refused or unavailable (a `claude -p` run), the text form of rule 1 applies to
+   every question: put it in your text and end with a line `needs input: <exactly what you need>`.
 
 ### 5. Status reply ("what's next", "where do we stand", and every wake that changes something)
 ```
@@ -274,6 +300,9 @@ one. Everything you need from the user goes through `AskUserQuestion`:
 **Results for you**
 - <deliverable>: <link> — <one line on the result> (finished since the last reply)
 - <deliverable>: <link> — <one line>, asked HH:MM, no verdict yet
+**Finished on their own**
+- <session title [id6]>: <one line of result> — <link> (clean, or: loose end → Open item / question)
+- job '<name>': <N> runs failed or refused, latest HH:MM — <why>
 **Asleep**
 - <session title [id6]>: <what it needs from the user>, reminder at HH:MM
 **Streams**
@@ -291,6 +320,8 @@ Guide context: <N>k (hand off at 120k)
   the user never saw the link for is not reported. The heading also carries the older deliverables still without a
   verdict (with when they were asked), and comes off only when the table has nothing unanswered. Each line there is a
   question in the interview that follows (§4, Results for you).
+- "Finished on their own" lists what the hook's `session-guide finished:` paragraph gave you (§7): sessions nobody
+  manages that ended since the last reply. Each is shown once; leave the heading out when there are none.
 - "Asleep" lists the reminders the user put off, and the results the user hasn't looked at yet with their re-ask time;
   leave the heading out when there are none. Due reminders and due owed questions belong in "Needs you now".
 - "Decided, not moving" is the audit's table (§7, Audit), top rows first, each with the one action you propose; each
@@ -316,13 +347,21 @@ Guide context: <N>k (hand off at 120k)
 - Then update the ledger (Streams, Results for you, Open items, Waiting on the user, and a log line).
 
 ### 6. Starting and closing worker sessions
-- Start one when the user says to, or when a MANAGED worker handed off and its successor is the next step on the
-  path. If the next step isn't obvious, ask once. A reconcile line "HANDED OFF: …" (§7) is that case: start the successor
-  now, from the resume prompt it names, without asking the user.
-- Start it from the worker's worktree with `python3 <skill dir>/scripts/guide_title.py launch -- --model <alias>
-  --effort <level> --name '<title>' "<prompt>"`, giving it the worker's resume prompt plus the prompt suffix in
+- Start one when the user says to. A MANAGED worker that hands off starts its own successor (worker contract, rule 4)
+  and reports HANDED OFF with the new id; you only record it (§7, Reconcile). Only a HANDED OFF with no successor id
+  (the launch failed, or an older contract) is yours to start, now and without asking: reconcile's "HANDED OFF: …"
+  line (§7), from the resume prompt it names. If the next step isn't obvious, ask once.
+- Start it with `python3 <skill dir>/scripts/guide_title.py launch -- --model <alias> --effort <level> --name
+  '<title>' "<prompt>"`, giving it the worker's resume prompt plus the prompt suffix in
   `references/worker-contract.md`, which says: send to `uds:<your socket>`, never a title. Fill in the socket from
-  your `Scope:` line. Pick the model and effort from
+  your `Scope:` line. Run it from a trusted folder (the folder your own session runs in): a new worktree is not one,
+  and a `--bg` session started in it stops at the trust dialog, so give the worktree as an absolute path in the prompt.
+  `launch` adds `--disallowedTools AskUserQuestion` itself, since a worker's questions go to you (11 stray worker
+  dialogs were launches without it); `--allow-ask` only for a session the user will drive. `--lean` also denies
+  Artifact, Workflow, SendFeedback and ReportFindings. Where the repo has a `.mcp.json`, add `--strict-mcp-config
+  --mcp-config <repo>/.mcp.json` to the claude args. A launch by a session that is not the guide needs `--ledger
+  <path>`. `launch` warns when the prompt names no `uds:` socket or the folder is not trusted: fix it before relying
+  on the worker. Pick the model and effort from
   `references/model-choice.md` for the task it does first: money and business-rule fixes, release gates and design
   reviews get the top model at high effort; mechanical edits, CI reads, read-only checks and status reports get
   `sonnet` at low. Record its title, id and pick (`sonnet/low`) in the ledger as MANAGED.
@@ -340,10 +379,12 @@ Guide context: <N>k (hand off at 120k)
   the moment `claude --bg` prints the id; if the worker still gets a cost-guard stop on its first call, tell it to
   retry.
 - A successor of a worker that handed off gets a fresh pick for the **next step's** task, never a copy of its
-  predecessor's model and effort.
+  predecessor's model and effort (the worker picks it from `references/model-choice.md`).
 - Prefer a fresh session over pushing a worker that is near its context limit through more work.
 - **Close** a MANAGED session once it is finished (DONE verified, nothing left for it or its subject: every loose end
-  is resolved or sits in Open items with another owner) or obsolete (a successor took over, or the stream was dropped).
+  is resolved or sits in Open items with another owner) or obsolete (a successor took over, or the stream was dropped),
+  without asking the user: `guide_title.py done --closable` closes every row that is DONE but still marked (§4,
+  Bookkeeping answers itself).
   A worker whose deliverable has no verdict yet (§4, Results for you) may close once its work is saved and reported,
   but its stream stays open and its Results row stays; a "Change it" starts a successor from its handoff.
   Closing is shaped like retiring a guide (§2):
@@ -369,16 +410,31 @@ Guide context: <N>k (hand off at 120k)
   `python3 <skill dir>/scripts/guide_title.py sweep <ledger>` if you didn't get that list. It needs neither
   claude-top nor ListAgents, and it reads only this machine's transcripts. A `ListAgents` row you add by hand must
   not be Remote Control (§2, step 4): another machine's sessions belong to its own guide. Run
-  `guide_title.py active <session id>` on each, so it shows blue at once, peek it so you
-  can recommend, and put it in this turn's interview (§4): "'X' [id6] is building the billing fix: manage it?" It
-  stays new, and you keep asking, until the user picks a level. When the user picks Manage or Watch, check its model and
-  effort as on a takeover (§2, step 4).
+  `guide_title.py active <session id>` on each one not shown as marked guided or watched, so it shows blue at once.
+  One with no row for 15 minutes
+  (`SESSION_GUIDE_NEW_SESSION_MINUTES`) takes its default level: run `sweep --defaults` and tell the user in one text
+  line (§4, Bookkeeping answers itself); the younger ones are named in text, nothing asked. With the minutes at 0,
+  peek it, put it in this turn's interview ("'X' [id6] is building the billing fix: manage it?") and keep asking until
+  the user picks a level. When it moves to Manage or Watch, check its model and effort as on a takeover (§2, step 4).
+- **Finished on their own, on every prompt**: a prompt the user fired and forgot is the session nobody follows up.
+  Every session that ended in the last 24 h (`SESSION_GUIDE_FINISHED_HOURS`) with no row or an ACTIVE row, also one
+  that ended before the sweep saw it, gets one look at its final message: its result line, a question left open, and
+  "not done / follow-up / blocked / refused" wording. The hook lists them (`guide_title.py finished` prints the
+  same), loose ends first; `claude -p` and launchd runs come as one line per job, only when a run failed or was
+  refused. List each in the status (§5). A loose end becomes an Open items row or a question in this round, after you
+  read its final message (`peek`); the script's "why" is a first look, yours is the call. Then mark them, so none is
+  shown twice: `finished --reviewed <id8> …` with each one you listed (clean and recorded loose ends alike). The
+  look never messages the session: ACTIVE stays never-messaged. A new session that already ended
+  still gets this look after `sweep --defaults` gave it its ACTIVE row.
 - **Reconcile on every prompt**: the ledger against the sessions' real state. The hook prints a line for each
   MANAGED or WATCHED row whose job ended more than 3 minutes ago (`SESSION_GUIDE_GRACE_MINUTES`) and still needs you,
   and for each report a worker left in `<ledger folder>/inbox/`; `guide_title.py reconcile` prints the same. Act on
   each line this turn; it comes back on every prompt until the row changes:
-  - **HANDED OFF**: no Sessions row is its successor. Start the successor now (§6), without asking the user, give it
-    a row saying "successor of [<old id6>]", and set the old row's Level to HANDED OFF.
+  - **SUCCESSOR STARTED**: a worker handed off and started its own successor. Record only: a Sessions row "successor
+    of [<old id6>]", Level MANAGED, with its model/effort; the old row's Level HANDED OFF; `done` on the old session.
+    Start nothing.
+  - **HANDED OFF**: no Sessions row is its successor and the worker named none. Start the successor now (§6), without
+    asking the user, give it a row saying "successor of [<old id6>]", and set the old row's Level to HANDED OFF.
   - **BLOCKED**: it waits on a ruling, an approval or an answer, with no Waiting row. Answer it from the Decisions,
     or put it in this turn's interview and write the `waiting` row.
   - **ENDED**: it finished some other way. Record the result (Results for you, Open items for its loose ends) and
@@ -395,18 +451,19 @@ Guide context: <N>k (hand off at 120k)
   two states, and `python3 <skill dir>/scripts/guide_title.py settle <ledger>` lists the ones that have gone 2 h quiet
   without reaching either (the hook lists them on each prompt too, with the reminders that are due):
   1. **Waiting on the user.** Still relevant, and only the user can move it: `guide_title.py waiting <session id>
-     "<exact action, full link or command>"`. That writes a row in the ledger's waiting table, due now, so ask this turn
-     (§4, Reminder). Each time it comes due, first check it still applies (peek, PR state), so the user is never asked
-     about something already done. Until the user picks a sleep period, an unanswered reminder stays due. Send one
-     `PushNotification` per wake that has due reminders, if you have the tool.
-  2. **Done.** Finished, with no follow-ups on the session or its subject: close it (§6). `done` removes its reminder. A
-     WATCHED session closes only on the user's yes, and that yes allows it the one CLOSE message.
+     "<exact action, full link or command>"`. That writes a row in the ledger's waiting table, due now, so put it in
+     this turn's batched question (§4). Each time it comes due, first check it still applies (peek, PR state), so the
+     user is never asked about something already done. An asked reminder with no answer sleeps the default period
+     (`sleep --due`). Send one `PushNotification` per wake that has due reminders, if you have the tool.
+  2. **Done.** Finished, with no follow-ups on the session or its subject: close it (§6; `done --closable` for every
+     such row at once). `done` removes its reminder. A WATCHED session closes only on the user's yes, and that yes
+     allows it the one CLOSE message.
 
   Anything else isn't settled yet. More work for it: send it the next step, and it stops being quiet. Blocked on an
   outside event with nothing for the user to do: a `waiting` row naming the event with a `sleep` you pick, and when it
   comes due re-check it, asking the user only if they are now needed. Not sure which: ask the user.
-  `settle` also lists the results with no verdict and the owed questions that are due (§4): each one is a question in
-  this turn's interview, every time, until it is answered.
+  `settle` also lists the results with no verdict and the owed questions that are due (§4): each one goes in this
+  turn's batched question or text list, every time, until it is answered or defaulted.
 - **Audit on every quiet wake**: decided work must not sit with no worker because no reminder names it. The scripts
   keep a ranked table of work that is not done or not verified (`python3 <skill dir>/scripts/guide_audit.py audit
   <ledger>`): Open items and queue rows (the ledger's `Queues:` line) with no live worker, items waiting on a person
@@ -489,8 +546,8 @@ Guide context: <N>k (hand off at 120k)
    file your successor reads first, and what it still lists is what you are handing over undone, so say so in the
    handoff prompt ("12 idle decided items, oldest 4 d: see STATE.md").
 2. Run the gate: `python3 <skill dir>/scripts/guide_title.py retire --check`. It runs reconcile and exits 1 while a
-   MANAGED row ended with no successor or a worker report is unanswered. Act on each line (start the successor,
-   answer or record the worker, close it) and run it again. Only rows you truly can't finish go to the next guide,
+   MANAGED row ended with no successor or a worker report is unanswered. Act on each line (record or start the
+   successor, answer or record the worker, close it) and run it again. Only rows you truly can't finish go to the next guide,
    with `retire --force` in step 5, which writes them into the ledger's `## Handoff` table. Then change the ledger's
    `Guide:` line to "HANDING OFF to next guide".
 3. Cancel wakeups and any reminder cron. Send each MANAGED worker this fixed line, word for word

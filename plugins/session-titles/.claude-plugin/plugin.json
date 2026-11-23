@@ -1,7 +1,7 @@
 {
   "name": "session-titles",
   "displayName": "Session Titles",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Honest two-part session titles: the name a session started with, plus a few plain words for what it is working on now, refreshed on every prompt by a small model.",
   "author": {
     "name": "Jonathan Achai",

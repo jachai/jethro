@@ -5,6 +5,45 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.22] - 2026-11-23
+
+Across 52 guides and 920 workers, 61% of worker reports reached the guide while its dialog was open (median wait 203 s,
+p90 49 min), about 36% of 2,305 interview questions were bookkeeping, and workers waited a median 4 min (p90 97) for a
+successor after a handoff. Dialogs now wait for workers, bookkeeping takes defaults, and workers start their own
+successor. And a prompt you fired and forgot is no longer missed: the guide looks once at every session that ended
+with nobody managing it.
+
+### Added
+
+- `guide_title.py working`, and a `session-guide workers:` line in the hook: which MANAGED workers are working now.
+- `sweep --defaults` (`SESSION_GUIDE_NEW_SESSION_MINUTES`, default 15; 0 asks as before), `done --closable`,
+  `results-defer`, `sleep --due`, and `sleep <id>` with no hours (`SESSION_GUIDE_SLEEP_HOURS`, default 2).
+- `guide_title.py finished` (`scripts/guide_finished.py`) and a `session-guide finished:` paragraph in the hook:
+  every session that ended in the last 24 h (`SESSION_GUIDE_FINISHED_HOURS`) with no row or an ACTIVE row gets one
+  look at its final message (result line, open question, "not done / follow-up / blocked / refused" wording) and a
+  line in the status under "Finished on their own". Loose ends become an Open items row or a question; `finished
+  --reviewed` marks what was looked at, so nothing shows twice. `claude -p` and launchd runs come as one line per
+  job, only when a run failed or was refused. ACTIVE sessions are still never messaged.
+- `launch --successor-of <id> --ledger <path>` for a worker's own successor, a note under `successors/`, reconcile's
+  SUCCESSOR STARTED line, and two warnings (no `uds:` socket in the prompt, untrusted folder). `launch --lean` also
+  denies Artifact, Workflow, SendFeedback and ReportFindings.
+
+### Changed
+
+- While a MANAGED worker is working, a dialog is only for a blocking question, one per call; the rest goes in the text
+  under "Needs you now" with a `needs input:` line.
+- New sessions, closes, snoozes and "haven't looked yet" take defaults with no question; result verdicts and due
+  reminders come as one multi-select "Tick what is settled". A deliverable is still DONE only on your Satisfied.
+- Worker contract rule 4: a worker near its limit starts its own successor and reports HANDED OFF with the new id; the
+  guide starts one only when the launch failed.
+- `launch` denies `AskUserQuestion` by default (`--allow-ask` to keep it).
+
+### Fixed
+
+- Stream icons no longer drop from session titles after a manual rename: `guide_title.py` sync now records the bare
+  title variants in session-titles history, and session-titles 0.1.3 keeps an origin that changed since its first
+  write.
+
 ## [0.1.21] - 2026-11-22
 
 With many sessions on many projects, a title or a question did not say which project it was about. Now each stream has one

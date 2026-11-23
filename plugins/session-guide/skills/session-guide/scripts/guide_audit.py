@@ -82,7 +82,6 @@ prompt (at most every 10 minutes), nags with the top rows when an idle item is o
 Python 3 stdlib only.
 """
 import argparse
-import calendar
 import glob
 import hashlib
 import json
@@ -94,7 +93,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import guide_title as gt  # noqa: E402
 
-__version__ = "0.1.21"
+__version__ = "0.1.22"
 IDLE_HOURS = 12  # an idle item older than this with no question to the user is nagged about
 AUDIT_HOURS = 12  # the full audit (transcripts too) is due this often
 QUICK_MINUTES = 10  # the hook recomputes the quick audit at most this often
@@ -405,12 +404,7 @@ def newest(text, now):
     return max(found) if found else None
 
 
-def iso_time(text):
-    """Epoch of gh's "2026-11-15T10:00:00Z", or None."""
-    try:
-        return calendar.timegm(time.strptime(text[:19], "%Y-%m-%dT%H:%M:%S"))
-    except (TypeError, ValueError):
-        return None
+iso_time = gt.iso_epoch  # gh writes "2026-11-15T10:00:00Z"
 
 
 def slug(text):

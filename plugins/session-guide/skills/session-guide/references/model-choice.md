@@ -36,6 +36,10 @@ python3 <skill dir>/scripts/guide_title.py launch -- --model <alias> --effort <l
 
 A successor of a worker that handed off gets a fresh pick for the **next step's** task, never a copy of its
 predecessor's: an opus/high session that finished a refund fix hands off to a sonnet/low session that only reads CI.
+The worker starts its own successor (contract rule 4) and makes this pick itself, from this table.
+
+`launch` denies `AskUserQuestion` by default (`--allow-ask` for a session the user will drive) and takes `--lean`,
+`--ledger <path>`, `--successor-of <id>` and `--stream <key>`; see `references/worker-contract.md`, Launch order.
 
 ## Checking a session the guide didn't start (SKILL §2, §7)
 

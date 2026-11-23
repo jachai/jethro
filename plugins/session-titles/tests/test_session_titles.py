@@ -159,6 +159,75 @@ class OriginTests(Base):
         self.assertEqual(self.prompt("next", title=first), "billing export · step three")
         self.assertEqual(self.state()["origin"], "billing export")
 
+    def test_a_bare_flip_that_is_in_history_is_not_adopted_as_a_rename(self):
+        # a tool set a prefixed origin; `--name` then makes Claude Code show the bare name, which the tool recorded
+        st.write_state(SID, {"origin": "[x] billing", "focus": "", "last_set": "[x] billing",
+                             "history": ["[x] billing", "billing"]})
+        self.add_assistant("step one done")
+        self.replies("step two")
+        self.assertEqual(self.prompt("next", title="billing"), "[x] billing · step two")
+        self.assertEqual(self.state()["origin"], "[x] billing")
+
+    def test_a_new_manual_rename_after_guide_sync_keeps_the_stream_icon(self):
+        st.write_state(SID, {"origin": "🟧🟧 (g) billing", "focus": "", "last_set": "🟧🟧 (g) billing",
+                             "history": ["billing", "🟧🟧 (g) billing"], "pinned": ["billing"],
+                             "decoration": "🟧🟧 (g) "})
+        self.add_assistant("step one done")
+        self.replies("step two")
+        self.assertEqual(self.prompt("next", title="docs sprint"), "🟧🟧 (g) docs sprint · step two")
+        self.assertEqual(self.state()["origin"], "🟧🟧 (g) docs sprint")
+        self.prompt("again", title="ops sprint")  # a second rename before any new sync keeps it too
+        self.assertEqual(self.state()["origin"], "🟧🟧 (g) ops sprint")
+        self.prompt("again", title="🟧🟧 (g) ops")
+        self.assertEqual(self.state()["origin"], "🟧🟧 (g) ops")  # no icon twice
+
+    def test_a_rename_keeps_only_the_recorded_decoration_not_old_title_words(self):
+        st.write_state(SID, {"origin": "🟧🟧 (g) 🏠 billing lead", "focus": "", "last_set": "🟧🟧 (g) 🏠 billing lead",
+                             "history": ["billing lead"], "pinned": ["lead", "billing lead"],
+                             "decoration": "🟧🟧 (g) 🏠 "})
+        self.add_assistant("step one done")
+        self.replies("step two")
+        self.prompt("next", title="docs")
+        self.assertEqual(self.state()["origin"], "🟧🟧 (g) 🏠 docs")
+
+    def test_a_rename_with_no_recorded_decoration_gets_none(self):
+        st.write_state(SID, {"origin": "🟧🟧 (g) billing", "focus": "", "last_set": "🟧🟧 (g) billing",
+                             "history": ["🟧🟧 (g) billing"]})
+        self.add_assistant("step one done")
+        self.replies("step two")
+        self.assertEqual(self.prompt("next", title="docs sprint"), "docs sprint · step two")
+
+    def test_pinned_bare_titles_survive_more_than_eight_prompts(self):
+        st.write_state(SID, {"origin": "🟧🟧 (g) billing", "focus": "", "last_set": "🟧🟧 (g) billing",
+                             "history": ["billing", "🟧🟧 (g) billing"], "pinned": ["billing"]})
+        title = "🟧🟧 (g) billing"
+        for n in range(10):
+            self.add_assistant("step %d done" % n)
+            self.replies("step %d" % n)
+            title = self.prompt("next", title=title)
+        self.assertNotIn("billing", self.state()["history"])
+        self.assertEqual(self.state()["pinned"], ["billing"])
+        self.prompt("flip", title="billing")  # still read as ours, not as a rename
+        self.assertEqual(self.state()["origin"], "🟧🟧 (g) billing")
+
+    def test_an_origin_changed_while_the_focus_was_generated_is_kept(self):
+        st.write_state(SID, {"origin": "billing", "focus": "", "last_set": "billing", "history": ["billing"]})
+        self.add_assistant("step one done")
+        self.replies("step two")
+        real = st.generate_focus
+
+        def slow(origin, recent, prompt, cfg):
+            focus = real(origin, recent, prompt, cfg)
+            state = st.read_state(SID)  # session-guide's sync lands between the two locked writes
+            state["origin"] = "[x] billing"
+            st.write_state(SID, state)
+            return focus
+
+        with mock.patch.object(st, "generate_focus", slow):
+            self.assertEqual(self.prompt("next", title="billing"), "[x] billing · step two")
+        self.assertEqual(self.state()["origin"], "[x] billing")
+        self.assertEqual(self.state()["last_set"], "[x] billing · step two")
+
     def test_manual_rename_containing_separator_keeps_left_part(self):
         self.add_assistant("hello")
         self.replies("checking logs")

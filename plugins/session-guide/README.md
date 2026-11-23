@@ -207,7 +207,8 @@ lead`. It comes back after a rename and stays through DONE. A session on no stre
 | `stream end <key>` | Finished; its icon is free again after 7 days |
 | `stream strip <id>… \| --all` | Take the icon off titles |
 | `stream table [--end-unlisted]` | Refresh the ledger's Streams table; mark rows of unregistered streams ended |
-| `launch --stream <key>`, `launch --successor-of <id>` | Start a session on a stream, or on its predecessor's |
+| `finished [--ledger] [--hours 24] [--reviewed [<id> ...]]` | Lists sessions that ended in the last 24 h at levels the guide doesn't manage; `--reviewed` marks them |
+| `launch --stream <key>`, `launch --successor-of <id>` | Start a session on a stream, or on its predecessor's (a worker starts its own successor this way, with `--ledger <path>`) |
 
 The registry is `streams.json` next to the ledger. An icon belongs to one open stream on this machine; when the icons run
 out, a stream gets a two-letter tag such as `[TW]`. Icons are added when a row is shown, never stored in an Open items,
@@ -221,8 +222,9 @@ building stays with the workers. It may:
 
 - read transcripts, `ListAgents`, and CI/PR/deploy state;
 - message managed workers and relay your approvals;
-- start fresh worker sessions (`guide_title.py launch`, which runs `claude --bg` and marks the session guided the
-  moment it starts) from a worker's resume prompt, on the model and effort the task needs;
+- start fresh worker sessions (`guide_title.py launch`, which runs `claude --bg`, marks the session guided the
+  moment it starts and denies it `AskUserQuestion`) on the model and effort the task needs; a worker near its context
+  limit starts its own successor the same way, and the guide records it;
 - write the ledger.
 
 Browser checks, test batteries on shared environments, and database and log checks go to a worker or to you.
@@ -233,15 +235,16 @@ Every session the guide manages or watches has to settle in one of two states, a
 
 - **Waiting on you.** It is still relevant and only you can move it. The guide records the exact action and reminds you
   until it is done. Each reminder first checks that it still applies, then offers: done it, nothing more to do (close it),
-  or sleep for 1, 2, 8, 12, 24 or 48 hours.
+  or sleep (2 hours by default, `SESSION_GUIDE_SLEEP_HOURS`; a period you name wins). Due reminders and result verdicts
+  come as one "Tick what is settled" question; an unanswered reminder sleeps the default period.
 - **Done.** It is finished, with no follow-ups on the session or its subject. It is closed with a ✅ title.
 
 A session that has gone quiet for 2 hours in neither state is flagged to the guide on its next prompt, and stays flagged.
 
 Quiet is the slow signal. The fast one is **reconcile**: on every guide prompt (and in `settle`, first in `mark`, and
 in `retire`) it reads each MANAGED and WATCHED row's job state, and lists the ones whose job ended more than 3
-minutes ago (`SESSION_GUIDE_GRACE_MINUTES`) and still need the guide: HANDED OFF with no successor row (start it
-now), BLOCKED with no Waiting row (answer it or ask you), ENDED any other way (record it and close it), UNDELIVERED
+minutes ago (`SESSION_GUIDE_GRACE_MINUTES`) and still need the guide: SUCCESSOR STARTED (a worker started its own
+successor: record it), HANDED OFF with no successor started (start it now), BLOCKED with no Waiting row (answer it or ask you), ENDED any other way (record it and close it), UNDELIVERED
 (its last report never reached the guide), and INBOX (a report a worker wrote next to the ledger because its send
 failed). A line stays until the row changes. `guide_title.py reconcile --ledger <path>` prints the same for any
 ledger and never writes.
@@ -250,6 +253,22 @@ ledger and never writes.
 $ python3 skills/session-guide/scripts/guide_title.py reconcile
 HANDED OFF: 'reindex lead' [d4e5f6a1] ended 6 min ago and no Sessions row is its successor. Start the successor now from ~/work/reindex/HANDOFF.md; give it a row saying "successor of [d4e5f6]" and set this row's Level to HANDED OFF.
 1 to reconcile
+```
+
+Reconcile reads the rows the guide manages or watches. The prompt you fired and forgot has no row, or an ACTIVE one,
+so the guide also takes **one look at every session that ended on its own** in the last 24 hours: its result line, a
+question it left open, and wording such as "not done", "follow-up", "blocked" or "refused". You get them in the status
+under "Finished on their own", each once; a loose end becomes an open item or a question for you. Scheduled
+`claude -p` runs show as one line per job, and only when a run failed or was refused. The guide never messages these
+sessions.
+
+```
+$ python3 skills/session-guide/scripts/guide_title.py finished
+LOOSE END 'export retry spike' [9c1d2e3f] (no row), ended 14:05: tests pass locally | why: asks: Should I open the PR?
+clean 'docs typo sweep' [7a8b9c0d] (ACTIVE row), ended 13:40: DONE: 4 typos fixed | https://github.com/acme/billing/pull/151
+Finished on their own: 2 (1 with a loose end)
+$ python3 skills/session-guide/scripts/guide_title.py finished --reviewed 7a8b9c0d
+Reviewed: clean 'docs typo sweep' [7a8b9c0d] (ACTIVE row), ended 13:40: DONE: 4 typos fixed | https://github.com/acme/billing/pull/151
 ```
 
 Merges and commands asked of someone are tracked the same way, as **claims** in the ledger: `guide_title.py claim
@@ -323,8 +342,9 @@ done when the worker says so. Two things happen first:
   of it.
 - **Results for you.** Every status reply leads with what finished since the last one, each with its link, under a
   "Results for you" heading right after your own actions and before the streams. Each one is a question in the
-  interview: Satisfied / Change it / Drop it / Haven't looked yet. "Haven't looked yet" is asked again on the cadence
-  you pick (hourly by default). The stream isn't DONE, and its loose ends aren't closed, until you answer; the worker
+  interview: tick Satisfied in one "Tick what is settled" question, or write "change <deliverable>: <what>" or drop it.
+  Unticked is "haven't looked yet", asked again with no second question on the row's last cadence (hourly by default;
+  `--every` when you name one). The stream isn't DONE, and its loose ends aren't closed, until you answer; the worker
   session may close in the meantime, the ledger row waits.
 
 ```
@@ -367,7 +387,8 @@ The guide picks a model and an effort for every session it starts, from a short
 fixes, release gates and design reviews get the top model at high effort; mechanical edits, CI reads, read-only data
 checks and status reports get `sonnet` at low; verify follow-ups get `sonnet` at medium. It passes them as
 `guide_title.py launch -- --model <alias> --effort <level>`, with aliases (`opus`, `sonnet`, `haiku`) so the table stays current, and
-records the pick in the ledger. A worker's successor is picked again for its own next step, not copied.
+records the pick in the ledger. A worker's successor, which the worker starts itself, is picked again for its own next
+step, not copied.
 
 For a session it didn't start, the guide reads what it runs (claude-top's MODEL and EFFORT, or peek's first line) and,
 when that doesn't fit the task, asks you:
@@ -405,6 +426,10 @@ Set them in the `env` block of `settings.json`, so the hooks see them too.
 | `SESSION_GUIDE_RETIRED_TITLE` | `🎟️🎟️ Sessions Manager (retired) 🎟️🎟️` | A retired guide's title |
 | `SESSION_GUIDE_GUIDED_PREFIX`, `_WATCHED_PREFIX`, `_ACTIVE_PREFIX`, `_DONE_PREFIX` | `🟧🟧 (g) `, `⬜⬜ `, `🟦🟦 `, `✅ ` | The title prefixes |
 | `SESSION_GUIDE_STREAM_ICONS` | on | `0` turns every stream icon off (titles, hook lines, `STATE.md`); `stream strip --all` takes the ones already shown off |
+| `SESSION_GUIDE_NEW_SESSION_MINUTES` | 15 | A session with no row this long gets its default level (MANAGED if guided, WATCHED if watched, else ACTIVE) with no question; 0 asks as before |
+| `SESSION_GUIDE_SLEEP_HOURS` | 2 | The default snooze for `sleep <id>` and `sleep --due` |
+| `SESSION_GUIDE_FINISHED_HOURS` | 24 | How far back the guide looks for sessions that ended with nobody managing them ("Finished on their own"); 0 turns the look off |
+| `SESSION_GUIDE_FINISHED_QUIET_MINUTES` | 15 | An ended session is left alone this long before that look, so a conversation you are in the middle of is not listed |
 | `SESSION_GUIDE_GRACE_MINUTES` | 3 | How long after a worker's job ends before reconcile lists it |
 | `SESSION_GUIDE_IDLE_HOURS` | 12 | An idle decided item older than this, with no question to you, is nagged about |
 | `SESSION_GUIDE_AUDIT_HOURS` | 12 | How often the full audit is due; 0 turns the audit off |

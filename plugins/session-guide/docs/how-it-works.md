@@ -50,7 +50,8 @@ costs a transcript read. A job that ended more than 3 minutes ago is classified 
 
 | Line | When | What the guide does |
 |---|---|---|
-| HANDED OFF | its result says HANDED OFF and no Sessions row is its successor | starts the successor now, without asking you |
+| SUCCESSOR STARTED | a worker handed off and started its own successor | records it: a row "successor of [<old id6>]", the old row HANDED OFF |
+| HANDED OFF | its result says HANDED OFF and no successor was started | starts the successor now, without asking you |
 | BLOCKED | its result says blocked / needs / waiting, and no Waiting row exists | answers it, or asks you and writes the reminder |
 | ENDED | a MANAGED row ended any other way | records the result and closes it |
 | UNDELIVERED | its last report never reached the guide (sent to a title, failed, or final text only) | reads it with peek and acts |
@@ -78,8 +79,12 @@ answer, and asks you which ruling stands if it conflicts with an earlier one, be
 ## Handoffs
 
 Workers hand off near their context limit with a resume prompt, sent by SendMessage to the guide's `uds:` socket
-like every HANDED OFF, BLOCKED, DONE and MERGE READY report. The guide starts the successor with `guide_title.py
-launch` and records it as MANAGED; if the guide missed the report, reconcile lists the handoff on its next prompt.
+like every HANDED OFF, BLOCKED, DONE and MERGE READY report. The worker starts its own successor with `guide_title.py
+launch --successor-of <id>` (so nobody waits for the guide, the median wait was 4 minutes and the p90 97) and reports
+HANDED OFF with the new id; the guide only records it as MANAGED (reconcile's SUCCESSOR STARTED line). If the launch
+failed, the guide starts the successor from the resume prompt; if it missed the report, reconcile lists the handoff on
+its next prompt. `launch` also denies `AskUserQuestion` to every worker it starts, since a worker's questions go to the
+guide, and warns when the folder is not trusted: a `--bg` session started in a new worktree stops at the trust dialog.
 
 `launch` exists because a worker has to be marked guided early: a cost guard that reads the marker stops an unmarked
 session's first tool call. `claude --bg` picks its own session id, so `launch` writes the marker the moment the id is
@@ -119,9 +124,20 @@ session active in the last 12 hours with no row in the ledger is new: the title 
 goes to the guide with each prompt until every session on it has a row. That list can't drift and needs no other
 tool. The guide keeps a wake scheduled while any session is active, because nothing wakes it when a session starts.
 
-Everything the guide needs from you goes through `AskUserQuestion`, not text: new sessions (Manage / Watch / Leave
-active / Ignore), decisions, approvals it can relay, and Done / Not yet for what only you can do. A WATCHED session that asks a question gets it put to the user, and the
-answer relayed back in one message, its only one.
+A session nobody manages can also end unseen: a prompt fired and forgotten. So the hook gives the guide every session
+that ended in the last 24 hours with no row or an ACTIVE row (`guide_title.py finished`, `scripts/guide_finished.py`),
+with its result line and any loose end found in its final message. The guide lists each once under "Finished on their
+own", turns a loose end into an open item or a question, and marks each one it listed reviewed by id. It never
+messages such a session.
+
+What the guide needs from you goes through `AskUserQuestion` when no worker is working: decisions, approvals it can
+relay, Done / Not yet for what only you can do, and one batched "Tick what is settled" question for result verdicts and
+due reminders. While a worker is working, a dialog would pause the guide and queue the worker's reports (61% arrived
+behind one, median wait 203 s), so only a blocking question gets one, alone; the rest is a list in the guide's text
+under "Needs you now", ending in `needs input: <what>`. Bookkeeping answers itself: a session with no row for 15
+minutes gets its default level (`sweep --defaults`), finished sessions close (`done --closable`), and a snooze or a
+"haven't looked yet" takes the default period without a second question. A WATCHED session that asks a question gets
+it put to the user, and the answer relayed back in one message, its only one.
 
 A MANAGED session that is finished or obsolete is closed, the way a guide is retired: `guide_title.py done <id>`
 writes the marker `done`, so the hook swaps "🟧🟧 (g) " for "✅ " and never gives the session a guided, watched or guide title

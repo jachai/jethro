@@ -21,12 +21,18 @@ The hook input carries the session's current title. The origin is decided in thi
    part before it is kept, so `/rename ops · anything` gives the origin `ops`.
    When that title has the form `<origin> · <focus>` (a resume that started a new session id inherits
    one), the part after the separator is kept as the starting focus.
+   If session-guide's sync had put a prefix or icon in front of the old origin (it records it as
+   `decoration`, and the bare names in `pinned`, kept outside the 8-title cap), the new name gets the same
+   decoration, rename after rename.
 3. **There is no title yet.** A small model writes a name of at most 5 words from the first prompt.
    A prompt that says nothing about the work is never used for this: an acknowledgement such as
    `ok`, `yes please`, `continue` or `guard ok`, a bare slash command, or anything under 3 words and
    20 characters. The hook then looks back through the transcript for the first real request and
    names the session from that. If there is none yet, it sets no title, so Claude Code's own name
    stays until you send a real request. Short real requests such as `review PR 214` still count.
+
+If another tool (session-guide's sync) changed the stored origin while the model was working, that newer origin
+wins and the title is recomposed from it.
 
 `session-titles set-origin ID TEXT` replaces the stored origin by hand. Claude Code shows it on the
 session's next prompt.

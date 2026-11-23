@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-23
+
+### Fixed
+
+- A title that another tool rewrote while the hook was thinking was put back to the old one. The hook now keeps
+  the newer name, so a session's prefix or icon no longer disappears from its title.
+- A manual rename after session-guide's sync keeps the stream icon and prefix, and the bare names the sync
+  recorded are no longer pushed out of the 8-title history by later prompts.
+
 ## [0.1.2] - 2026-11-18
 
 ### Changed

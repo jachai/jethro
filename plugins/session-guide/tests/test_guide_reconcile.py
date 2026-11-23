@@ -65,8 +65,8 @@ class ReconcileBase(unittest.TestCase):
         self.write_ledger(LEDGER)
         env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_CODE_SESSION_ID", "SESSION_GUIDE_GRACE_MINUTES",
                                                                  "SESSION_GUIDE_CLAUDE")}
-        env.update(CLAUDE_CONFIG_DIR=self.cfg, SESSION_GUIDE_AUDIT_HOURS="0", SESSION_GUIDE_FOLLOWUP_HOURS="0",
-                   SESSION_GUIDE_GH="0")
+        env.update(CLAUDE_CONFIG_DIR=self.cfg, HOME=self.cfg, SESSION_GUIDE_AUDIT_HOURS="0", SESSION_GUIDE_FOLLOWUP_HOURS="0",
+                   SESSION_GUIDE_GH="0", PYTHONDONTWRITEBYTECODE="1")  # macOS python caches bytecode under HOME
         self.env = mock.patch.dict(os.environ, env, clear=True)
         self.env.start()
 
@@ -325,7 +325,8 @@ class WiringTest(ReconcileBase):
 
         def tree():
             found = {}
-            for top, _, files in os.walk(self.cfg):
+            for top, dirs, files in os.walk(self.cfg):
+                dirs[:] = [d for d in dirs if d != "Library"]  # macOS python's bytecode cache is not ours
                 for name in files:
                     path = os.path.join(top, name)
                     found[path] = (os.path.getmtime(path), open(path, "rb").read())
@@ -548,7 +549,7 @@ class ReviewFixesTest(ReconcileBase):
         self.assertTrue(context.startswith("Now: "))
         self.assertIn("HANDED OFF: 'atlas plan rewrite (2)'", context)
         self.assertNotIn("too late", context)
-        self.assertIn("the audit check ran past this prompt's time budget", context)
+        self.assertRegex(context, r"the audit( and \w+)? checks? ran past this prompt's time budget")
 
 
 ARTIFACT_ID = "AbCdEfGhIjKlMnOpQrStUv"  # 22 characters, as an artifact id is
@@ -666,6 +667,9 @@ json.dump(log, open(os.path.join(cfg, "fake-claude.json"), "w"))
 '''
 
 
+DENY_ASK = "--disallowedTools=AskUserQuestion"
+
+
 class LaunchTest(ReconcileBase):
     SID = "e2e2e2e2-1111-4222-8333-444455556666"
 
@@ -680,7 +684,7 @@ class LaunchTest(ReconcileBase):
     def test_launch_marks_the_new_session_while_the_command_still_runs(self):
         r, log = self.launch("--", "--model", "sonnet", "brief: tidy the notes")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(log["argv"], ["--bg", "--model", "sonnet", "brief: tidy the notes"])
+        self.assertEqual(log["argv"], ["--bg", DENY_ASK, "--model", "sonnet", "brief: tidy the notes"])
         self.assertIsNone(log["at_start"])  # claude --bg picks the id: nothing to mark before it prints one
         self.assertEqual(log["while_running"], "guided")
         self.assertEqual(gt.marker_content(self.SID), "guided")
@@ -696,7 +700,34 @@ class LaunchTest(ReconcileBase):
         r, log = self.launch("--", "--resume", self.SID, "next step")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(log["at_start"], "guided")
-        self.assertEqual(log["argv"], ["--bg", "--resume", self.SID, "next step"])
+        self.assertEqual(log["argv"], ["--bg", DENY_ASK, "--resume", self.SID, "next step"])
+
+    def argv(self, *args):
+        r, log = self.launch("--", *args)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return log["argv"][1:]  # without --bg
+
+    def test_launch_denies_asking_by_merging_into_the_flag_the_caller_has(self):
+        self.assertEqual(self.argv("--model", "sonnet", "brief"), [DENY_ASK, "--model", "sonnet", "brief"])
+        self.assertEqual(self.argv("--disallowedTools", "Bash", "brief"), ["--disallowedTools", "AskUserQuestion", "Bash", "brief"])
+        self.assertEqual(self.argv("--disallowed-tools=Bash,Edit", "brief"), ["--disallowed-tools=AskUserQuestion,Bash,Edit", "brief"])
+        self.assertEqual(self.argv("--disallowedTools", "Bash,Edit", "--model", "x", "brief"),
+                         ["--disallowedTools", "AskUserQuestion", "Bash,Edit", "--model", "x", "brief"])
+        for given in (["--disallowedTools", "Bash", "AskUserQuestion"], ["--disallowedTools=Bash,AskUserQuestion"],
+                      ["--disallowedTools", "Bash,AskUserQuestion"]):  # already there: left alone, not duplicated
+            self.assertEqual(self.argv(*given, "--model", "x", "brief"), given + ["--model", "x", "brief"])
+        # the prompt is never a value: naming the tool in it does not count
+        self.assertEqual(self.argv("--disallowedTools", "Bash", "never call AskUserQuestion"),
+                         ["--disallowedTools", "AskUserQuestion", "Bash", "never call AskUserQuestion"])
+
+    def test_launch_allow_ask_and_lean(self):
+        r, log = self.launch("--allow-ask", "--", "--model", "x", "brief")
+        self.assertEqual(log["argv"], ["--bg", "--model", "x", "brief"])
+        r, log = self.launch("--lean", "--", "brief")
+        self.assertEqual(log["argv"], ["--bg", DENY_ASK[:-len("AskUserQuestion")] +
+                                       "AskUserQuestion,Artifact,Workflow,SendFeedback,ReportFindings", "brief"])
+        r, log = self.launch("--lean", "--allow-ask", "--", "--disallowedTools=Artifact", "brief")
+        self.assertEqual(log["argv"], ["--bg", "--disallowedTools=Workflow,SendFeedback,ReportFindings,Artifact", "brief"])
 
     def test_launch_refuses_a_guide_and_needs_arguments(self):
         os.makedirs(os.path.join(self.cfg, "session-guide", "guides"))
@@ -705,6 +736,107 @@ class LaunchTest(ReconcileBase):
         self.assertNotEqual(self.script("launch", "--", "--resume", self.SID, "x").returncode, 0)
         self.assertEqual(gt.marker_content(self.SID), self.ledger)
         self.assertNotEqual(self.script("launch").returncode, 0)
+
+
+class SuccessorTest(ReconcileBase):
+    """A worker that starts its own successor leaves a note; the guide's reconcile shows it until the row exists."""
+    SID = "e2e2e2e2-1111-4222-8333-444455556666"
+    PROMPT = "resume from the state file; report to uds:/tmp/cc-socks/guide.sock"
+
+    def launch(self, *args, **env):
+        fake = os.path.join(self.cfg, "fake_claude.py")
+        with open(fake, "w") as f:
+            f.write(FAKE_CLAUDE)
+        return self.script("launch", *args, SESSION_GUIDE_CLAUDE="%s %s" % (sys.executable, fake), FAKE_SID=self.SID,
+                           **env)
+
+    def note_path(self):
+        return os.path.join(os.path.dirname(self.ledger), "successors", self.SID[:8] + ".json")
+
+    def test_a_worker_launching_its_successor_writes_the_note_and_prints_the_line_for_its_guide(self):
+        r = self.launch("--successor-of", RELAY, "--ledger", self.ledger, "--", "--name", "atlas plan rewrite (3)",
+                        "--model", "opus", "--effort", "high", self.PROMPT, CLAUDE_CODE_SESSION_ID=RELAY)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        note = json.load(open(self.note_path()))
+        self.assertEqual({k: note[k] for k in ("of", "id", "name", "model", "effort", "by")},
+                         dict(of=RELAY, id=self.SID, name="atlas plan rewrite (3)", model="opus", effort="high", by=RELAY))
+        self.assertRegex(note["at"], r"^\d{4}-\d\d-\d\d \d\d:\d\d$")
+        self.assertEqual(r.stdout.splitlines()[-1], "Now send your guide: HANDED OFF: successor "
+                         "'atlas plan rewrite (3)' [e2e2e2e2] started (opus/high)")
+        self.assertNotIn("Give it its Sessions row", r.stdout)
+        # the only warning is the stream one: the fixture row is on no open stream
+        self.assertEqual([l for l in r.stdout.splitlines() if l.startswith("warning") and "no open stream" not in l], [])
+
+    def test_the_guide_launching_a_successor_keeps_the_row_line(self):
+        os.makedirs(os.path.join(self.cfg, "session-guide", "guides"))
+        with open(os.path.join(self.cfg, "session-guide", "guides", GUIDE), "w") as f:
+            f.write(self.ledger + "\n")
+        r = self.launch("--successor-of", RELAY, "--", self.PROMPT, CLAUDE_CODE_SESSION_ID=GUIDE)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Give it its Sessions row now: | <title> [e2e2e2] | MANAGED |", r.stdout)
+        self.assertNotIn("Now send your guide", r.stdout)
+        self.assertTrue(os.path.isfile(self.note_path()))
+
+    def test_a_successor_with_no_ledger_to_find_says_what_to_pass(self):
+        shutil.rmtree(os.path.join(self.cfg, "session-guide"))
+        r = self.launch("--successor-of", RELAY, "--", self.PROMPT, CLAUDE_CODE_SESSION_ID=RELAY)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("pass --ledger <the guide's ledger path from your contract>", r.stderr)
+
+    def test_warnings_for_a_prompt_with_no_socket_and_an_untrusted_folder(self):
+        with open(os.path.join(self.cfg, ".claude.json"), "w") as f:
+            json.dump({"projects": {"/somewhere/else": {"hasTrustDialogAccepted": True}}}, f)
+        r = self.launch("--successor-of", RELAY, "--ledger", self.ledger, "--", "no socket named here")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)  # warnings never stop the launch
+        self.assertIn("warning: the prompt names no uds: socket, so the successor won't know where to report", r.stdout)
+        self.assertIn("warning: %s is not a trusted folder; a --bg session started here stops at the trust dialog. "
+                      "Launch from the folder your own session runs in and give the worktree as an absolute path."
+                      % os.getcwd(), r.stdout)
+        with open(os.path.join(self.cfg, ".claude.json"), "w") as f:  # a parent folder is trusted
+            json.dump({"projects": {os.path.dirname(os.getcwd()): {"hasTrustDialogAccepted": True}}}, f)
+        self.assertNotIn("trusted folder", self.launch("--", "x").stdout)
+        os.remove(os.path.join(self.cfg, ".claude.json"))  # unreadable: say nothing
+        self.assertNotIn("trusted folder", self.launch("--", "x").stdout)
+
+    def started(self, **extra):
+        os.makedirs(os.path.join(os.path.dirname(self.ledger), "successors"), exist_ok=True)
+        with open(self.note_path(), "w") as f:
+            json.dump(dict(of=RELAY, id=self.SID, name="atlas plan rewrite (3)", model="opus", effort="high", by=RELAY,
+                           at="2026-11-02 10:00", **extra), f)
+
+    def test_reconcile_flags_a_started_successor_until_its_row_exists(self):
+        self.handed_off_relay()
+        self.started()
+        flags = self.flags()
+        self.assertEqual([(f["kind"], f["id"]) for f in flags], [("successor", "a7a7a7")])
+        self.assertEqual(gr.describe(flags[0]).split(" Result:")[0],
+                         "SUCCESSOR STARTED: 'atlas plan rewrite (2)' [a7a7a7a7] handed off and started its own "
+                         "successor 'atlas plan rewrite (3)' [e2e2e2e2] (opus/high). Record only: give it a Sessions "
+                         "row saying \"successor of [a7a7a7]\", Level MANAGED, and set this row's Level to HANDED OFF. "
+                         "Do not start another.")
+        os.makedirs(os.path.join(self.cfg, "session-guide", "guides"))
+        with open(os.path.join(self.cfg, "session-guide", "guides", GUIDE), "w") as f:
+            f.write(self.ledger + "\n")
+        gate = self.script("retire", "--check", GUIDE)
+        self.assertEqual(gate.returncode, 1, gate.stdout)  # the gate treats it like any flag
+        self.assertIn("Reconcile: SUCCESSOR STARTED", gate.stdout)
+        self.assertIn("SUCCESSOR STARTED", self.hook())
+        self.write_ledger(LEDGER.replace("| ledger cleanup [b8b8b8]",
+                                         "| atlas relay [e2e2e2] | MANAGED | successor of [a7a7a7] | uds |\n"
+                                         "| ledger cleanup [b8b8b8]"))
+        self.assertEqual(self.kinds(), [])
+        self.assertNotIn("SUCCESSOR STARTED", self.hook())
+        self.write_ledger(LEDGER.replace("| ledger cleanup [b8b8b8]",  # a row with the new id6 alone also clears it
+                                         "| something [e2e2e2] | MANAGED | x | uds |\n| ledger cleanup [b8b8b8]"))
+        self.assertEqual(self.kinds(), [])
+
+    def test_a_note_for_another_session_changes_nothing(self):
+        self.handed_off_relay()
+        self.started()
+        note = json.load(open(self.note_path()))
+        note["of"] = CLEANUP
+        json.dump(note, open(self.note_path(), "w"))
+        self.assertEqual(self.kinds(), [("handoff", "a7a7a7")])
 
 
 if __name__ == "__main__":
