@@ -134,15 +134,27 @@ def other_watcher(data):
 
 
 def loop(data, tick_seconds=TICK, max_ticks=None):
-    other = other_watcher(data)
-    if other:
-        print("watcher already running (pid %d); not starting another" % other)
-        return 0
+    """One pass per tick. While another session's watcher is live this one stands by without output: a stdout
+    line is a Monitor event and an exit is a "stream ended" notice, both shown in every new session. It takes
+    over when that watcher goes (its session closed); if two take over at once, the one whose pid is not in
+    watcher.json goes back to standby on its next tick."""
     ppid = os.getppid()
     n = 0
+    standby = False
     while max_ticks is None or n < max_ticks:
         if os.name != "nt" and (os.getppid() == 1 or os.getppid() != ppid):
             return 0
+        other = other_watcher(data)
+        if other:
+            if not standby:
+                common.log(data, "watch: watcher %d is running; standing by" % other)
+                standby = True
+            n += 1
+            time.sleep(tick_seconds)
+            continue
+        if standby:
+            common.log(data, "watch: no live watcher; taking over")
+            standby = False
         try:
             new = superseded()
         except Exception:

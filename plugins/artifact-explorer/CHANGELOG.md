@@ -3,6 +3,11 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.13] - 2026-11-23
+
+### Fixed
+- A new session no longer shows "watcher already running (pid N); not starting another" and "stream ended". When another session's watcher is live, the new one stands by without output and takes over when that session closes, instead of printing and exiting.
+
 ## [0.2.12] - 2026-11-19
 
 ### Changed
