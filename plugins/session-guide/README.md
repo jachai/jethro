@@ -207,6 +207,7 @@ lead`. It comes back after a rename and stays through DONE. A session on no stre
 | `stream end <key>` | Finished; its icon is free again after 7 days |
 | `stream strip <id>… \| --all` | Take the icon off titles |
 | `stream table [--end-unlisted]` | Refresh the ledger's Streams table; mark rows of unregistered streams ended |
+| `finished [--ledger] [--hours 24] [--reviewed [<id> ...]]` | Lists sessions that ended in the last 24 h at levels the guide doesn't manage; `--reviewed` marks them |
 | `launch --stream <key>`, `launch --successor-of <id>` | Start a session on a stream, or on its predecessor's (a worker starts its own successor this way, with `--ledger <path>`) |
 
 The registry is `streams.json` next to the ledger. An icon belongs to one open stream on this machine; when the icons run

@@ -226,7 +226,8 @@ def successor(row, rows):
 
 
 def successor_note(ledger, rid):
-    """The note `launch --successor-of` left in <ledger dir>/successors/ for a session whose id starts with `rid`, or None."""
+    """The note `launch --successor-of` left in <ledger dir>/successors/ for a session whose id starts with `rid`, or
+    None."""
     for path in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(ledger)), "successors", "*.json"))):
         try:
             with open(path) as f:
@@ -402,15 +403,17 @@ def describe(flag, script="guide_title.py"):
     ago = " %d min ago" % (flag["ago"] // 60) if flag["ago"] is not None else ""
     result = ' Result: "%s"' % flag["result"][:220] if flag["result"] else ""
     if flag["kind"] == "handoff":
-        start = " from %s" % " or ".join(flag["prompts"]) if flag["prompts"] else " (its final text has the resume prompt)"
+        start = (" from %s" % " or ".join(flag["prompts"]) if flag["prompts"]
+                 else " (its final text has the resume prompt)")
         return ("HANDED OFF: %s ended%s and no Sessions row is its successor. Start the successor now%s; give it a row "
                 "saying \"successor of [%s]\" and set this row's Level to HANDED OFF.%s"
                 % (who, ago, start, flag["id"], result))
     if flag["kind"] == "successor":
         new = flag["started"]
-        return ("SUCCESSOR STARTED: %s handed off and started its own successor '%s' [%s] (%s/%s). Record only: give it "
-                "a Sessions row saying \"successor of [%s]\", Level MANAGED, and set this row's Level to HANDED OFF. "
-                "Do not start another." % (who, new.get("name") or "", str(new["id"])[:8], new.get("model") or "default",
+        return ("SUCCESSOR STARTED: %s handed off and started its own successor '%s' [%s] (%s/%s). Record only: "
+                "give it a Sessions row saying \"successor of [%s]\", Level MANAGED, and set this row's Level to "
+                "HANDED OFF. Do not start another."
+                % (who, new.get("name") or "", str(new["id"])[:8], new.get("model") or "default",
                                            new.get("effort") or "default", flag["id"]))
     if flag["kind"] == "blocked":
         return ("BLOCKED: %s ended%s waiting on something, and the Waiting table has no row for it. Answer it, or ask "

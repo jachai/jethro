@@ -47,7 +47,8 @@ RESULT = re.compile(r"^[\W_]*result:\s*(.+)$", re.I | re.M)
 NEEDS = re.compile(r"^[\W_]*needs input:\s*(.+)$", re.I)
 LOOSE = re.compile(r"\b(?:not (?:yet )?(?:done|finished|completed?|verified|tested|pushed|merged|deployed|fixed)|"
                    r"unfinished|incomplete|follow[- ]?ups?|blocked|refus(?:ed|es|al)|declined|denied|could ?not|"
-                   r"couldn['’]t|unable to|failed|left (?:open|undone)|still (?:open|owed|failing|broken)|todo)\b", re.I)
+                   r"couldn['’]t|unable to|failed|left (?:open|undone)|still (?:open|owed|failing|broken)|todo)\b",
+                   re.I)
 REFUSED = re.compile(r"\b(?:I (?:can(?:no|['’])t|won['’]t|will not|am (?:not able|unable))|"
                      r"I['’]m (?:not able|unable)|refus(?:ed?|es|al|ing)|declin(?:ed?|es|ing)|"
                      r"not (?:allowed|permitted|authori[sz]ed)|permission (?:was )?denied)\b", re.I)
@@ -119,7 +120,8 @@ def head_facts(path):
             entrypoint = entrypoint or str(entry.get("entrypoint") or "")
             folder = folder or str(entry.get("cwd") or "")
             if not prompt and entry.get("type") == "user" and not entry.get("isMeta"):
-                prompt = " ".join(" ".join(b.get("text") or "" for b in blocks_of(entry) if b.get("type") == "text").split())
+                texts = (b.get("text") or "" for b in blocks_of(entry) if b.get("type") == "text")
+                prompt = " ".join(" ".join(texts).split())
             if entrypoint and folder and prompt:
                 break
     return entrypoint, folder, prompt
@@ -345,7 +347,8 @@ def mark_reviewed(ledger, ids, me=""):
         hits = [e for e in entries if e["id"].lower().startswith(want)
                 or any(r["id"].lower().startswith(want) for r in e.get("runs", []))] if want else []
         if len(hits) != 1:
-            said.append("Not marked: %s matches %d finished session(s); run `finished` for the list." % (given, len(hits)))
+            said.append("Not marked: %s matches %d finished session(s); run `finished` for the list."
+                        % (given, len(hits)))
             continue
         remember(ledger, hits[0].get("runs") or hits)
         said.append("Reviewed: " + describe(hits[0]))
@@ -370,7 +373,8 @@ def print_finished(ledger, hours=None, reviewed=None, me=""):
 def main(argv=None):
     p = argparse.ArgumentParser(description="Sessions that ended on their own, with nobody managing them.")
     p.add_argument("--ledger", required=True, help="the guide ledger")
-    p.add_argument("--hours", type=float, default=None, help="how far back (default SESSION_GUIDE_FINISHED_HOURS or 24)")
+    p.add_argument("--hours", type=float, default=None,
+                   help="how far back (default SESSION_GUIDE_FINISHED_HOURS or 24)")
     p.add_argument("--reviewed", nargs="*", metavar="ID", default=None,
                    help="mark as looked at: every clean finish, or the listed sessions")
     args = p.parse_args(argv)

@@ -548,7 +548,7 @@ class ReviewFixesTest(ReconcileBase):
         self.assertTrue(context.startswith("Now: "))
         self.assertIn("HANDED OFF: 'atlas plan rewrite (2)'", context)
         self.assertNotIn("too late", context)
-        self.assertIn("the audit check ran past this prompt's time budget", context)
+        self.assertRegex(context, r"the audit( and \w+)? checks? ran past this prompt's time budget")
 
 
 ARTIFACT_ID = "AbCdEfGhIjKlMnOpQrStUv"  # 22 characters, as an artifact id is
@@ -763,7 +763,8 @@ class SuccessorTest(ReconcileBase):
         self.assertEqual(r.stdout.splitlines()[-1], "Now send your guide: HANDED OFF: successor "
                          "'atlas plan rewrite (3)' [e2e2e2e2] started (opus/high)")
         self.assertNotIn("Give it its Sessions row", r.stdout)
-        self.assertNotIn("warning", r.stdout)
+        # the only warning is the stream one: the fixture row is on no open stream
+        self.assertEqual([l for l in r.stdout.splitlines() if l.startswith("warning") and "no open stream" not in l], [])
 
     def test_the_guide_launching_a_successor_keeps_the_row_line(self):
         os.makedirs(os.path.join(self.cfg, "session-guide", "guides"))

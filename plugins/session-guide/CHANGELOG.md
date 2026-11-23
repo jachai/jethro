@@ -38,6 +38,12 @@ with nobody managing it.
   guide starts one only when the launch failed.
 - `launch` denies `AskUserQuestion` by default (`--allow-ask` to keep it).
 
+### Fixed
+
+- Stream icons no longer drop from session titles after a manual rename: `guide_title.py` sync now records the bare
+  title variants in session-titles history, and session-titles 0.1.3 keeps an origin that changed since its first
+  write.
+
 ## [0.1.21] - 2026-11-22
 
 With many sessions on many projects, a title or a question did not say which project it was about. Now each stream has one

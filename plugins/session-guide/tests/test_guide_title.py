@@ -70,7 +70,8 @@ class GuideTitleBase(unittest.TestCase):
                if k not in ("CLAUDE_CODE_SESSION_ID", "SESSION_GUIDE_TITLE", "SESSION_GUIDE_GUIDED_PREFIX",
                             "SESSION_GUIDE_DONE_PREFIX", "SESSION_GUIDE_WATCHED_PREFIX", "SESSION_GUIDE_ACTIVE_PREFIX",
                             "SESSION_GUIDE_NEW_SESSION_MINUTES", "SESSION_GUIDE_SLEEP_HOURS")}
-        env.update(CLAUDE_CONFIG_DIR=self.cfg, HOME=self.cfg, SESSION_GUIDE_GH="0")  # never the network, nor ~/.claude.json
+        env.update(CLAUDE_CONFIG_DIR=self.cfg, HOME=self.cfg, SESSION_GUIDE_GH="0",  # never the network, nor ~/.claude.json
+                   SESSION_GUIDE_FINISHED_HOURS="0")  # the finished paragraph is tested in test_guide_finished
         env.update(extra_env)
         return subprocess.run([sys.executable, SCRIPT] + list(args), input=stdin, capture_output=True, text=True,
                               env=env)
