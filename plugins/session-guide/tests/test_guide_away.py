@@ -237,6 +237,7 @@ class Boundaries(Case):
             json.dump(moved, f)
         title, _ = self.hook("Guide wake")
         self.assertIn("Sessions Manager", title)
+        self.assertIsNone(self.state()["ended"])  # and nothing was written
 
 
 class Hook(Case):
@@ -318,7 +319,10 @@ class Hook(Case):
         self.assertEqual(self.state()["ended_by"], "window")
 
     def test_ask_minutes_treats_an_old_owed_question_as_away(self):
-        r = self.run_script("waiting", "ask", "Which icon for billing?", CLAUDE_CODE_SESSION_ID=GUIDE)
+        self.away("--hours", "1")
+        self.away("end")  # an old, empty window must not make the timed-out decision look like a return
+        r = self.run_script("waiting", "ask", "Which icon for billing?", "--closes", "pr:#12",
+                            CLAUDE_CODE_SESSION_ID=GUIDE)
         self.assertEqual(r.returncode, 0, r.stderr)
         text = self.text().replace(time.strftime(gt.TIME_FORMAT), "2026-01-01 10:00")
         with open(self.ledger, "w") as f:
@@ -329,8 +333,10 @@ class Hook(Case):
         self.assertIn("1 owed question(s) unanswered for over 30 min", on)
         self.assertIn("Which icon for billing?", on)
         self.assertIn("--timed-out", on)
-        r = self.run_script("away", "decide", "Which icon for billing?", "\U0001f3e0", "--reverse", "rename the "
-                            "stream", "--timed-out", "--ledger", self.ledger, SESSION_GUIDE_AWAY_ASK_MINUTES="30")
+        self.assertRegex(on, r"\n- \[[0-9a-f]{6}\] Which icon for billing\?\n")  # the away line drops the tag
+        r = self.run_script("away", "decide", "Which icon for billing? \u00b7 closes: pr:#12", "\U0001f3e0",
+                            "--reverse", "rename the stream", "--timed-out", "--ledger", self.ledger,
+                            SESSION_GUIDE_AWAY_ASK_MINUTES="30")
         self.assertIn("on a question that timed out", r.stdout)
         _, wake = self.hook("Guide wake: read ledger")  # not on a wake: the user may still be away
         self.assertNotIn("the user is back", wake)

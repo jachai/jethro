@@ -96,6 +96,7 @@ def open_rows(state):
 
 
 def save(ledger, state):
+    ledger_lines(ledger)  # an unreadable ledger stops the write before either file changes
     gs.save(path_of(ledger), json.dumps(state, ensure_ascii=False, indent=1) + "\n")
     write_block(ledger, state)
 
@@ -303,6 +304,8 @@ def cmd_decide(args, ledger):
             raise SystemExit("not away (the window is over or was never opened): ask the user instead. Only an owed "
                              "question past SESSION_GUIDE_AWAY_ASK_MINUTES is decided outside it, with --timed-out "
                              "and the question's exact words")
+        if not away_now(state, now) and not open_rows(state):  # a timed-out question: no window to inherit
+            state.update(since=None, until=None, ended=None, ended_by=None)
         old = next((r for r in state["decided"] if same(r["item"], item) and not r.get("reversed_by")), None)
         if old:
             print("already decided as #%d (Decision %s): %s" % (old["n"], old["decision"], old["option"]))
@@ -441,10 +444,15 @@ def late(row, now, minutes):
     return row["owed"] and max(gt.read_time(row["asked"]), gt.read_time(row["remind"])) <= now - minutes * 60
 
 
+def bare(question):
+    """An owed question without the closes: tag its row may carry."""
+    return re.sub(r"\s*\u00b7?\s*\bcloses:.*$", "", question)
+
+
 def timed_out(ledger, question, now):
     """True when `question` is an owed question past SESSION_GUIDE_AWAY_ASK_MINUTES."""
     minutes = ask_minutes()
-    row = gt.waiting_rows(ledger).get(gt.owed_key(question))
+    row = gt.waiting_rows(ledger).get(gt.owed_key(bare(question)))
     return bool(minutes and row and late(row, now, minutes))
 
 
@@ -524,7 +532,7 @@ def context(ledger, prompt=None, event="UserPromptSubmit"):
                     "`away decide \"<question>\" \"<recommended option>\" --reverse \"<how>\" --timed-out`, then "
                     "`unwait <key>`; "
                     "outside it, leave the row. They are listed on return:\n%s"
-                    % (len(overdue), minutes, "\n".join("- [%s] %s" % (gt.row_id(r["session"]), r["what"])
+                    % (len(overdue), minutes, "\n".join("- [%s] %s" % (gt.row_id(r["session"]), bare(r["what"]))
                                                        for r in overdue[:8])), False)
     return None, False
 
