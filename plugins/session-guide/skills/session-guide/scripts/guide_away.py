@@ -54,6 +54,7 @@ LEAVING = re.compile(r"\b(?:going to (?:sleep|bed)|off to (?:sleep|bed)|heading 
 RETURNING = re.compile(r"\b(?:(?:i'?m|i am|we'?re) back\b|back now\b|just got back)", re.I)
 FOR_HOURS = re.compile(r"\b(?:for|in|next|another)\s+(?:about\s+|~)?" + HOURS, re.I)
 MORNING = re.compile(r"\b(?:sleep|bed|good ?night|morning|tomorrow)\b", re.I)
+MAX_HOURS = 72  # a window is bounded: at most three days
 MORNING_AT = 9  # "back in the morning", "going to sleep": the suggested window ends at 09:00
 
 
@@ -224,11 +225,13 @@ def cmd_start(args, ledger):
     now = time.time()
     if (args.hours is None) == (args.until is None):
         raise SystemExit("give --hours N or --until \"YYYY-MM-DD HH:MM\"")
-    if args.hours is not None and args.hours <= 0:
-        raise SystemExit("--hours is a positive number of hours")
+    if args.hours is not None and not 0 < args.hours <= MAX_HOURS:
+        raise SystemExit("--hours is a number of hours, more than 0 and at most %d" % MAX_HOURS)
     until = now + args.hours * 3600 if args.hours is not None else parse_until(args.until)
     if until <= now:
         raise SystemExit("--until is in the past")
+    if until > now + MAX_HOURS * 3600:
+        raise SystemExit("away for at most %d hours" % MAX_HOURS)
     with editing(ledger):
         state = load_for_write(ledger)
         moved = away_now(state, now)
@@ -397,7 +400,10 @@ def cmd_clear(args, ledger):
         if away_now(state):
             raise SystemExit("still away until %s: `away end` first" % stamp(state["until"]))
         held = [r for r in state["held"] if not r.get("done")]
-        for r in held:  # still waiting: an owed question, due now, so it survives the block
+        owed = gt.waiting_rows(ledger)
+        for r in held:  # still waiting: an owed question, due now, so it survives the block (once)
+            if gt.owed_key(bare(r["item"])) in owed:
+                continue
             gt.owed_question(ledger, "%s: %s" % (r["item"].rstrip("."), r["action"]),
                              argparse_ns(hours=None, at=None, closes=None))
         save(ledger, empty())
@@ -510,7 +516,9 @@ def context(ledger, prompt=None, event="UserPromptSubmit"):
             else "questions decided after SESSION_GUIDE_AWAY_ASK_MINUTES")
         return ("session-guide away: the user is back (%s). Your first status reply leads with **Decided while "
                 "you were away** (each row with how to reverse it) and **Waiting for you** (each with its exact "
-                "action), then ONE AskUserQuestion, multi-select, \"Tick any to reverse\", one option per decided row "
+                "action), then, when something was decided, ONE AskUserQuestion, multi-select, \"Tick any to "
+                "reverse\", one "
+                "option per decided row "
                 "(\"Reverse #N: <item>\"; over 4 rows, up to 4 such questions in the call; past 16, list the rest by "
                 "number in your text and wait for the user's answer on them before `away clear`). Ticked: "
                 "`python3 %s away reverse <#>…` (a Decision that strikes the auto one), then do what "

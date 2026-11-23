@@ -116,7 +116,8 @@ class StartAndEnd(Case):
         self.assertAlmostEqual(self.state()["until"], time.time() + 5 * 3600, delta=5)
 
     def test_bad_starts_are_refused(self):
-        for args in ((), ("--hours", "0"), ("--until", "tomorrow"), ("--until", "2020-01-01 10:00"),
+        for args in ((), ("--hours", "0"), ("--hours", "inf"), ("--hours", "nan"), ("--hours", "100"),
+                     ("--until", "tomorrow"), ("--until", "2020-01-01 10:00"),
                      ("--hours", "2", "--until", "2099-01-01 10:00"), ("end", "--hours", "2")):
             r = self.run_script("away", *(list(args) + ["--ledger", self.ledger]))
             self.assertNotEqual(r.returncode, 0, args)
@@ -196,6 +197,14 @@ class DecideAndHold(Case):
         self.assertIn("auto: user away) a: b.", text)
         owed = [r for r in gt.waiting_rows(self.ledger).values() if r["owed"]]
         self.assertEqual([r["what"] for r in owed], ["merge #12: gh pr merge 12"])
+
+    def test_clear_keeps_one_row_for_a_held_owed_question(self):
+        r = self.run_script("waiting", "ask", "Which icon?", CLAUDE_CODE_SESSION_ID=GUIDE)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.away("hold", "Which icon?", "reminders are held", "answer it")
+        self.away("end")
+        self.away("clear")
+        self.assertEqual([r["what"] for r in gt.waiting_rows(self.ledger).values() if r["owed"]], ["Which icon?"])
         self.assertEqual(self.state(), ga.empty())
 
     def test_decisions_section_is_added_when_missing(self):

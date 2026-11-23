@@ -224,7 +224,7 @@ Manager …`.
 
 | Command (`guide_title.py away …`) | What it does |
 |---|---|
-| `--hours N`, `--until "YYYY-MM-DD HH:MM"` | Start the window, or move its end |
+| `--hours N`, `--until "YYYY-MM-DD HH:MM"` | Start the window (at most 72 h), or move its end |
 | `end`, `status` | You are back now; where it stands |
 | `decide "<item>" "<option>" --reverse "<how>"` | A row under "Decided while you were away", and a Decision "auto: user away" |
 | `hold "<item>" "<why>" "<exact action>"` | A row under "Waiting for you": outside the boundary, so it waits for you |
