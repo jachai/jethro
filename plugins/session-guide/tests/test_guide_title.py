@@ -321,6 +321,21 @@ class GuideTitleTest(GuideTitleBase):
         self.assertEqual(self.worker_title("billing lead"), "🟧🟧 (g) billing lead")
         self.assertEqual(read()["origin"], "🟧🟧 (g) billing lead")
 
+    def test_the_bare_names_are_known_to_session_titles_so_a_name_flip_is_not_a_rename(self):
+        """`launch -- --name X` shows the bare name after our prefixed title; the plugin must read it as its own."""
+        read = self.titles_state(origin="billing lead", focus="Waiting on CI", last_set="billing lead · Waiting on CI",
+                                 history=["billing lead · Waiting on CI"])
+        self.run_script("guided", WORKER)
+        state = read()
+        self.assertEqual(state["origin"], "🟧🟧 (g) billing lead")
+        self.assertIn("billing lead", state["history"])
+        self.assertIn("billing lead · Waiting on CI", state["history"])
+        self.assertIn("🟧🟧 (g) billing lead · Waiting on CI", state["history"] + [state["last_set"]])
+        self.assertEqual(len(state["history"]), len(set(state["history"])))
+        self.assertNotIn("", state["history"])
+        self.run_script("guided", WORKER)  # again: nothing is added twice
+        self.assertEqual(read()["history"], state["history"])
+
     def test_guides_and_retired_guides_turn_session_titles_off(self):
         read = self.titles_state(GUIDE, origin="old name")
         self.run_script("mark", self.ledger, "--session", GUIDE)
@@ -766,6 +781,18 @@ class ThroughputTest(GuideTitleBase):
         open(self.ledger, "w").write(text.replace(want[:13], "2020-01-01 09"))
         out = self.run_ok("sleep", "--due", "3")  # hours may follow --due
         self.assertIn("sleeps until " + time.strftime("%Y-%m-%d %H", time.localtime(time.time() + 3 * 3600)), out)
+
+    def test_sleep_due_skips_a_reminder_the_audit_found_likely_done(self):
+        self.run_ok("waiting", self.BILLING, "Merge #142")
+        self.run_ok("waiting", self.SEARCH, "Review the index")
+        with open(os.path.join(os.path.dirname(self.ledger), "audit.json"), "w") as f:
+            json.dump({"quick": {"reminders": {"3fa9c1": "likely done: a later row covers it. Do not ask the user."}}}, f)
+        out = self.run_ok("sleep", "--due")
+        self.assertIn("a1a1a1 sleeps until", out)
+        self.assertNotIn("3fa9c1 sleeps", out)
+        text = open(self.ledger).read()
+        self.assertIn("Merge #142", text)
+        self.assertEqual(self.run_ok("sleep", "--due").count("sleeps until"), 0)  # the covered one is still not put off
 
     def test_the_due_reminder_text_asks_one_tick_question_and_defers_the_rest(self):
         self.run_ok("waiting", self.BILLING, "Merge #142")

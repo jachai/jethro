@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 from typing import Callable, Iterator, Optional
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 GUARD_ENV = "SESSION_TITLES_CHILD"  # set on our own `claude -p` calls so they never retitle themselves
 LOG_MAX_BYTES = 1_000_000
@@ -498,6 +498,7 @@ def on_prompt(hook_in: dict, cfg: dict) -> Optional[str]:
             state["focus"] = state.get("focus") if origin == state.get("origin") else inherited
         state.pop("pending_origin", None)
         state["origin"] = origin or ""
+        stored_origin = state["origin"]
         write_state(session_id, state)
 
     if not origin:
@@ -525,6 +526,10 @@ def on_prompt(hook_in: dict, cfg: dict) -> Optional[str]:
     title = compose(origin, focus, cfg["separator"])
     with session_lock(session_id):
         state = read_state(session_id)
+        if state.get("origin") and state["origin"] != stored_origin:
+            # someone (session-guide's sync) changed it while the model ran: theirs is newer than ours
+            origin = state["origin"]
+            title = compose(origin, focus, cfg["separator"])
         state["origin"] = origin
         if not fast:
             state["focus"] = focus
