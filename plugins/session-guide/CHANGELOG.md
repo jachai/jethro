@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.23] - 2026-11-23
+
 ### Fixed
 
 - `stream table --end-unlisted` no longer stamps today's date on rows already marked "✅ DONE".
