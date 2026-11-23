@@ -215,6 +215,30 @@ out, a stream gets a two-letter tag such as `[TW]`. Icons are added when a row i
 Results, owed-question or Owner cell, whose rows are matched by their text. `SESSION_GUIDE_STREAM_ICONS=0` turns every
 icon off.
 
+### Away mode
+
+When you are not around to answer, the guide takes the recommended option itself, for a window you set, and shows you
+every such choice when you are back. Say "going to sleep" or "afk for 2 hours" and the hook prints the command for the
+guide to run; it never enters away mode on its own. While away the title reads `🟥🟥 💤 until 09:16 · Sessions
+Manager …`.
+
+| Command (`guide_title.py away …`) | What it does |
+|---|---|
+| `--hours N`, `--until "YYYY-MM-DD HH:MM"` | Start the window, or move its end |
+| `end`, `status` | You are back now; where it stands |
+| `decide "<item>" "<option>" --reverse "<how>"` | A row under "Decided while you were away", and a Decision "auto: user away" |
+| `hold "<item>" "<why>" "<exact action>"` | A row under "Waiting for you": outside the boundary, so it waits for you |
+| `reverse <#>… [--note …]`, `done <#>…` | You ticked these to reverse (a Decision strikes the auto one); held rows settled |
+| `clear` | After the return round: the block goes, open held rows become `waiting ask` rows |
+
+Only reversible choices are decided. Merges, prod or staging writes, publishing or sharing to other people, deletes,
+messages to people, money or business-rule changes that reach real data, and anything only you can type are held,
+and so are reminders and owed questions that come due. The window ends at its time, on your first typed prompt (not a
+wake, a cron or a worker's message), or with `away end`; the guide's next status leads with both tables and one
+"Tick any to reverse" question. The state is `away.json` next to the ledger plus the ledger's `## AWAY MODE` block, so
+it survives a guide handoff, and `STATE.md` lists it while it has rows. `SESSION_GUIDE_AWAY_ASK_MINUTES=M` (off by
+default) also treats an owed question left unanswered for M minutes as away for that question.
+
 ## What the guide will and won't do
 
 The guide is **advisory**. It never branches, commits, pushes, merges or edits code: merges stay with you, and

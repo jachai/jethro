@@ -5,7 +5,8 @@ records every such choice, and puts them in front of the user, with how to rever
     guide_title.py away --hours N | --until "YYYY-MM-DD HH:MM"    start (or move) the window
     guide_title.py away end                                       the user is back now
     guide_title.py away status
-    guide_title.py away decide "<item>" "<option taken>" --reverse "<how>"   a row, and a Decision "auto: user away"
+    guide_title.py away decide "<item>" "<option taken>" --reverse "<how>"
+                                                                  a row, and a Decision "auto: user away"
     guide_title.py away hold "<item>" "<why>" "<exact action>"    a row the guide could not decide
     guide_title.py away reverse <#>… [--note "<text>"]            the user ticked these: Decisions that strike the auto ones
     guide_title.py away done <#>…                                 these held rows are settled
@@ -119,6 +120,11 @@ def cell(text):
 
 # --- the ledger block
 
+def ledger_lines(ledger):
+    with open(ledger, encoding="utf-8", errors="replace") as f:
+        return f.read().splitlines(True)
+
+
 def block(state):
     """The `## AWAY MODE` block's lines; [] when there is nothing to show (not away, no rows)."""
     away = away_now(state)
@@ -149,7 +155,7 @@ def block(state):
 
 def write_block(ledger, state):
     """Rewrite (or add, or remove) the ledger's AWAY MODE block from `state`."""
-    lines = open(ledger, encoding="utf-8", errors="replace").read().splitlines(True)
+    lines = ledger_lines(ledger)
     start = next((i for i, l in enumerate(lines) if l.startswith(SECTION)), None)
     if start is not None:
         end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
@@ -168,14 +174,17 @@ DECISION = re.compile(r"^(\d+)\. ")
 
 
 def decisions_span(lines):
-    """(start, end) of the ledger's Decisions section, adding it before Results / Open items when it is missing."""
-    return gt.section_span(lines, "## Decisions", "## Decisions (FINAL unless struck)", "## Results for you")
+    """(start, end) of the ledger's Decisions section; when it is missing, it is added before the first of the
+    sections that follow it in the ledger template."""
+    before = next((h for h in ("## Results for you", "## Waiting on", "## Claims", "## Open items")
+                   if any(l.startswith(h) for l in lines)), "## Open items")
+    return gt.section_span(lines, "## Decisions", "## Decisions (FINAL unless struck)", before)
 
 
 def add_decision(ledger, text, strike=None):
     """Append Decision N (the next number) with `text`; with `strike` (a Decision number), strike that one through as
     "reversed by N". Returns N."""
-    lines = open(ledger, encoding="utf-8", errors="replace").read().splitlines(True)
+    lines = ledger_lines(ledger)
     start, end = decisions_span(lines)
     numbers = [int(m.group(1)) for m in (DECISION.match(l) for l in lines[start + 1:end]) if m]
     number = max(numbers, default=0) + 1
@@ -418,7 +427,8 @@ def typed(prompt):
 
 
 def ask_minutes():
-    """SESSION_GUIDE_AWAY_ASK_MINUTES: an owed question unanswered this long is treated as away (0, the default: off)."""
+    """SESSION_GUIDE_AWAY_ASK_MINUTES: an owed question unanswered this long is treated as away (0, the default,
+    is off)."""
     try:
         return max(0.0, float(os.environ.get("SESSION_GUIDE_AWAY_ASK_MINUTES") or 0))
     except ValueError:
@@ -453,7 +463,7 @@ def context(ledger, prompt=None, event="UserPromptSubmit"):
     if away_now(state, now):
         return ("session-guide away: the user is away until %s (since %s). This overrides every question and dialog "
                 "rule below: no AskUserQuestion, and nothing waits on the user. Each question you would ask: inside "
-                "the boundary (SKILL, Away mode: reversible only), take its recommended option, run `python3 %s away "
+                "the boundary (SKILL §10: reversible only), take its recommended option, run `python3 %s away "
                 "decide \"<item>\" \"<option taken>\" --reverse \"<how>\"`, and act on it (relay it like any "
                 "Decision); outside it (merges, prod/staging writes, publishing or sharing to others, deletes, "
                 "messages to people, money or business rules that reach real data, anything only the user can "
@@ -519,7 +529,8 @@ def add_parser(sub):
     p = sub.add_parser("away", help="away mode: the guide decides reversible things itself and holds the rest")
     p.add_argument("action", nargs="?", choices=("end", "status", "decide", "hold", "reverse", "done", "clear"),
                    help="none: start (or move) the window")
-    p.add_argument("words", nargs="*", help="decide: item, option; hold: item, why, action; reverse / done: row numbers")
+    p.add_argument("words", nargs="*",
+                   help="decide: item, option; hold: item, why, action; reverse / done: row numbers")
     p.add_argument("--hours", type=float, help="away for this many hours")
     p.add_argument("--until", help="away until this local time, YYYY-MM-DD HH:MM")
     p.add_argument("--reverse", help="decide: how to reverse it")
