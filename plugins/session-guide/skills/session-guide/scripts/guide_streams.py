@@ -236,6 +236,8 @@ def assign(ledger, key, session_id, active_ok=False):
         raise SystemExit("%s is closed; closed sessions keep the title they have" % session_id[:8])
     if content is not None and content not in gt.WORKER_MARKERS:
         raise SystemExit("%s is a guide%s; guides get no icon" % (session_id[:8], " (retired)" * (content == gt.RETIRED)))
+    if content is None and not glob.glob(os.path.join(gt.config_dir(), "projects", "*", session_id + ".jsonl")):
+        raise SystemExit("no session with id %s: check the id (peek.py lists them)" % session_id)
     if content not in (gt.GUIDED, gt.WATCHED) and not active_ok:
         raise SystemExit("%s is not managed or watched: it is the user's own window. Ask first; with a yes, pass "
                          "--active-ok" % session_id[:8])
@@ -395,7 +397,7 @@ def table_cells(line):
 
 def end_row(row, where_at, day):
     where = row[where_at] if where_at is not None else ""
-    if where_at is not None and not re.match(r"(?:ended|DONE)\b", where.strip("~* ")):
+    if where_at is not None and not re.match(r"[~*\s\u2705\ufe0f]*(?:ended|DONE)\b", where):
         row[where_at] = "ended %s%s" % (day, "; was: " + where if where not in ("", "—", "-") else "")
 
 

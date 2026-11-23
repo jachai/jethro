@@ -231,9 +231,11 @@ def resolve_session(given):
     sid = (os.environ.get("CLAUDE_CODE_SESSION_ID", "") if given is None else given).strip()
     if not sid:
         raise SystemExit("empty session id" if given is not None else "no session id: pass one")
+    hits = {os.path.basename(p)[:-6] for p in glob.glob(os.path.join(config_dir(), "projects", "*", sid + "*.jsonl"))}
     if len(sid) == 36:
         return sid
-    hits = {os.path.basename(p)[:-6] for p in glob.glob(os.path.join(config_dir(), "projects", "*", sid + "*.jsonl"))}
+    if not hits:
+        raise SystemExit("no session starts with %s: check the id (peek.py lists them)" % sid)
     if len(hits) != 1:
         raise SystemExit("session %s matches %d sessions; pass the full id" % (sid, len(hits)))
     return hits.pop()
