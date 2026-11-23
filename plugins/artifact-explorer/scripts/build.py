@@ -192,6 +192,13 @@ def all_topics(cfg, auto):
     return compile_topics_cfg(cfg) + [t for t in auto if t["name"].lower() not in have]
 
 
+def stub(r):
+    """A row known only from a link (browser history, a transcript read) that the claude.ai list never returned:
+    no title and no owner. Usually a deleted artifact, whose visits were titled "Page not found". Not shown; a later
+    list or a titled visit fills it in and it appears."""
+    return not (r["title"] or "").strip() and r["owned"] is None
+
+
 def collect(data, cfg):
     flt, over = cfg.get("filter", {}), cfg.get("overrides", {})
     rules = compile_rules(data, cfg.get("categories", []))
@@ -205,7 +212,7 @@ def collect(data, cfg):
     for r in con.execute(SQL):
         o = over.get(r["id"], {})
         repos = r["repos"].split("\n") if r["repos"] else []
-        if (o.get("hidden") or r["id"] in exc_ids or (inc and not inc & set(repos)) or exc & set(repos)
+        if (o.get("hidden") or r["id"] in exc_ids or stub(r) or (inc and not inc & set(repos)) or exc & set(repos)
                 or (r["owned"] == 0 and not flt.get("include_shared", True))):
             continue
         desc = o.get("description") or r["description"] or ""

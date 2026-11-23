@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.13] - 2026-11-23
+
+### Added
+- Remove from list: an × on every card and a Remove button next to Open in the table. Removed artifacts are kept in this browser (localStorage); "Removed N" in the toolbar lists them with a Restore button, and Undo appears right after a removal. `[overrides."<id>"] hidden = true` in config.toml still hides one for every browser.
+
+### Fixed
+- An "Untitled" card that opened "Page not found": a link seen only in browser history or a transcript read (usually a deleted artifact) became a row with no title and no owner. Such rows are no longer shown; when the claude.ai list or a titled visit fills one in, it appears.
+
 ## [0.2.12] - 2026-11-19
 
 ### Changed
