@@ -102,10 +102,61 @@ class RemoveTemplateTest(unittest.TestCase):
         t = tpl()
         self.assertIn('td.appendChild(rmBtn(r))', t)  # table: next to Open
         self.assertIn('c.appendChild(rmBtn(r))', t)  # cards
-        self.assertIn('pool(rows, removed, showRm).filter(r => match(r, q))', t)  # chip counts skip removed rows
+        self.assertIn('pool(scope(rows, mineOnly), removed, showRm).filter(r => match(r, q))', t)  # chip counts skip removed rows
         self.assertIn('id="rmtog"', t)
         self.assertIn('id="rmnote"', t)
         self.assertIn('"Undo"', t)
         self.assertIn('"Restore"', t)
         # the view state ("ae-view") never carries the removed list or the Removed toggle
         self.assertNotIn("st.showRm", t)
+
+
+class OwnFlagTest(unittest.TestCase):
+    def test_own_is_strict(self):
+        d = helpers.tmp()
+        con = db.connect(d)
+        db.upsert_artifact(con, A, url=url(A), title="Mine", owned=1)
+        db.upsert_artifact(con, B, url=url(B), title="Shared", owned=0)
+        db.upsert_artifact(con, C, url=url(C), title="Seen in history", desc_status="pending")  # owner unknown
+        con.commit()
+        con.close()
+        got = {r["id"]: (r["own"], r["mine"]) for r in build.collect(d, {})[0]}
+        self.assertEqual(got, {A: (True, True), B: (False, False), C: (False, True)})
+
+
+@unittest.skipUnless(NODE, "node not installed")
+class MineOnlyJsTest(unittest.TestCase):
+    run_js = RemoveJsTest.run_js
+
+    def test_default_on_and_remembered(self):
+        out = self.run_js("""
+const mem = {}, store = {getItem: k => k in mem ? mem[k] : null, setItem: (k, v) => { mem[k] = v; }};
+const first = loadMineOnly(store);
+saveMineOnly(store, false); const off = loadMineOnly(store);
+saveMineOnly(store, true); const on = loadMineOnly(store);
+const broken = {getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); }};
+saveMineOnly(broken, false);
+console.log(JSON.stringify([first, off, on, loadMineOnly(broken), loadMineOnly(null), mem[MINE_KEY]]));
+""")
+        self.assertEqual(out, [True, False, True, True, True, "1"])
+
+    def test_scope_combines_with_removed(self):
+        out = self.run_js("""
+const rows = [{id:"a", own:true}, {id:"b", own:false}, {id:"c", own:true}, {id:"d", own:false}];
+const removed = new Set(["c", "d"]);
+const ids = l => l.map(r => r.id).join("");
+console.log(JSON.stringify([ids(scope(rows, true)), ids(scope(rows, false)),
+  ids(pool(scope(rows, true), removed, false)), ids(pool(scope(rows, true), removed, true)),
+  ids(pool(scope(rows, false), removed, false)), ids(pool(scope(rows, false), removed, true))]));
+""")
+        self.assertEqual(out, ["ac", "abcd", "a", "c", "ab", "cd"])
+
+
+class MineOnlyPageTest(unittest.TestCase):
+    def test_checkbox_checked_by_default_and_wired(self):
+        t = tpl()
+        self.assertIn('<input type="checkbox" id="mine" checked>Mine only', t)
+        self.assertIn("pool(scope(rows, mineOnly), removed, showRm)", t)
+        self.assertIn('$("mine").onchange', t)
+        self.assertIn("saveMineOnly(store, mineOnly)", t)
+        self.assertNotIn("jonathan", t.lower())

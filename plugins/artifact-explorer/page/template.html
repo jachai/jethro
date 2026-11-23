@@ -130,6 +130,8 @@ td a.open{vertical-align:middle}
 .rmtog{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer}
 .rmtog[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .rmtog[hidden]{display:none}
+.mineonly{display:inline-flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;user-select:none}
+.mineonly input{accent-color:var(--accent);margin:0}
 .rmnote{font-size:12.5px;color:var(--muted)}
 .rmnote:empty{display:none}
 .rmnote button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:2px 9px;font:inherit;cursor:pointer;margin-left:4px}
@@ -146,6 +148,7 @@ td a.open{vertical-align:middle}
 <input id="q" type="search" placeholder="Search title, description, repo" aria-label="Search">
 <select id="sortsel" aria-label="Sort cards"></select>
 <div class="seg" role="group" aria-label="View"><button id="vt" aria-pressed="true">Table</button><button id="vc" aria-pressed="false">Cards</button></div>
+<label class="mineonly" id="minelbl"><input type="checkbox" id="mine" checked>Mine only</label>
 <button id="rmtog" class="rmtog" type="button" aria-pressed="false" hidden></button>
 <span id="rmnote" class="rmnote" role="status" aria-live="polite"></span>
 </div>
@@ -220,10 +223,16 @@ function loadRemoved(store){
 }
 function saveRemoved(store, set){ try { if (store) store.setItem(RM_KEY, JSON.stringify(Array.from(set))); } catch(e) {} }
 function pool(list, removed, showRemoved){ return list.filter(r => removed.has(r.id) === !!showRemoved); }
+// Mine only: on by default; the choice is kept in this browser ("ae-mine-only" = "1" / "0").
+const MINE_KEY = "ae-mine-only";
+function loadMineOnly(store){ try { const v = store && store.getItem(MINE_KEY); return v !== "0"; } catch(e) { return true; } }
+function saveMineOnly(store, on){ try { if (store) store.setItem(MINE_KEY, on ? "1" : "0"); } catch(e) {} }
+function scope(list, mineOnly){ return mineOnly ? list.filter(r => r.own) : list; }
 /*REMOVE-END*/
 const store = (() => { try { return window.localStorage; } catch(e) { return null; } })();
 const removed = loadRemoved(store);
 let showRm = false;
+let mineOnly = loadMineOnly(store);
 
 const DAY = 86400;
 function dur(a){
@@ -406,7 +415,7 @@ function rmNote(r){
 function setRemoved(r, on){
  if (on) removed.add(r.id); else removed.delete(r.id);
  saveRemoved(store, removed);
- if (showRm && !rows.some(x => removed.has(x.id))) showRm = false;  // restored the last one: back to the list
+ if (showRm && !scope(rows, mineOnly).some(x => removed.has(x.id))) showRm = false;  // restored the last one: back to the list
  const u = rmNote(on ? r : null);
  render();
  if (u) u.focus();  // the button that was clicked is gone; Undo is the next thing to reach
@@ -458,7 +467,7 @@ function sorted(list){
 const catOK = r => !st.cat || r.category === st.cat;
 const topicOK = r => !st.topics.length || st.topics.some(t => r.topics.indexOf(t) >= 0);  // any-of
 function chips(q){
- const base = pool(rows, removed, showRm).filter(r => match(r, q)), box = $("chips"), tbox = $("tchips");
+ const base = pool(scope(rows, mineOnly), removed, showRm).filter(r => match(r, q)), box = $("chips"), tbox = $("tchips");
  box.textContent = ""; tbox.textContent = "";
  const add = (parent, label, n, on, fn, cat, topic) => {
   const b = el("button", "chip");
@@ -525,7 +534,10 @@ function cards(list){
 
 function render(){
  const list = sorted(chips($("q").value.trim().toLowerCase()));
- const nRm = rows.filter(r => removed.has(r.id)).length, shown = showRm ? nRm : rows.length - nRm;
+ const sc = scope(rows, mineOnly), nRm = sc.filter(r => removed.has(r.id)).length, shown = showRm ? nRm : sc.length - nRm;
+ const others = rows.length - rows.filter(r => r.own).length;
+ $("mine").checked = mineOnly;
+ $("minelbl").title = mineOnly ? (others ? others + " not yours hidden (shared with you, or owner unknown). Uncheck to show them" : "Every artifact here is yours") : "Check to show only your own artifacts";
  $("meta").textContent = list.length + " of " + shown + (showRm ? " removed" : "") + " artifacts";
  const tog = $("rmtog");
  tog.hidden = !nRm;
@@ -538,7 +550,7 @@ function render(){
  $("sortsel").value = st.sort + ":" + st.dir;
  const out = $("out"), parts = splitOlder(list);
  out.textContent = "";
- if (!list.length) out.appendChild(el("div", "empty", shown ? "Nothing matches." : rows.length ? "Every artifact is removed. Removed shows them." : "No artifacts yet. They appear here once you publish or open one."));
+ if (!list.length) out.appendChild(el("div", "empty", shown ? "Nothing matches." : sc.length ? "Every artifact is removed. Removed shows them." : rows.length ? "None of these are yours. Uncheck Mine only to see the ones shared with you." : "No artifacts yet. They appear here once you publish or open one."));
  if (parts.recent.length) out.appendChild(st.view === "cards" ? cards(parts.recent) : table(parts.recent));
  if (parts.older.length) out.appendChild(olderGroup(parts.older));
 }
@@ -599,6 +611,11 @@ sel.onchange = () => { const p = sel.value.split(":"); st.sort = p[0]; st.dir = 
 $("vt").onclick = () => { st.view = "table"; save(); render(); };
 $("vc").onclick = () => { st.view = "cards"; save(); render(); };
 $("q").oninput = render;
+$("mine").onchange = () => {
+ mineOnly = $("mine").checked; saveMineOnly(store, mineOnly);
+ if (showRm && !scope(rows, mineOnly).some(x => removed.has(x.id))) showRm = false;
+ rmNote(null); render();
+};
 $("rmtog").onclick = () => { showRm = !showRm; rmNote(null); render(); };
 updateBadge();
 render();
