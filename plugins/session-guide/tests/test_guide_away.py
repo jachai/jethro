@@ -226,9 +226,17 @@ class Boundaries(Case):
         with open(self.ledger, "ab") as f:
             f.write(b"\xff\xfe broken\n")
         before = open(self.ledger, "rb").read()
-        r = self.run_script("away", "decide", "a", "b", "--reverse", "c", "--ledger", self.ledger)
-        self.assertIn("isn't valid UTF-8", r.stderr)
+        state = open(ga.path_of(self.ledger), "rb").read()
+        for args in (("decide", "a", "b", "--reverse", "c"), ("hold", "a", "b", "c"), ("end",), ("clear",)):
+            r = self.run_script("away", *(list(args) + ["--ledger", self.ledger]))
+            self.assertIn("isn't valid UTF-8", r.stderr, args)
         self.assertEqual(open(self.ledger, "rb").read(), before)
+        self.assertEqual(open(ga.path_of(self.ledger), "rb").read(), state)
+        moved = dict(self.state(), since=time.time() - 7200, until=time.time() - 60)
+        with open(ga.path_of(self.ledger), "w") as f:  # the window has passed; the hook can't end it: it fails open
+            json.dump(moved, f)
+        title, _ = self.hook("Guide wake")
+        self.assertIn("Sessions Manager", title)
 
 
 class Hook(Case):
@@ -324,6 +332,8 @@ class Hook(Case):
         r = self.run_script("away", "decide", "Which icon for billing?", "\U0001f3e0", "--reverse", "rename the "
                             "stream", "--timed-out", "--ledger", self.ledger, SESSION_GUIDE_AWAY_ASK_MINUTES="30")
         self.assertIn("on a question that timed out", r.stdout)
+        _, wake = self.hook("Guide wake: read ledger")  # not on a wake: the user may still be away
+        self.assertNotIn("the user is back", wake)
         _, back = self.hook("hello")  # no window was open: the decision still comes up for keep / reverse
         self.assertIn("the user is back (questions decided after SESSION_GUIDE_AWAY_ASK_MINUTES)", back)
         self.assertIn("Which icon for billing?", back)
@@ -337,6 +347,12 @@ class Hook(Case):
             f.write(text)
         _, on = self.hook("hello", SESSION_GUIDE_AWAY_ASK_MINUTES="30")
         self.assertNotIn("session-guide away", on)
+        r = self.run_script("away", "decide", "Which icon for billing?", "x", "--reverse", "y", "--timed-out",
+                            "--ledger", self.ledger, SESSION_GUIDE_AWAY_ASK_MINUTES="30")
+        self.assertIn("not away", r.stderr)  # deferred, so not timed out
+        r = self.run_script("away", "decide", "no such question", "x", "--reverse", "y", "--timed-out",
+                            "--ledger", self.ledger, SESSION_GUIDE_AWAY_ASK_MINUTES="30")
+        self.assertIn("not away", r.stderr)
 
     def test_state_md_lists_the_block_while_it_has_rows(self):
         self.assertEqual(ga.state_lines(self.ledger), [])

@@ -299,9 +299,10 @@ def cmd_decide(args, ledger):
     now = time.time()
     with editing(ledger):
         state = load_for_write(ledger)
-        if not away_now(state, now) and not (args.timed_out and ask_minutes()):
+        if not away_now(state, now) and not (args.timed_out and timed_out(ledger, item, now)):
             raise SystemExit("not away (the window is over or was never opened): ask the user instead. Only an owed "
-                             "question past SESSION_GUIDE_AWAY_ASK_MINUTES is decided outside it, with --timed-out")
+                             "question past SESSION_GUIDE_AWAY_ASK_MINUTES is decided outside it, with --timed-out "
+                             "and the question's exact words")
         old = next((r for r in state["decided"] if same(r["item"], item) and not r.get("reversed_by")), None)
         if old:
             print("already decided as #%d (Decision %s): %s" % (old["n"], old["decision"], old["option"]))
@@ -435,6 +436,18 @@ def typed(prompt):
     return bool(prompt and prompt.strip()) and not MACHINE.match(prompt)
 
 
+def late(row, now, minutes):
+    """An owed question unanswered `minutes` after it came due (never one deferred to later)."""
+    return row["owed"] and max(gt.read_time(row["asked"]), gt.read_time(row["remind"])) <= now - minutes * 60
+
+
+def timed_out(ledger, question, now):
+    """True when `question` is an owed question past SESSION_GUIDE_AWAY_ASK_MINUTES."""
+    minutes = ask_minutes()
+    row = gt.waiting_rows(ledger).get(gt.owed_key(question))
+    return bool(minutes and row and late(row, now, minutes))
+
+
 def ask_minutes():
     """SESSION_GUIDE_AWAY_ASK_MINUTES: an owed question unanswered this long is treated as away (0, the default,
     is off)."""
@@ -482,7 +495,8 @@ def context(ledger, prompt=None, event="UserPromptSubmit"):
                 % (stamp(state["until"]), stamp(state["since"]), script, script, len(state["decided"]),
                    len([r for r in state["held"] if not r.get("done")])), True)
     decided, held = summary(state)
-    if decided or held:
+    if (decided or held) and (state.get("ended") or (event == "UserPromptSubmit" and typed(prompt))):
+        # timed-out decisions with no window come up on a prompt the user typed, never on a wake
         why = ({"window": "the window ended", "prompt": "they typed a prompt", "end": "`away end`"}.get(
             state.get("ended_by"), "the window ended") + ", " + stamp(state["ended"]) if state.get("ended")
             else "questions decided after SESSION_GUIDE_AWAY_ASK_MINUTES")
@@ -503,16 +517,15 @@ def context(ledger, prompt=None, event="UserPromptSubmit"):
                 "will decide only reversible things and hold the rest." % (script, hint), False)
     minutes = ask_minutes()
     if minutes:
-        late = [r for r in gt.waiting_rows(ledger).values()
-                if r["owed"] and max(gt.read_time(r["asked"]), gt.read_time(r["remind"])) <= now - minutes * 60]
-        if late:
+        overdue = [r for r in gt.waiting_rows(ledger).values() if late(r, now, minutes)]
+        if overdue:
             return ("session-guide away: %d owed question(s) unanswered for over %g min "
                     "(SESSION_GUIDE_AWAY_ASK_MINUTES): treat the user as away for each. Inside the boundary: "
                     "`away decide \"<question>\" \"<recommended option>\" --reverse \"<how>\" --timed-out`, then "
                     "`unwait <key>`; "
                     "outside it, leave the row. They are listed on return:\n%s"
-                    % (len(late), minutes, "\n".join("- [%s] %s" % (gt.row_id(r["session"]), r["what"])
-                                                    for r in late[:8])), False)
+                    % (len(overdue), minutes, "\n".join("- [%s] %s" % (gt.row_id(r["session"]), r["what"])
+                                                       for r in overdue[:8])), False)
     return None, False
 
 
@@ -537,6 +550,8 @@ def cmd_away(args):
         raise SystemExit("--hours and --until go with `away` alone")
     if action in ("start", "end", "status", "clear") and args.words:
         raise SystemExit("`away %s` takes no words" % action)
+    if action != "status":
+        ledger_lines(ledger)  # a ledger that isn't UTF-8 stops every writer before it changes anything
     return {"start": cmd_start, "end": cmd_end, "status": cmd_status, "decide": cmd_decide, "hold": cmd_hold,
             "reverse": cmd_reverse, "done": cmd_done, "clear": cmd_clear}[action](args, ledger)
 

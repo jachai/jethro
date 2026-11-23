@@ -354,7 +354,7 @@ def away_context(ledger, prompt=None, event="UserPromptSubmit"):
     """(the hook's away line or None, away now); (None, False) on any error."""
     try:
         return away_module().context(ledger, prompt, event)
-    except Exception:  # fail open
+    except (Exception, SystemExit):  # fail open, also when a writer refuses an unreadable ledger
         return None, False
 
 
