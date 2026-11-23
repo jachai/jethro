@@ -41,12 +41,17 @@ Guide: 'release guide' [c0ffee12] since 10-27 09:00
 NOW = re.compile(r"^Now: \w{3} \d{4}-\d\d-\d\d \d\d:\d\d .*\(UTC[+-]\d{4}\)\. .*$")
 
 
+IDLE_WORKERS = ("session-guide workers: no MANAGED worker is working right now, so the full interview (up to 4 "
+                "questions a call) holds nobody up.")
+
+
 def without_now(context):
-    """A guide's hook context minus its first line, the clock ("Now: ..."), which every guide prompt carries."""
+    """A guide's hook context minus the lines every guide prompt carries: the clock ("Now: ...") and, when no MANAGED
+    worker is working, the workers line (tests of that line read the hook's text themselves)."""
     lines = context.split("\n")
     if lines and NOW.match(lines[0]):
         lines = lines[1:]
-    return "\n".join(lines)
+    return "\n".join(l for l in lines if l != IDLE_WORKERS)
 
 
 class GuideTitleBase(unittest.TestCase):
@@ -63,8 +68,9 @@ class GuideTitleBase(unittest.TestCase):
     def run_script(self, *args, stdin="", **extra_env):
         env = {k: v for k, v in os.environ.items()
                if k not in ("CLAUDE_CODE_SESSION_ID", "SESSION_GUIDE_TITLE", "SESSION_GUIDE_GUIDED_PREFIX",
-                            "SESSION_GUIDE_DONE_PREFIX", "SESSION_GUIDE_WATCHED_PREFIX", "SESSION_GUIDE_ACTIVE_PREFIX")}
-        env.update(CLAUDE_CONFIG_DIR=self.cfg, SESSION_GUIDE_GH="0")  # never the network
+                            "SESSION_GUIDE_DONE_PREFIX", "SESSION_GUIDE_WATCHED_PREFIX", "SESSION_GUIDE_ACTIVE_PREFIX",
+                            "SESSION_GUIDE_NEW_SESSION_MINUTES", "SESSION_GUIDE_SLEEP_HOURS")}
+        env.update(CLAUDE_CONFIG_DIR=self.cfg, HOME=self.cfg, SESSION_GUIDE_GH="0")  # never the network, nor ~/.claude.json
         env.update(extra_env)
         return subprocess.run([sys.executable, SCRIPT] + list(args), input=stdin, capture_output=True, text=True,
                               env=env)
@@ -90,11 +96,15 @@ class GuideTitleBase(unittest.TestCase):
         self.assertEqual((r.returncode, r.stderr), (0, ""))
         return json.loads(r.stdout)["hookSpecificOutput"]["sessionTitle"] if r.stdout else None
 
-    def transcript(self, session_id, title="", entrypoint="cli", age=0):
+    def transcript(self, session_id, title="", entrypoint="cli", age=0, started=None):
+        """A transcript last written `age` s ago; its first line carries a timestamp when `started` (epoch) is given."""
         path = os.path.join(self.cfg, "projects", "-tmp-repo", session_id + ".jsonl")
         os.makedirs(os.path.dirname(path), exist_ok=True)
+        first = {"type": "user", "entrypoint": entrypoint}
+        if started is not None:
+            first["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(started))
         with open(path, "w") as f:
-            f.write(json.dumps({"type": "user", "entrypoint": entrypoint}) + "\n")
+            f.write(json.dumps(first) + "\n")
             f.write(json.dumps({"type": "custom-title", "customTitle": title}) + "\n")
         os.utime(path, (time.time() - age, time.time() - age))
 
@@ -112,7 +122,7 @@ class GuideTitleTest(GuideTitleBase):
             r = self.hook(event=event)
             self.assertEqual(r.returncode, 0)
             output = json.loads(r.stdout)
-            self.assertRegex(output["hookSpecificOutput"].pop("additionalContext"), NOW)  # the clock, and nothing else
+            self.assertEqual(without_now(output["hookSpecificOutput"].pop("additionalContext")), "")  # the clock only
             self.assertEqual(output, {"hookSpecificOutput": {
                 "hookEventName": event,
                 "sessionTitle": TITLE}})
@@ -370,9 +380,9 @@ class GuideTitleTest(GuideTitleBase):
         self.run_script("done", "33333333-0000-4000-8000-000000000000")
         self.transcript("44444444-0000-4000-8000-000000000000", "new one")
         self.assertEqual(self.guide_title(), "🟥🟥 Sessions Manager · release-2026-10-27 (2 managed · 1 watched · 0 active · 1 new) 🟥🟥")
-        output = json.loads(self.hook().stdout)["hookSpecificOutput"]
+        output = json.loads(self.hook(SESSION_GUIDE_NEW_SESSION_MINUTES="0").stdout)["hookSpecificOutput"]
         self.assertIn("'new one' [44444444]", output["additionalContext"])
-        self.assertIn("AskUserQuestion", output["additionalContext"])
+        self.assertIn("AskUserQuestion", output["additionalContext"])  # no default: the guide asks, as before
         for hidden in ("has a row", "watched row", "too old", "a monitor tick", "closed one", "the guide itself"):
             self.assertNotIn(hidden, output["additionalContext"])
         r = self.run_script("sweep", self.ledger, "--hours", "24", CLAUDE_CODE_SESSION_ID=GUIDE)
@@ -589,6 +599,238 @@ class GuideTitleTest(GuideTitleBase):
         self.assertNotIn("Closable", self.run_script("sweep", CLAUDE_CODE_SESSION_ID=GUIDE).stdout)
 
 
+class ThroughputTest(GuideTitleBase):
+    """0.1.22: fewer dialogs while workers run, bookkeeping defaults, one-call closes."""
+    BILLING = "3fa9c100-0000-4000-8000-000000000000"
+    SEARCH = "a1a1a100-0000-4000-8000-000000000000"
+    SPIKE = "b5c6d700-0000-4000-8000-000000000000"
+
+    def setUp(self):
+        super().setUp()
+        self.keep_open_rows_alive()
+        self.assertEqual(self.run_script("mark", self.ledger, "--session", GUIDE).returncode, 0)
+
+    def run_ok(self, *args, **env):
+        r = self.run_script(*args, **env)
+        self.assertEqual((r.returncode, r.stderr), (0, ""), r.stdout)
+        return r.stdout
+
+    def run_job(self, sid, state="working", alive=True):
+        """A job state for sid and, when alive, a process file naming this very test process as its pid."""
+        os.makedirs(os.path.join(self.cfg, "jobs", sid[:8]), exist_ok=True)
+        with open(os.path.join(self.cfg, "jobs", sid[:8], "state.json"), "w") as f:
+            json.dump({"state": state, "sessionId": sid}, f)
+        if alive:
+            os.makedirs(os.path.join(self.cfg, "sessions"), exist_ok=True)
+            with open(os.path.join(self.cfg, "sessions", sid[:8] + ".json"), "w") as f:
+                json.dump({"sessionId": sid, "pid": os.getpid()}, f)
+
+    def hook_text(self, **env):
+        out = self.hook(**env).stdout
+        return json.loads(out)["hookSpecificOutput"]["additionalContext"]
+
+    # -- section 1: workers working right now
+    def test_the_hook_says_who_is_working_and_how_to_ask_meanwhile(self):
+        self.run_job(self.BILLING)
+        self.run_job(self.SEARCH, alive=False)  # state working, but no process: not working
+        self.run_job(self.SPIKE)  # WATCHED: its reports do not queue the guide
+        text = self.hook_text()
+        self.assertIn("session-guide workers: 1 MANAGED worker(s) working right now (billing export lead [3fa9c1]). "
+                      "Their reports queue while a dialog is open.", text)
+        self.assertIn("ONE question in the call", text)
+        self.assertIn("**Needs you now**", text)
+        self.assertIn("`needs input: <what>`", text)
+        self.assertIn("`waiting ask` row", text)
+        self.assertNotIn("search reindex", text.split("session-guide workers:")[1].split("\n")[0])
+        self.assertNotIn("design spike", text.split("session-guide workers:")[1].split("\n")[0])
+        self.assertNotIn("holds nobody up", text)
+
+    def test_with_nobody_working_the_full_interview_holds_nobody_up(self):
+        self.run_job(self.BILLING, state="done")
+        self.assertIn(IDLE_WORKERS, self.hook_text())
+        self.assertNotIn("working right now (", self.hook_text())
+        self.run_script("done", self.BILLING)  # a closed session never counts as working
+        self.run_job(self.BILLING)
+        self.assertIn(IDLE_WORKERS, self.hook_text())
+
+    def test_the_working_command_prints_each_worker_and_the_hook_sentence(self):
+        self.run_job(self.BILLING)
+        self.run_job(self.SEARCH)
+        out = self.run_ok("working", self.ledger)
+        self.assertIn("Working: billing export lead [3fa9c1]\n", out)
+        self.assertIn("Working: search reindex [a1a1a1]\n", out)
+        self.assertIn("2 MANAGED worker(s) working right now (billing export lead [3fa9c1], search reindex [a1a1a1])", out)
+        os.remove(os.path.join(self.cfg, "jobs", self.BILLING[:8], "state.json"))
+        os.remove(os.path.join(self.cfg, "jobs", self.SEARCH[:8], "state.json"))
+        self.assertEqual(self.run_ok("working", self.ledger), IDLE_WORKERS + "\n")
+
+    def test_the_hook_names_six_workers_at_most(self):
+        rows = "".join("| lead %d [%06x] | MANAGED | x | | | | |\n" % (n, 0xabc000 + n) for n in range(8))
+        open(self.ledger, "w").write(LEDGER.replace("| old lead [c1c1c1]", rows + "| old lead [c1c1c1]"))
+        for n in range(8):
+            sid = "%06x00-0000-4000-8000-000000000000" % (0xabc000 + n)
+            self.transcript(sid)
+            self.run_job(sid)
+        text = self.hook_text()
+        self.assertIn("8 MANAGED worker(s) working right now", text)
+        self.assertIn("lead 5 [abc005], and 2 more)", text)
+        self.assertNotIn("lead 6 [abc006]", text)
+
+    # -- section 2: bookkeeping defaults
+    def sessions_rows(self):
+        text = open(self.ledger).read().split("## Sessions\n")[1].split("\n\n")[0]
+        return [l for l in text.splitlines() if l.startswith("|")]
+
+    def test_sweep_defaults_levels_old_sessions_and_only_names_young_ones(self):
+        old, guided, watched, young, nostamp = ("aa00%dee-0000-4000-8000-000000000000" % n for n in range(51, 56))
+        for sid, title in ((old, "old one"), (guided, "guided one"), (watched, "watched one")):
+            self.transcript(sid, title, started=time.time() - 40 * 60)
+        self.transcript(young, "young one", started=time.time() - 60)
+        self.transcript(nostamp, "no stamp")  # no timestamp: its file's birth, which is now
+        self.run_script("guided", guided)
+        self.run_script("watched", watched)
+        out = self.run_ok("sweep", self.ledger, "--defaults", CLAUDE_CODE_SESSION_ID=GUIDE)
+        self.assertIn("Defaulted: 'old one' [aa0051ee] -> ACTIVE\n", out)
+        self.assertIn("Defaulted: 'guided one' [aa0052ee] -> MANAGED\n", out)
+        self.assertIn("Defaulted: 'watched one' [aa0053ee] -> WATCHED\n", out)
+        self.assertRegex(out, r"New: 'young one' \[aa0054ee\] defaults to ACTIVE at \d\d:\d\d\n")
+        self.assertRegex(out, r"New: 'no stamp' \[aa0055ee\] defaults to ACTIVE at \d\d:\d\d\n")
+        markers = {sid[:8]: open(os.path.join(self.cfg, "session-guide", "guides", sid)).read().strip()
+                   for sid in (old, guided, watched)}
+        self.assertEqual(markers, {"aa0051ee": "active", "aa0052ee": "guided", "aa0053ee": "watched"})
+        self.assertFalse(os.path.exists(os.path.join(self.cfg, "session-guide", "guides", young)))
+        rows = self.sessions_rows()
+        header = rows[0].count("|")
+        mine = {r.split("[")[1][:6]: r for r in rows if "[aa00" in r}
+        self.assertEqual(sorted(mine), ["aa0051", "aa0052", "aa0053"])
+        self.assertEqual({r.count("|") for r in rows}, {header})  # padded to the header's columns
+        self.assertRegex(mine["aa0051"], r"^\| 'old one' \[aa0051\] \| ACTIVE \| default level \d{4}-\d\d-\d\d \d\d:\d\d "
+                                         r"\(no word in 15 min\) \| +\| +\| +\| +\|$")
+        self.assertIn("| MANAGED |", mine["aa0052"])
+        self.assertIn("| WATCHED |", mine["aa0053"])
+        self.assertIn("· 2 new", self.guide_title())  # only the young ones still count
+        again = self.run_ok("sweep", self.ledger, "--defaults", CLAUDE_CODE_SESSION_ID=GUIDE)  # nothing left to default
+        self.assertNotIn("Defaulted", again)
+        self.assertEqual(len(self.sessions_rows()), len(rows))
+
+    def test_sweep_defaults_with_minutes_zero_keeps_the_plain_listing(self):
+        self.transcript("aa0051ee-0000-4000-8000-000000000000", "old one", started=time.time() - 3600)
+        out = self.run_ok("sweep", self.ledger, "--defaults", SESSION_GUIDE_NEW_SESSION_MINUTES="0",
+                          CLAUDE_CODE_SESSION_ID=GUIDE)
+        self.assertEqual(out, "'old one' [aa0051ee], active 0m ago\nNew: 1\n")
+        self.assertNotIn("[aa0051]", open(self.ledger).read())
+        self.assertEqual(self.run_ok("sweep", self.ledger, CLAUDE_CODE_SESSION_ID=GUIDE), out)  # plain sweep unchanged
+
+    def test_the_hook_splits_new_sessions_at_the_default_and_asks_nothing(self):
+        self.transcript("aa0051ee-0000-4000-8000-000000000000", "old one", started=time.time() - 3600)
+        self.transcript("aa0054ee-0000-4000-8000-000000000000", "young one", started=time.time() - 60)
+        text = self.hook_text()
+        old, young = [p for p in text.split("session-guide sweep: ") if "session(s) active" in p]
+        self.assertIn("'old one' [aa0051ee]", old)
+        self.assertNotIn("young one", old)
+        self.assertIn("sweep --defaults`: each gets its default level and a row; tell the user in ONE text line, ask "
+                      "nothing. A level the user names wins.", old)
+        self.assertIn("'young one' [aa0054ee]", young)
+        self.assertRegex(young, r"ACTIVE at \d\d:\d\d")
+        self.assertIn("takes its default level at the time shown unless the user says otherwise: name them in your "
+                      "text, ask nothing.", young)
+        self.assertNotIn("AskUserQuestion (Manage", text)
+        off = self.hook_text(SESSION_GUIDE_NEW_SESSION_MINUTES="0")
+        self.assertIn("AskUserQuestion (Manage / Watch / Leave active / Ignore)", off)
+        self.assertNotIn("sweep --defaults", off)
+
+    def test_sleep_takes_its_hours_from_the_env_or_two(self):
+        self.run_ok("waiting", self.BILLING, "Merge #142")
+        for env, hours in (({}, 2), ({"SESSION_GUIDE_SLEEP_HOURS": "5"}, 5)):
+            out = self.run_ok("sleep", self.BILLING, **env)
+            want = time.strftime("%Y-%m-%d %H", time.localtime(time.time() + hours * 3600))
+            self.assertIn("3fa9c1 sleeps until " + want, out)
+        self.assertNotEqual(self.run_script("sleep").returncode, 0)  # nothing named, no --due
+        self.assertNotEqual(self.run_script("sleep", self.BILLING, "--due").returncode, 0)
+
+    def test_sleep_due_puts_off_every_due_reminder_and_leaves_the_rest(self):
+        self.run_ok("waiting", self.BILLING, "Merge #142")
+        self.run_ok("waiting", "ask", "Which export format?")
+        self.run_ok("waiting", self.SEARCH, "Review the index")
+        self.run_ok("sleep", self.SEARCH, "24")  # asleep already: not due
+        out = self.run_ok("sleep", "--due")
+        want = time.strftime("%Y-%m-%d %H", time.localtime(time.time() + 2 * 3600))
+        self.assertEqual(out.count("sleeps until " + want), 2)
+        self.assertNotIn("a1a1a1 sleeps", out)
+        self.assertEqual(self.hook_text().count("reminder(s) due"), 0)
+        self.assertIn("Asleep until %s" % time.strftime("%Y-%m-%d %H", time.localtime(time.time() + 24 * 3600)),
+                      self.run_ok("settle", self.ledger))
+        self.assertIn("No reminder is due", self.run_ok("sleep", "--due", "3"))
+        self.run_ok("waiting", self.BILLING, "Merge #143")  # a waiting row again: due now (keeps its old sleep)
+        text = open(self.ledger).read()
+        open(self.ledger, "w").write(text.replace(want[:13], "2020-01-01 09"))
+        out = self.run_ok("sleep", "--due", "3")  # hours may follow --due
+        self.assertIn("sleeps until " + time.strftime("%Y-%m-%d %H", time.localtime(time.time() + 3 * 3600)), out)
+
+    def test_the_due_reminder_text_asks_one_tick_question_and_defers_the_rest(self):
+        self.run_ok("waiting", self.BILLING, "Merge #142")
+        text = self.hook_text()
+        self.assertIn('ONE multi-select question for the round ("Tick what is settled")', text)
+        self.assertIn('"Done: <action>"', text)
+        self.assertIn("sleep --due` puts every one of them off by the default, with no second question", text)
+        self.assertIn("Change it / Drop it come as the user's own words", text)
+        self.assertIn("While workers are working, this list goes in your text, not a dialog.", text)
+
+    def test_results_defer_keeps_each_rows_cadence_and_never_writes_a_verdict(self):
+        open(self.ledger, "a").write("\n## Open items\n| Item | Owner |\n|---|---|\n\n## Log (last ~15)\n- x\n")
+        link = "https://claude.ai/artifact/abc123"
+        for name in ("deck slide 4", "review doc", "release note", "closing note"):
+            self.run_ok("result", name, link)
+        self.run_ok("result-answer", "review doc", "not-looked", "--every", "4")
+        self.run_ok("result-answer", "closing note", "satisfied")
+        text = open(self.ledger).read()
+        open(self.ledger, "w").write(text.replace(
+            time.strftime("%Y-%m-%d %H", time.localtime(time.time() + 4 * 3600)), "2020-01-01 09"))  # review doc is due
+        before = open(self.ledger).read()
+        out = self.run_ok("results-defer")
+        after = open(self.ledger).read()
+        for name, every in (("deck slide 4", 1), ("review doc", 4), ("release note", 1)):
+            at = time.strftime("%Y-%m-%d %H", time.localtime(time.time() + every * 3600))
+            self.assertRegex(after, r"\| %s \| %s \| [^|]+ \| [^|]+ \| not looked yet; ask again %s:\d\d \(every %d h\) \|"
+                             % (name, re.escape(link), at, every))
+            self.assertIn(name + ": not looked yet; ask again " + at, out)
+        self.assertIn("| satisfied 20", after)
+        self.assertEqual([l for l in after.splitlines() if "closing note" in l], [l for l in before.splitlines() if "closing note" in l])
+        for verdict in ("change it", "dropped"):
+            self.assertNotIn(verdict, after)
+        self.assertEqual(after.count("satisfied"), 1)  # only the user's own answer
+        self.assertIn("No result is due", self.run_ok("results-defer"))
+
+    def test_the_results_text_defers_what_is_not_ticked(self):
+        open(self.ledger, "a").write("\n## Open items\n| Item | Owner |\n|---|---|\n\n## Log (last ~15)\n- x\n")
+        self.run_ok("result", "deck slide 4", "https://claude.ai/artifact/abc123")
+        text = self.hook_text()
+        self.assertIn('"Satisfied: <deliverable>"', text)
+        self.assertIn("results-defer` asks again at each row's own cadence", text)
+        self.assertIn("only on the user's Satisfied", text)
+
+    def test_done_closable_closes_every_session_with_only_done_rows(self):
+        for sid in (self.BILLING, self.SEARCH):
+            self.run_ok("guided", sid)
+        self.assertIn("Nothing closable", self.run_ok("done", "--closable"))
+        open(self.ledger, "w").write(LEDGER.replace("[3fa9c1] | MANAGED", "[3fa9c1] | DONE"))
+        self.run_ok("waiting", "ask", "Which export format?")
+        out = self.run_ok("done", "--closable")
+        self.assertIn("Closing [3fa9c100]", out)
+        self.assertIn("3fa9c100 is closed", out)
+        self.assertNotIn("a1a1a100", out)
+        self.assertEqual(open(os.path.join(self.cfg, "session-guide", "guides", self.BILLING)).read(), "done\n")
+        self.assertEqual(open(os.path.join(self.cfg, "session-guide", "guides", self.SEARCH)).read(), "guided\n")
+        self.assertIn("Nothing closable", self.run_ok("done", "--closable"))
+        self.assertNotEqual(self.run_script("done", self.SEARCH, "--closable").returncode, 0)
+        self.assertEqual(self.run_ok("done", self.SEARCH).count("is closed"), 1)  # plain done is unchanged
+
+    def test_the_closable_text_names_done_closable(self):
+        self.run_ok("guided", self.BILLING)
+        open(self.ledger, "w").write(LEDGER.replace("[3fa9c1] | MANAGED", "[3fa9c1] | DONE"))
+        self.assertIn("done --closable` to close them all: 3fa9c100", self.hook_text())
+
+
 class SettleTest(GuideTitleBase):
     """Every MANAGED or WATCHED session ends waiting on the user or done, and a reminder can sleep."""
     QUIET = "3fa9c100-0000-4000-8000-000000000000"
@@ -794,7 +1036,9 @@ class ResultsTest(GuideTitleBase):
         self.assertIn("Unanswered result: deck slide 4: pricing (deck lead [3fa9c1]) " + self.LINK, out)
         self.assertTrue(out.endswith("0 unsettled, 0 due, 0 asleep, 1 result(s) unanswered\n"), out)
         self.assertIn("1 finished deliverable(s) have no verdict", self.context())
-        self.assertIn("Satisfied / Change it / Drop it / Haven't looked yet", self.context())
+        self.assertIn('ONE multi-select question ("Tick what is settled", option "Satisfied: <deliverable>")',
+                      self.context())
+        self.assertIn("results-defer", self.context())
         # closing the worker keeps the row: the deliverable, not the session, waits for the answer
         self.assertEqual(self.run_script("done", "3fa9c100-0000-4000-8000-000000000000").returncode, 0)
         self.assertIn("Unanswered result", self.settle())

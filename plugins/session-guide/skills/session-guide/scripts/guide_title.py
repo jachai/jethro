@@ -6,18 +6,23 @@
     python3 guide_title.py retire [<id>] [--to <uds:socket>] [--force | --check]
                                                                it handed over: faded red title, never red again
     python3 guide_title.py guided [<id>]                       a MANAGED worker: orange blocks + "(g) " first
-    python3 guide_title.py launch [--watched] -- <claude args…>
-                                                               start a worker with `claude --bg`, marked guided at once
-                                     [--stream <key> | --successor-of <id>] its stream (project) icon, or the one its
-                                                               predecessor had
+    python3 guide_title.py launch [--watched] [--allow-ask] [--lean] -- <claude args…>
+                                                               start a worker with `claude --bg`, marked guided at once,
+                                                               AskUserQuestion denied (--allow-ask: kept; --lean: also
+                                                               Artifact, Workflow, SendFeedback, ReportFindings)
+                                     [--stream <key> | --successor-of <id>] [--ledger <ledger.md>]
+                                                               its stream (project) icon, or the one its predecessor
+                                                               had; --ledger is the guide's, for a launch by a worker
     python3 guide_title.py stream add | assign | end | list …  streams and their icons (guide_streams.py)
     python3 guide_title.py reconcile [--ledger <ledger.md>]    open rows whose session ended, blocked or handed off
     python3 guide_title.py watched [<id>]                      a WATCHED session: light gray blocks first
     python3 guide_title.py active [<id>]                       running, not managed or watched: blue blocks first
     python3 guide_title.py unguided [<id>]                     no longer managed or watched: the prefix comes off
     python3 guide_title.py unwatched [<id>]                    the same as unguided
-    python3 guide_title.py done [<id>]                         closed: "✅ " before its title, never orange again
-    python3 guide_title.py sweep [<ledger>] [--hours 12]       list recently active sessions the ledger doesn't have
+    python3 guide_title.py done [<id> | --closable]            closed: "✅ " before its title, never orange again
+    python3 guide_title.py sweep [<ledger>] [--hours 12] [--defaults]   list recently active sessions the ledger doesn't
+                                                               have; --defaults gives the old ones their default level
+    python3 guide_title.py working [<ledger>]                  the MANAGED workers working right now
     python3 guide_title.py settle [<ledger>] [--idle-hours 2]  which sessions aren't settled, which reminders are due
     python3 guide_title.py waiting <id> "<what the user does>" it waits on the user: a reminder, due now
     python3 guide_title.py waiting ask "<question>" [--hours N | --at "YYYY-MM-DD HH:MM"]
@@ -25,12 +30,14 @@
                                      [--closes pr:#N | result:<artifact id> | ticket:<ID> | session:<id8>] ...
                                                                (either form) the reminder closes itself when it happens
     python3 guide_title.py claim merge | run | done | list ... merges and commands asked of someone (guide_claims.py)
-    python3 guide_title.py sleep <id> <hours>                  put that reminder off
+    python3 guide_title.py sleep <id> [<hours>] | --due [<hours>]   put that reminder (or every due one) off; the hours
+                                                               default to SESSION_GUIDE_SLEEP_HOURS (2)
     python3 guide_title.py unwait <id>                         it no longer waits on the user: the reminder goes
     python3 guide_title.py result "<deliverable>" <link> [--from "<title [id6]>"]
                                                                a finished deliverable for the user: asks for a verdict
     python3 guide_title.py result-answer "<deliverable>" <satisfied | change | drop | not-looked> [--note "…"]
                                                                [--every <hours>]   the user's verdict (not-looked: ask again)
+    python3 guide_title.py results-defer [--ledger <path>]     every due result: not looked yet, at its own cadence
     python3 guide_title.py followups [<ledger>] [--days 3] [--reviewed]   recent fixes/deployments with no verification
     python3 guide_title.py verification <thing> <result> ["<evidence>"]   record one: proposed, running, verified,
                                                                not-exercised (re-check in 24 h), broken or skipped
@@ -74,6 +81,15 @@ tell a guide-managed session from any other). `claude --bg` picks its own sessio
 --resume of an unknown id fails), so for a new session the marker is written the moment `claude --bg` prints the id,
 while the worker's first model call is still in flight; with `--resume <id>` it is written before the command runs.
 
+A guided worker is launched with AskUserQuestion denied (`--disallowedTools=AskUserQuestion` first in its claude
+arguments, or added as the first value of the --disallowedTools / --disallowed-tools flag already there): a dialog in a
+background worker waits for nobody. `--allow-ask` skips that for a session the user will drive; `--lean` also denies
+Artifact, Workflow, SendFeedback and ReportFindings. A worker may start its own successor: `launch --successor-of <id>
+--ledger <the guide's ledger>` writes <ledger folder>/successors/<new id8>.json (of, id, name, model, effort, by, at)
+and, when the caller is not that ledger's guide, ends with the line "Now send your guide: HANDED OFF: successor ..."
+for it to send; reconcile (guide_reconcile.py) shows a SUCCESSOR STARTED flag from the note until the row exists. It
+warns, and starts anyway, when the prompt names no `uds:` socket or the folder is not one Claude Code trusts.
+
 Every prompt of a live guide starts with "Now: <local date, time and zone>": a guide's own guess of the time drifts.
 
 A guided worker (marker `guided`) keeps its own title with GUIDED_PREFIX in front (override:
@@ -87,7 +103,12 @@ retired guide is never prefixed: all three refuse them, and `mark` replaces thei
 
 sweep lists sessions whose transcript changed in the window and that have no row in the ledger's `## Sessions` table,
 leaving out this session, closed sessions, guides and `claude -p` runs. On every prompt the hook gives a guide that
-list as additionalContext, until each session has a row, so a new session can't slip by unasked.
+list as additionalContext, until each session has a row, so a new session can't slip by unasked. A session that has
+had no word from the user for SESSION_GUIDE_NEW_SESSION_MINUTES (default 15; 0 = ask about every one, as before)
+takes its default level: MANAGED for a guided marker, WATCHED for a watched one, else ACTIVE. `sweep --defaults`
+writes it: the marker (guided and watched kept, else active) and a Sessions row, padded to the table's width.
+The hook also tells a guide how many MANAGED workers are working right now (`working` prints the same): their reports
+queue behind any open dialog, so while one works the guide asks only what blocks someone, one question to a call.
 
 A closed session (marker `done`, from `done <id>`: the guide closed a finished or obsolete worker) gets DONE_PREFIX in
 place of the guided prefix (override: SESSION_GUIDE_DONE_PREFIX), the same way. `guided`, `watched`, `active` and `mark`
@@ -166,6 +187,9 @@ WORKER_MARKERS = (GUIDED, WATCHED, ACTIVE, UNGUIDED)
 DONE = "done"  # marker content for a session the guide closed
 IDLE_HOURS = 2  # a MANAGED or WATCHED session quiet this long has to settle
 SLEEP_HOURS = (1, 2, 8, 12, 24, 48)  # the periods the guide offers; `sleep` takes any positive number
+SLEEP_DEFAULT_HOURS = 2  # `sleep` with no hours (SESSION_GUIDE_SLEEP_HOURS)
+NEW_SESSION_MINUTES = 15  # a session with no row gets its default level after this long (SESSION_GUIDE_NEW_SESSION_MINUTES, 0 = off)
+LEAN_DENIED = ("Artifact", "Workflow", "SendFeedback", "ReportFindings")  # what `launch --lean` denies a worker besides asking
 TIME_FORMAT = "%Y-%m-%d %H:%M"  # Asked and Remind at: local time
 WAITING_TABLE = ["| Session [id6] | What the user needs to do | Asked | Remind at |\n", "|---|---|---|---|\n"]
 OWED = "owed question"  # first cell of a waiting row for a question the guide owes the user, then "[<hash6>]"
@@ -443,14 +467,26 @@ def refresh_audit(ledger, full=False):
         return None
 
 
+def iso_epoch(text):
+    """Epoch of an ISO time such as 2026-11-19T15:59:55.617Z (UTC), or None."""
+    try:
+        return calendar.timegm(time.strptime(text[:19], "%Y-%m-%dT%H:%M:%S"))
+    except ValueError:
+        return None
+
+
 def transcript_facts(path):
-    """(entrypoint, latest title) of a transcript, from its first lines and its last 256 KB."""
-    entrypoint, title = "", ""
+    """(entrypoint, latest title, started) of a transcript, from its first lines and its last 256 KB. `started` is the
+    epoch of the first "timestamp" in its first lines, else the file's birth (ctime where there is none)."""
+    entrypoint, title, started = "", "", None
     with open(path, "rb") as f:
         for _ in range(40):
-            found = re.search(rb'"entrypoint":\s*"([^"]+)"', f.readline())
-            if found:
-                entrypoint = found.group(1).decode(errors="replace")
+            line = f.readline()
+            found = re.search(rb'"entrypoint":\s*"([^"]+)"', line)
+            entrypoint = entrypoint or (found.group(1).decode(errors="replace") if found else "")
+            found = re.search(rb'"timestamp":\s*"([^"]+)"', line)
+            started = started or (iso_epoch(found.group(1).decode(errors="replace")) if found else None)
+            if (entrypoint and started) or not line:
                 break
         f.seek(0, os.SEEK_END)
         f.seek(max(0, f.tell() - 256 * 1024))
@@ -460,11 +496,15 @@ def transcript_facts(path):
                     title = json.loads(line).get("customTitle") or title
                 except ValueError:  # the cut-off first line of the tail
                     pass
-    return entrypoint, title
+    if started is None:
+        stat = os.stat(path)
+        started = getattr(stat, "st_birthtime", None) or stat.st_ctime
+    return entrypoint, title, started
 
 
 def untracked(ledger, session_id="", hours=12):
-    """[{id, age, title}], newest first: recently active sessions with no row in the ledger's ## Sessions table."""
+    """[{id, age, title, started, marker}], newest first: recently active sessions with no row in the ledger's
+    ## Sessions table. `started` is an epoch; `marker` is the session's marker content, or None."""
     known, in_sessions = set(), False
     for line in open(ledger, errors="replace"):
         if line.startswith("## "):
@@ -482,9 +522,9 @@ def untracked(ledger, session_id="", hours=12):
             content = marker_content(sid)
             if content is not None and content not in WORKER_MARKERS:  # closed, retired or a guide
                 continue
-            entrypoint, title = transcript_facts(path)
+            entrypoint, title, started = transcript_facts(path)
             if not entrypoint.startswith("sdk"):  # `claude -p` runs are scripts, not sessions to manage
-                found.append(dict(id=sid, age=age, title=title))
+                found.append(dict(id=sid, age=age, title=title, started=started, marker=content))
         except OSError:  # a transcript removed while we read
             continue
     return sorted(found, key=lambda s: s["age"])
@@ -492,6 +532,84 @@ def untracked(ledger, session_id="", hours=12):
 
 def describe(session):
     return "'%s' [%s], active %dm ago" % (session["title"] or "no title yet", session["id"][:8], session["age"] // 60)
+
+
+def new_session_minutes():
+    """How long a session with no row waits for the user's word before it takes its default level; 0 = never."""
+    try:
+        return max(0.0, float(os.environ.get("SESSION_GUIDE_NEW_SESSION_MINUTES", NEW_SESSION_MINUTES)))
+    except ValueError:
+        return float(NEW_SESSION_MINUTES)
+
+
+def default_level(session):
+    """The Level an unanswered new session takes: MANAGED for a guided marker, WATCHED for watched, else ACTIVE."""
+    return {GUIDED: "MANAGED", WATCHED: "WATCHED"}.get(session["marker"], "ACTIVE")
+
+
+def default_marker(session):
+    """The marker an unanswered new session takes: the one it has when guided or watched, else active."""
+    return session["marker"] if session["marker"] in (GUIDED, WATCHED) else ACTIVE
+
+
+def default_at(session, minutes):
+    return session["started"] + minutes * 60
+
+
+def working_workers(ledger, session_id=""):
+    """[{id, session}] of the MANAGED Sessions rows (not closed, not this session) whose job state is `working` with a
+    live process: workers whose reports queue behind any dialog the guide opens. `session` is the row's first cell."""
+    found, closed = [], closed_ids()
+    for rid, (level, cell) in session_levels(ledger).items():
+        seen = last_write(rid) if level == "MANAGED" and rid not in closed and rid != session_id[:6].lower() else None
+        if seen and job_state(seen[0]) == "working" and session_alive(seen[0]):
+            found.append(dict(id=rid, session=cell))
+    return found
+
+
+def workers_sentence(ledger, working):
+    """The hook's line on the workers running now (and the full-interview line when none is)."""
+    if not working:
+        return ("session-guide workers: no MANAGED worker is working right now, so the full interview (up to 4 "
+                "questions a call) holds nobody up.")
+    named = ", ".join(with_icon(ledger, w["session"]) for w in working[:6])
+    named += ", and %d more" % (len(working) - 6) if len(working) > 6 else ""
+    return ("session-guide workers: %d MANAGED worker(s) working right now (%s). Their reports queue while a dialog is "
+            "open. This turn: act on every worker message and relay first; put only a question that a worker or the "
+            "user's own next step is blocked on in AskUserQuestion, ONE question in the call; every other question "
+            "goes in your text under **Needs you now**, with a last line `needs input: <what>` and a `waiting ask` "
+            "row, and into a dialog once no worker is working." % (len(working), named))
+
+
+def sweep_context(found, minutes):
+    """The hook's sweep paragraphs for the sessions with no row. With `minutes` > 0 the ones past the default are
+    defaulted by `sweep --defaults` and the younger ones only named; with 0 the guide asks about all of them."""
+    if not found:
+        return []
+    script, now = os.path.abspath(__file__), time.time()
+
+    def lines(rows, at=False):
+        shown = ["- " + describe(s) + (", %s at %s" % (default_level(s), time.strftime("%H:%M", time.localtime(
+            default_at(s, minutes)))) if at else "") for s in rows[:8]]
+        return "\n".join(shown + ["- and %d more" % (len(rows) - 8)] * (len(rows) > 8))
+
+    head = "session-guide sweep: %d session(s) active in the last 12 h have no row in the ledger's Sessions table:\n%s\n"
+    if minutes <= 0:
+        return [head % (len(found), lines(found)) +
+                "Run `python3 %s active <id>` on each, then ask about them in this turn with AskUserQuestion (Manage / "
+                "Watch / Leave active / Ignore), and give each a row at the level the user picks." % script]
+    past = [s for s in found if now >= default_at(s, minutes)]
+    young = [s for s in found if s not in past]
+    out = []
+    if past:
+        out.append(head % (len(past), lines(past)) +
+                   "Past the default (%g min): run `python3 %s sweep --defaults`: each gets its default level and a "
+                   "row; tell the user in ONE text line, ask nothing. A level the user names wins." % (minutes, script))
+    if young:
+        out.append(head % (len(young), lines(young, at=True)) +
+                   "Each takes its default level at the time shown unless the user says otherwise: name them in your "
+                   "text, ask nothing.")
+    return out
 
 
 def guide_context(session_id):
@@ -509,6 +627,8 @@ def guide_context(session_id):
     reconciled = reconcile_context(ledger, session_id)
     if reconciled:
         parts.append(reconciled)
+    working = working_workers(ledger, session_id)
+    parts.append(workers_sentence(ledger, working))
     streams = streams_context(ledger)  # small local files
     if streams:
         parts.append(streams)
@@ -522,16 +642,10 @@ def guide_context(session_id):
         parts.append("session-guide sweep: %d closed session(s) still have a running process, so their titles stay "
                      "orange until a prompt reaches them. SendMessage each the CLOSE message: %s"
                      % (len(held), ", ".join(s[:8] for s in held)))
-    if found:
-        lines = ["- " + describe(s) for s in found[:8]] + ["- and %d more" % (len(found) - 8)] * (len(found) > 8)
-        parts.append("session-guide sweep: %d session(s) active in the last 12 h have no row in the ledger's Sessions "
-                     "table:\n%s\n"
-                     "Run `python3 %s active <id>` on each, then ask about them in this turn with AskUserQuestion (Manage / "
-                     "Watch / Leave active / Ignore), and give each a row at the level the user picks."
-                     % (len(found), "\n".join(lines), os.path.abspath(__file__)))
+    parts.extend(sweep_context(found, new_session_minutes()))
     if shut:
         parts.append("session-guide sweep: %d session(s) have only DONE rows in the ledger but are still marked, so "
-                     "their titles stay orange. Run `python3 %s done <id>` on each: %s"
+                     "their titles stay orange. Run `python3 %s done --closable` to close them all: %s"
                      % (len(shut), os.path.abspath(__file__), ", ".join(s[:8] for s in shut)))
     if settling["unsettled"]:
         rows = settling["unsettled"]
@@ -555,21 +669,27 @@ def guide_context(session_id):
                                             "; " + r["note"] if r["note"] else "") for r in rows[:8]]
         lines += ["- and %d more" % (len(rows) - 8)] * (len(rows) > 8)
         parts.append("session-guide settle: %d reminder(s) due:\n%s\n"
-                     "Check each still applies (peek, PR state), then ask with AskUserQuestion, one question each, "
-                     "repeating the full action: Done it / Nothing more to do: close it / Sleep 1, 2 or 8 hours / Sleep 12, "
-                     "24 or 48 hours. A sleep answer gets an immediate second question for the exact period, then `python3 "
-                     "%s sleep <id> <hours>`. Afterwards keep a wake scheduled for the next reminder that `settle` prints: "
-                     "over 60 minutes away, a one-shot CronCreate rather than chained wakeups."
-                     % (len(rows), "\n".join(lines), os.path.abspath(__file__)))
+                     "Check each still applies (peek, PR state). Then ONE multi-select question for the round "
+                     "(\"Tick what is settled\"), one option per item, repeating the full action: \"Done: <action>\". "
+                     "Ticked: verify it, then close the session (`python3 %s done <id>`) or `python3 %s unwait <id>`. "
+                     "Not ticked: `python3 %s sleep --due` puts every one of them off by the default, with no second "
+                     "question. Change it / Drop it come as the user's own words. While workers are working, this list "
+                     "goes in your text, not a dialog. Afterwards keep a wake scheduled for the next reminder that "
+                     "`settle` prints: over 60 minutes away, a one-shot CronCreate rather than chained wakeups."
+                     % (len(rows), "\n".join(lines), os.path.abspath(__file__), os.path.abspath(__file__),
+                        os.path.abspath(__file__)))
     results = results_status(ledger)["due"]
     if results:
         lines = ["- " + describe_result(r, ledger) for r in results[:8]] + ["- and %d more" % (len(results) - 8)] * (len(results) > 8)
         parts.append("session-guide results: %d finished deliverable(s) have no verdict from the user:\n%s\n"
-                     "List each under **Results for you** with its link and one line on the result, then ask with "
-                     "AskUserQuestion, one question each: Satisfied / Change it / Drop it / Haven't looked yet. Record "
-                     "the answer with `python3 %s result-answer \"<deliverable>\" <satisfied|change|drop|not-looked>` "
-                     "(not-looked: ask the cadence, then `--every <hours>`). Its stream isn't DONE, and its loose ends "
-                     "stay open, until the answer is in." % (len(results), "\n".join(lines), os.path.abspath(__file__)))
+                     "List each under **Results for you** with its link and one line on the result. Put them in the "
+                     "round's ONE multi-select question (\"Tick what is settled\", option \"Satisfied: <deliverable>\"). "
+                     "Ticked: `python3 %s result-answer \"<deliverable>\" satisfied`. Not ticked: `python3 %s "
+                     "results-defer` asks again at each row's own cadence (no second question, and no verdict "
+                     "written). Change it / Drop it come as the user's own words: `result-answer ... change|drop`. "
+                     "While workers are working, this list goes in your text, not a dialog. A deliverable is DONE, "
+                     "and its stream's loose ends close, only on the user's Satisfied."
+                     % (len(results), "\n".join(lines), os.path.abspath(__file__), os.path.abspath(__file__)))
     due = followup_due(ledger)
     if due:
         last = last_review(ledger)
@@ -1239,17 +1359,50 @@ def owed_question(ledger, question, args):
     return 0
 
 
+def sleep_hours():
+    """How long `sleep` puts a reminder off when no hours are given: SESSION_GUIDE_SLEEP_HOURS, default 2."""
+    try:
+        hours = float(os.environ.get("SESSION_GUIDE_SLEEP_HOURS", SLEEP_DEFAULT_HOURS))
+    except ValueError:
+        return float(SLEEP_DEFAULT_HOURS)
+    return hours if hours > 0 else float(SLEEP_DEFAULT_HOURS)
+
+
+def sleep_row(ledger, key, row, hours):
+    remind = time.strftime(TIME_FORMAT, time.localtime(time.time() + hours * 3600))
+    write_waiting(ledger, key, [row["session"], row["what"], row["asked"], remind])
+    print("%s sleeps until %s" % (key, remind))
+
+
 def cmd_sleep(args):
     ledger = require_ledger()
-    key = reminder_key(args.session, ledger)
-    if args.hours <= 0:
+    session, hours = args.session, args.hours
+    if args.due and hours is None and session:
+        try:  # `sleep --due 3`: the number lands in the session slot
+            session, hours = None, float(session)
+        except ValueError:
+            pass
+    hours = sleep_hours() if hours is None else hours
+    if hours <= 0:
         raise SystemExit("sleep for a positive number of hours; the guide offers %s" % ", ".join(map(str, SLEEP_HOURS)))
+    if args.due:
+        if session:
+            raise SystemExit("`sleep --due` takes no session: it puts off every due reminder")
+        ask = split_due(settle_status(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))["due"],
+                        reminder_notes(ledger))[0]
+        for row in ask:
+            sleep_row(ledger, row["id"], row, hours)
+        if not ask:
+            print("No reminder is due to put off.")
+        print_next_reminder(ledger)
+        return 0
+    if not session:
+        raise SystemExit("pass the session (or an owed question's key) to put off, or --due for every due reminder")
+    key = reminder_key(session, ledger)
     row = waiting_rows(ledger).get(key)
     if not row:
         raise SystemExit("%s has no reminder; run `waiting` first" % key)
-    remind = time.strftime(TIME_FORMAT, time.localtime(time.time() + args.hours * 3600))
-    write_waiting(ledger, key, [row["session"], row["what"], row["asked"], remind])
-    print("%s sleeps until %s" % (key, remind))
+    sleep_row(ledger, key, row, hours)
     print_next_reminder(ledger)
     return 0
 
@@ -1310,6 +1463,19 @@ def cmd_result_answer(args):
                 "`result` asks again", "drop": "dropped"}[answer]
     write_result(ledger, key, [row["deliverable"], row["link"], row["delivered"], asked, text])
     print("%s: %s; %s" % (row["deliverable"], text, said))
+    return 0
+
+
+def cmd_results_defer(args):
+    """Every due Results row becomes not-looked-yet at its own cadence, as `result-answer <it> not-looked` does. It
+    never writes a verdict: the user's Satisfied / Change / Drop is theirs to give."""
+    ledger = os.path.expanduser(args.ledger or require_ledger())
+    due = results_status(ledger)["due"]
+    for row in due:
+        cmd_result_answer(argparse.Namespace(ledger=ledger, deliverable=row["deliverable"], answer="not-looked",
+                                             every=None, note=None))
+    if not due:
+        print("No result is due.")
     return 0
 
 
@@ -1580,14 +1746,62 @@ def cmd_sweep(args):
     ledger = args.ledger or marker_content(resolve_session(None))
     if not ledger or not os.path.isfile(os.path.expanduser(ledger)):
         raise SystemExit("no ledger: pass its path, or run this from the guide")
-    found = untracked(os.path.expanduser(ledger), os.environ.get("CLAUDE_CODE_SESSION_ID", ""), args.hours)
-    for session in found:
-        print(describe(session))
-    print("New: %d" % len(found))
+    ledger = os.path.expanduser(ledger)
+    found = untracked(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""), args.hours)
+    minutes = new_session_minutes()
+    if args.defaults and minutes > 0:
+        apply_defaults(ledger, found, minutes)
+    else:
+        for session in found:
+            print(describe(session))
+        print("New: %d" % len(found))
     for sid in closable(os.path.expanduser(ledger)):
         print("Closable: [%s] has only DONE rows but is still marked; run `done %s`" % (sid[:8], sid))
     for sid in settle_closed():
         print("Held: [%s] is closed but a process still holds it; SendMessage it the CLOSE message" % sid[:8])
+    return 0
+
+
+SESSIONS_TABLE = ["| Title [id6] | Level | Role / stream | Worktree @ sha | Address | Ctx | Last seen |\n",
+                  "|---|---|---|---|---|---|---|\n"]
+
+
+def sessions_columns(ledger):
+    """How many cells the ## Sessions table's header has (the default table's 7 when there is none)."""
+    inside = False
+    for line in open(ledger, errors="replace"):
+        if line.startswith("## "):
+            inside = line.strip() == "## Sessions"
+        elif inside and line.lstrip().startswith("|"):
+            return len(split_row(line))
+    return len(SESSIONS_TABLE[0].strip().strip("|").split("|"))
+
+
+def apply_defaults(ledger, found, minutes):
+    """`sweep --defaults`: every session with no row that is older than `minutes` gets its default marker (guided and
+    watched are kept) and a Sessions row, padded to the header's width; younger ones are only announced."""
+    width, now, stamp = sessions_columns(ledger), time.time(), time.strftime(TIME_FORMAT)
+    for session in found:
+        level = default_level(session)
+        title = (session["title"] or "no title yet").replace("'", "")
+        if now < default_at(session, minutes):
+            print("New: '%s' [%s] defaults to %s at %s" % (title, session["id"][:8], level, time.strftime(
+                "%H:%M", time.localtime(default_at(session, minutes)))))
+            continue
+        write_marker(session["id"], default_marker(session))
+        note = "default level %s (no word in %g min)" % (stamp, minutes)
+        row = ["'%s' [%s]" % (title, session["id"][:6]), level, note] + [""] * max(0, width - 3)
+        write_row(ledger, "## Sessions", "## Sessions", SESSIONS_TABLE, lambda cells: row_id(cells[0]), session["id"][:6],
+                  row, before="## Decisions")
+        print("Defaulted: '%s' [%s] -> %s" % (title, session["id"][:8], level))
+
+
+def cmd_working(args):
+    ledger = os.path.expanduser(args.ledger or require_ledger())
+    working = working_workers(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
+    for worker in working:
+        print("Working: " + with_icon(ledger, worker["session"]))
+    print(workers_sentence(ledger, working))
     return 0
 
 
@@ -1641,7 +1855,12 @@ def cmd_launch(args):
         extra = extra[1:]
     if not extra:
         raise SystemExit("pass the claude arguments after --, for example: launch -- --model sonnet \"<brief>\"")
-    stream = launch_stream(args)  # first: a wrong key starts nothing
+    ledger = launch_ledger(args)
+    before = resolve_session(args.successor_of) if args.successor_of else None
+    stream = launch_stream(args, ledger, before)  # first: a wrong key starts nothing
+    for warning in launch_warnings(args, extra):
+        print(warning)
+    extra = deny_tools(extra, ([] if args.allow_ask else ["AskUserQuestion"]) + (list(LEAN_DENIED) if args.lean else []))
     command = shlex.split(os.environ.get("SESSION_GUIDE_CLAUDE") or "claude")
     command += [] if "--bg" in extra or "--background" in extra else ["--bg"]
     command += extra
@@ -1674,23 +1893,147 @@ def cmd_launch(args):
         print("launched [%s] but found no full session id for it in 5 s: run `python3 %s %s %s` now"
               % (printed, os.path.abspath(__file__), level, printed))
         return 1
-    print("launched [%s] %s, marked %s the moment it started. Give it its Sessions row now: | <title> [%s] | %s | "
-          "... |" % (sid[:8], sid, level, sid[:6], "WATCHED" if args.watched else "MANAGED"))
+    said = "launched [%s] %s, marked %s the moment it started." % (sid[:8], sid, level)
+    if not before:
+        print("%s Give it its Sessions row now: | <title> [%s] | %s | ... |"
+              % (said, sid[:6], "WATCHED" if args.watched else "MANAGED"))
+        return 0
+    note = write_successor_note(ledger, before, sid, extra)
+    if is_guide_of(ledger):
+        print("%s Give it its Sessions row now: | <title> [%s] | %s | ... |"
+              % (said, sid[:6], "WATCHED" if args.watched else "MANAGED"))
+    else:
+        print(said)
+        print("Now send your guide: HANDED OFF: successor '%s' [%s] started (%s/%s)"
+              % (note["name"], sid[:8], note["model"] or "default", note["effort"] or "default"))
     return 0
 
 
-def launch_stream(args):
+def flag_value(args, *names):
+    """The value after the first of `names` in a claude argument list (`--name x` or `--name=x`), or "". The last
+    argument is the prompt, never a value."""
+    for n, arg in enumerate(args[:-1]):
+        for name in names:
+            if arg == name:
+                return args[n + 1]
+            if arg.startswith(name + "="):
+                return arg[len(name) + 1:]
+    return ""
+
+
+def write_successor_note(ledger, before, sid, claude_args):
+    """<ledger folder>/successors/<new id8>.json: what a guide needs to give the new session its row. Returns it."""
+    note = dict(of=before, id=sid, name=flag_value(claude_args, "--name", "-n"), model=flag_value(claude_args, "--model"),
+                effort=flag_value(claude_args, "--effort"), by=os.environ.get("CLAUDE_CODE_SESSION_ID", ""),
+                at=time.strftime(TIME_FORMAT))
+    folder = os.path.join(os.path.dirname(os.path.abspath(ledger)), "successors")
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, sid[:8] + ".json"), "w") as f:
+        json.dump(note, f, indent=1)
+    return note
+
+
+def is_guide_of(ledger):
+    """True when this session ($CLAUDE_CODE_SESSION_ID) is a live guide marked with `ledger`."""
+    content = marker_content(os.environ.get("CLAUDE_CODE_SESSION_ID") or "-")
+    return bool(content) and content not in WORKER_MARKERS + (RETIRED, DONE) and \
+        os.path.abspath(os.path.expanduser(content)) == os.path.abspath(ledger)
+
+
+def folder_trusted(path):
+    """True / False from Claude Code's config (`projects[<path>].hasTrustDialogAccepted` for the folder or a parent),
+    None when it can't be told (no readable config, or no `projects` in it)."""
+    home = os.environ.get("CLAUDE_CONFIG_DIR")
+    config = os.path.join(home, ".claude.json") if home and os.path.isfile(os.path.join(home, ".claude.json")) \
+        else os.path.expanduser("~/.claude.json")
+    try:
+        with open(config) as f:
+            projects = json.load(f)["projects"]
+        if not isinstance(projects, dict):
+            return None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    here = os.path.abspath(path)
+    while True:
+        entry = projects.get(here)
+        if isinstance(entry, dict) and entry.get("hasTrustDialogAccepted") is True:
+            return True
+        if os.path.dirname(here) == here:
+            return False
+        here = os.path.dirname(here)
+
+
+def launch_warnings(args, claude_args):
+    """Lines to print before a launch starts; never a failure."""
+    found = []
+    if args.successor_of and "uds:" not in claude_args[-1]:
+        found.append("warning: the prompt names no uds: socket, so the successor won't know where to report")
+    if folder_trusted(os.getcwd()) is False:
+        found.append("warning: %s is not a trusted folder; a --bg session started here stops at the trust dialog. "
+                     "Launch from the folder your own session runs in and give the worktree as an absolute path."
+                     % os.getcwd())
+    return found
+
+
+DISALLOWED = ("--disallowedTools", "--disallowed-tools")
+
+
+def deny_tools(claude_args, tools):
+    """`claude_args` with `tools` denied: added as the first value of the first --disallowedTools / --disallowed-tools
+    flag (separate or `=` form, comma or space separated values) when one is there and lacks them, else as one
+    `--disallowedTools=<tools>` token first (the `=` form is a single value, so it can't swallow the prompt)."""
+    args, flags, have = list(claude_args), [], set()
+    for n, arg in enumerate(args):
+        name = arg.split("=", 1)[0]
+        if name not in DISALLOWED:
+            continue
+        flags.append(n)
+        if "=" in arg:
+            values = [arg.split("=", 1)[1]]
+        else:
+            end = next((i for i in range(n + 1, len(args)) if args[i].startswith("-")), len(args))
+            values = args[n + 1:min(end, len(args) - 1)]
+        have.update(v for value in values for v in re.split(r"[,\s]+", value) if v)
+    missing = [t for t in tools if t not in have]
+    if not missing:
+        return args
+    joined = ",".join(missing)
+    if not flags:
+        return ["--disallowedTools=" + joined] + args
+    n = flags[0]
+    if "=" in args[n]:
+        name, value = args[n].split("=", 1)
+        args[n] = "%s=%s" % (name, joined + ("," + value if value else ""))
+    else:
+        args.insert(n + 1, joined)
+    return args
+
+
+def launch_ledger(args):
+    """The guide's ledger for --stream / --successor-of: --ledger, else this guide's own; None for a plain launch."""
+    if not args.stream and not args.successor_of:
+        return None
+    if args.ledger:
+        ledger = os.path.expanduser(args.ledger)
+        if not os.path.isfile(ledger):
+            raise SystemExit("no ledger at %s" % ledger)
+        return ledger
+    ledger = guide_ledger()
+    if ledger is None and args.successor_of:
+        raise SystemExit("pass --ledger <the guide's ledger path from your contract>")
+    return os.path.expanduser(require_ledger())
+
+
+def launch_stream(args, ledger, before=None):
     """(ledger, key) of the stream `launch` puts the worker on, or None. SystemExit when the stream can't be had: nothing
     has started yet. A predecessor on no stream (or on one that ended) gives none, with a line that says so."""
-    if not args.stream and not args.successor_of:
+    if not ledger:
         return None
     streams = streams_module()
     if streams is None:
         raise SystemExit("guide_streams.py can't be loaded; launch without --stream / --successor-of")
-    ledger = os.path.expanduser(require_ledger())
     key = args.stream
     if not key:
-        before = resolve_session(args.successor_of)
         key = streams.stream_key_of(ledger, before)
         found = streams.read(ledger).get(key) if key else None
         if not found or found["state"] != "open":
@@ -1824,7 +2167,20 @@ def settle_closed():
 
 
 def cmd_done(args):
-    sid = resolve_session(args.session)
+    if args.closable:
+        if args.session:
+            raise SystemExit("`done --closable` takes no session: it closes every closable one")
+        shut = closable(require_ledger())
+        for sid in shut:
+            print("Closing [%s]" % sid[:8])
+            close_session(sid)
+        if not shut:
+            print("Nothing closable: no marked session has only DONE rows.")
+        return 0
+    return close_session(resolve_session(args.session))
+
+
+def close_session(sid):
     content = marker_content(sid)
     if content is not None and content not in WORKER_MARKERS + (DONE,):
         raise SystemExit("%s is a %sguide; retire it instead" % (sid[:8], "retired " * (content == RETIRED)))
@@ -1901,6 +2257,11 @@ def main(argv=None):
     launch.add_argument("--watched", action="store_true", help="mark it watched, not guided")
     launch.add_argument("--stream", metavar="KEY", help="the stream (project) it works on: its icon goes into the title")
     launch.add_argument("--successor-of", metavar="ID", help="it takes over from this session, and keeps its stream")
+    launch.add_argument("--ledger", metavar="PATH", help="the guide's ledger, for a launch run by a session that is not "
+                                                         "the guide (--stream, --successor-of)")
+    launch.add_argument("--allow-ask", action="store_true", help="a session the user will drive: keep AskUserQuestion")
+    launch.add_argument("--lean", action="store_true",
+                        help="also deny Artifact, Workflow, SendFeedback and ReportFindings")
     launch.add_argument("claude_args", nargs=argparse.REMAINDER, help="-- then the claude arguments")
     rec = sub.add_parser("reconcile", help="open rows whose session ended, is blocked or handed off; never writes")
     rec.add_argument("--ledger", help="any ledger (default: this guide's)")
@@ -1915,9 +2276,13 @@ def main(argv=None):
     sweep = sub.add_parser("sweep", help="list recently active sessions the ledger has no row for")
     sweep.add_argument("ledger", nargs="?")
     sweep.add_argument("--hours", type=float, default=12)
+    sweep.add_argument("--defaults", action="store_true",
+                       help="give every session past SESSION_GUIDE_NEW_SESSION_MINUTES its default level and a row")
     settle = sub.add_parser("settle", help="list sessions that aren't settled and reminders that are due")
     settle.add_argument("ledger", nargs="?")
     settle.add_argument("--idle-hours", type=float, default=IDLE_HOURS)
+    working = sub.add_parser("working", help="the MANAGED workers working right now")
+    working.add_argument("ledger", nargs="?")
     waiting = sub.add_parser("waiting", help="this session waits on the user: a reminder, due now; or `ask`: a "
                                              "question the guide owes the user")
     waiting.add_argument("session", help="a session id, or `ask` for an owed question")
@@ -1928,8 +2293,9 @@ def main(argv=None):
                          help="repeatable: pr:#N, result:<artifact id>, ticket:<ID> or session:<id8>; the audit closes "
                               "the reminder itself once every one has happened")
     sleep = sub.add_parser("sleep", help="put a session's reminder off")
-    sleep.add_argument("session")
-    sleep.add_argument("hours", type=float)
+    sleep.add_argument("session", nargs="?", help="a session id or owed question's key (not with --due)")
+    sleep.add_argument("hours", nargs="?", type=float, help="default SESSION_GUIDE_SLEEP_HOURS or %g" % SLEEP_DEFAULT_HOURS)
+    sleep.add_argument("--due", action="store_true", help="put off every due reminder that is not likely done")
     unwait = sub.add_parser("unwait", help="it no longer waits on the user: the reminder goes")
     unwait.add_argument("session")
     unguided = sub.add_parser("unguided", help="no longer managed or watched: the prefix comes off")
@@ -1938,6 +2304,7 @@ def main(argv=None):
     unwatched.add_argument("session", nargs="?")
     done = sub.add_parser("done", help='closed: "\u2705 " before its title, never orange, gray, blue or red again')
     done.add_argument("session", nargs="?")
+    done.add_argument("--closable", action="store_true", help="close every session whose rows are all DONE but is still marked")
     follow = sub.add_parser("followups", help="recent fixes and deployments with no verification recorded")
     follow.add_argument("ledger", nargs="?")
     follow.add_argument("--days", type=float, default=FOLLOWUP_DAYS)
@@ -1963,6 +2330,8 @@ def main(argv=None):
     answer.add_argument("--every", type=float, help="not-looked: ask again every this many hours (default %s)"
                                                     % RESULT_HOURS)
     answer.add_argument("--ledger")
+    defer = sub.add_parser("results-defer", help="every due Results row becomes not-looked-yet at its own cadence")
+    defer.add_argument("--ledger")
     claims = claims_module()
     if claims is not None:
         claims.add_parser(sub)
@@ -1977,7 +2346,7 @@ def main(argv=None):
                 "unguided": cmd_unguided, "unwatched": cmd_unguided, "done": cmd_done, "sweep": cmd_sweep,
                 "settle": cmd_settle, "waiting": cmd_waiting, "sleep": cmd_sleep, "unwait": cmd_unwait,
                 "followups": cmd_followups, "verification": cmd_verification, "result": cmd_result,
-                "result-answer": cmd_result_answer, "launch": cmd_launch, "reconcile": cmd_reconcile,
+                "result-answer": cmd_result_answer, "results-defer": cmd_results_defer, "working": cmd_working, "launch": cmd_launch, "reconcile": cmd_reconcile,
                 "claim": lambda a: claims.cmd_claim(a), "stream": lambda a: streams.cmd_stream(a)}
     return commands[args.cmd](args)
 
