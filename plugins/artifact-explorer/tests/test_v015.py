@@ -299,7 +299,7 @@ class Unknowns(unittest.TestCase):
     def test_page_says_unknown_and_untitled(self):
         d = helpers.tmp()
         con = db.connect(d)
-        db.upsert_artifact(con, A, title="  ")
+        db.upsert_artifact(con, A, title="  ", owned=1)  # 0.2.13: with no owner either, it is a hidden stub
         con.commit()
         con.close()
         rows = build.collect(d, {})[0]

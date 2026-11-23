@@ -192,6 +192,13 @@ def all_topics(cfg, auto):
     return compile_topics_cfg(cfg) + [t for t in auto if t["name"].lower() not in have]
 
 
+def stub(r):
+    """A row known only from a link (browser history, a transcript read) that the claude.ai list never returned:
+    no title and no owner. Usually a deleted artifact, whose visits were titled "Page not found". Not shown; a later
+    list or a titled visit fills it in and it appears."""
+    return not (r["title"] or "").strip() and r["owned"] is None
+
+
 def collect(data, cfg):
     flt, over = cfg.get("filter", {}), cfg.get("overrides", {})
     rules = compile_rules(data, cfg.get("categories", []))
@@ -205,7 +212,7 @@ def collect(data, cfg):
     for r in con.execute(SQL):
         o = over.get(r["id"], {})
         repos = r["repos"].split("\n") if r["repos"] else []
-        if (o.get("hidden") or r["id"] in exc_ids or (inc and not inc & set(repos)) or exc & set(repos)
+        if (o.get("hidden") or r["id"] in exc_ids or stub(r) or (inc and not inc & set(repos)) or exc & set(repos)
                 or (r["owned"] == 0 and not flt.get("include_shared", True))):
             continue
         desc = o.get("description") or r["description"] or ""
@@ -227,6 +234,8 @@ def collect(data, cfg):
             "guessed": not (o.get("category") or _known(rules, r["category"]) or _known_kind(rules, r["kind"])),
             "topics": topics, "suggested": suggested,
             "mine": not others,
+            # 0.2.14: "Mine only" keeps rows the claude.ai list says are yours; an unknown owner is not yours
+            "own": r["owned"] == 1,
             "access": access if access in SHARE_LEVELS else "", "other_org": bool(r["other_org"]),
             "revoked": bool(others and r["shared_gone"] is not None), "copy": copy.replace(os.sep, "/"),
             "sharing": sharing_label(r["sharing"]) if r["owned"] == 1 else "",
