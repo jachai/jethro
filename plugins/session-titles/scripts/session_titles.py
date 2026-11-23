@@ -45,7 +45,6 @@ GUARD_ENV = "SESSION_TITLES_CHILD"  # set on our own `claude -p` calls so they n
 LOG_MAX_BYTES = 1_000_000
 STATE_TTL_DAYS = 30
 HISTORY_KEEP = 8
-PINNED_KEEP = 32  # titles another tool (session-guide's sync) vouched for: kept outside the HISTORY_KEEP cap
 
 DEFAULTS = {
     "model": "haiku",
@@ -457,15 +456,9 @@ def resolve_origin(state: dict, current_title: str, cfg: dict) -> Optional[str]:
 
 
 def decoration(state: dict) -> str:
-    """What the stored origin carries in front of a bare title that session-guide's sync pinned (a stream icon, a
-    level prefix such as "🟧🟧 (g) "), or "" when no pinned title is the origin's tail after such a prefix."""
-    origin = state.get("origin") or ""
-    found = ""
-    for bare in state.get("pinned") or []:
-        front = origin[:-len(bare)] if bare and origin.endswith(bare) else ""
-        if front and not front[-1].isalnum() and len(front) > len(found):
-            found = front
-    return found
+    """What session-guide's sync put in front of the origin (a level prefix and stream icon such as "🟧🟧 (g) 🏠 "),
+    or "". The sync records it, so it holds across any number of renames until the next sync."""
+    return state.get("decoration") or ""
 
 
 def remember(state: dict, title: str) -> None:

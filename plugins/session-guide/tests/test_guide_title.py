@@ -335,6 +335,7 @@ class GuideTitleTest(GuideTitleBase):
         self.assertIn("billing lead · Waiting on CI", state["history"])
         self.assertIn("🟧🟧 (g) billing lead · Waiting on CI", state["history"] + [state["last_set"]])
         self.assertIn("billing lead", state["pinned"])  # session-titles keeps these past its 8-title cap
+        self.assertEqual(state["decoration"], "🟧🟧 (g) ")  # what a manual rename keeps in front of the new name
         self.assertEqual(len(state["history"]), len(set(state["history"])))
         self.assertNotIn("", state["history"])
         self.run_script("guided", WORKER)  # again: nothing is added twice

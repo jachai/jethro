@@ -2257,10 +2257,13 @@ def write_marker(session_id, content):
     sync_session_titles(session_id, content)
 
 
+PINNED_KEEP = 32  # bare titles kept in session-titles' state["pinned"], outside its own history cap of 8
+
+
 def pin(state, title):
     """state["pinned"] plus `title`: session-titles keeps these past the cap on its own history of 8 titles."""
     pinned = [t for t in (state.get("pinned") or []) if t != title] + [title]
-    return pinned[-32:]
+    return pinned[-PINNED_KEEP:]
 
 
 def sync_session_titles(session_id, content):
@@ -2287,8 +2290,11 @@ def sync_session_titles(session_id, content):
                     state["last_set"] = last_set
                 # `launch -- --name X` makes Claude Code set the bare name after our prefixed title: that flip must read
                 # as ours, not as a rename the plugin adopts as the origin (and so loses the icon for good)
-                for title in (state["origin"], state.get("last_set") or ""):
+                for n, title in enumerate((state["origin"], state.get("last_set") or "")):
                     bare = worker_title(None, title, "", (icons[0],) + icons[1] + ("\0",))  # "\0": strip with no icons
+                    if n == 0:  # what a manual rename keeps in front of the new name: the prefix and stream icon
+                        front = title[:-len(bare)] if bare and title.endswith(bare) else ""
+                        state["decoration"] = front if front and not front[-1].isalnum() else ""
                     if bare and bare not in (state.get("pinned") or []):
                         if bare not in (state.get("history") or []):
                             state["history"] = (state.get("history") or []) + [bare]

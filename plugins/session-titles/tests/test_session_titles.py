@@ -170,15 +170,27 @@ class OriginTests(Base):
 
     def test_a_new_manual_rename_after_guide_sync_keeps_the_stream_icon(self):
         st.write_state(SID, {"origin": "🟧🟧 (g) billing", "focus": "", "last_set": "🟧🟧 (g) billing",
-                             "history": ["billing", "🟧🟧 (g) billing"], "pinned": ["billing"]})
+                             "history": ["billing", "🟧🟧 (g) billing"], "pinned": ["billing"],
+                             "decoration": "🟧🟧 (g) "})
         self.add_assistant("step one done")
         self.replies("step two")
         self.assertEqual(self.prompt("next", title="docs sprint"), "🟧🟧 (g) docs sprint · step two")
         self.assertEqual(self.state()["origin"], "🟧🟧 (g) docs sprint")
+        self.prompt("again", title="ops sprint")  # a second rename before any new sync keeps it too
+        self.assertEqual(self.state()["origin"], "🟧🟧 (g) ops sprint")
         self.prompt("again", title="🟧🟧 (g) ops")
         self.assertEqual(self.state()["origin"], "🟧🟧 (g) ops")  # no icon twice
 
-    def test_a_rename_with_no_pinned_bare_title_gets_no_decoration(self):
+    def test_a_rename_keeps_only_the_recorded_decoration_not_old_title_words(self):
+        st.write_state(SID, {"origin": "🟧🟧 (g) 🏠 billing lead", "focus": "", "last_set": "🟧🟧 (g) 🏠 billing lead",
+                             "history": ["billing lead"], "pinned": ["lead", "billing lead"],
+                             "decoration": "🟧🟧 (g) 🏠 "})
+        self.add_assistant("step one done")
+        self.replies("step two")
+        self.prompt("next", title="docs")
+        self.assertEqual(self.state()["origin"], "🟧🟧 (g) 🏠 docs")
+
+    def test_a_rename_with_no_recorded_decoration_gets_none(self):
         st.write_state(SID, {"origin": "🟧🟧 (g) billing", "focus": "", "last_set": "🟧🟧 (g) billing",
                              "history": ["🟧🟧 (g) billing"]})
         self.add_assistant("step one done")
