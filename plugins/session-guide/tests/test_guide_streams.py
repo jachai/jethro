@@ -217,6 +217,11 @@ class AssignTest(Case):
         self.stream("assign", "billing", OWN, "--active-ok")
         self.assertEqual(self.title(OWN, "notes"), "🟦🟦 🏠 notes")
 
+    def test_an_unknown_session_id_is_said_so(self):
+        self.billing()
+        self.assertIn("no session with id", self.refused("assign", "billing", "99999999-1234-4567-89ab-cdef01234567"))
+        self.assertIn("no session starts with 9999", self.refused("assign", "billing", "9999"))
+
     def test_guides_closed_sessions_and_ended_streams_refuse(self):
         self.billing()
         self.assertIn("is a guide", self.refused("assign", "billing", GUIDE, "--active-ok"))
@@ -489,6 +494,13 @@ class TableTest(Case):
         before = self.get(self.ledger)
         self.stream("table", "--end-unlisted")
         self.assertEqual(self.get(self.ledger), before)
+
+    def test_end_unlisted_leaves_a_done_row_with_an_icon_alone(self):
+        self.put(self.ledger, LEDGER.replace("| paused |", "| \u2705 DONE 10-29: shipped |", 1))
+        self.stream("add", "billing", "Billing export", "--icon", HOUSE)
+        self.stream("table", "--end-unlisted")
+        self.assertIn("| Old cleanup | \u2705 DONE 10-29: shipped |", self.table())
+        self.assertNotIn("ended %s; was: \u2705" % time.strftime("%Y-%m-%d"), self.table())
 
     def test_a_ledger_with_no_table(self):
         self.put(self.ledger, "# x\n\n" + LEDGER[LEDGER.index("## Sessions"):])

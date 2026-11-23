@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.23] - 2026-11-23
+
+### Fixed
+
+- `stream table --end-unlisted` no longer stamps today's date on rows already marked "✅ DONE".
+- `stream assign` says "no session with id / starting with" for an id that matches no session, instead of calling it the user's own window or "matches 0 sessions".
+
 ## [0.1.22] - 2026-11-23
 
 Across 52 guides and 920 workers, 61% of worker reports reached the guide while its dialog was open (median wait 203 s,
