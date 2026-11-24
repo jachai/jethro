@@ -227,6 +227,8 @@ it, in your session or a successor's, when it is due. A note in the log or a lin
 **The interview.** A question in your text is one the user can miss, and a dialog pauses the guide: worker reports
 queue behind it (61% of reports arrived while a dialog was open; median wait 203 s, p90 49 min, against 11 s when the
 guide was busy without one). So:
+0. **Away mode first.** While the hook says the user is away, there is no interview: decide or hold every question
+   as §10 says.
 1. **Workers first.** Before every `AskUserQuestion`: act on every worker message, send the relays, write the ledger,
    then read the hook's `session-guide workers:` line (or run `guide_title.py working`).
    - None working: the full interview, at most 4 questions per call, as below.
@@ -571,3 +573,24 @@ Guide context: <N>k (hand off at 120k)
 - If you keep memory notes, keep ONE pointer per effort ("<slug> guide ledger: <path>"), updated in place and never
   appended to. The ledger is the state.
 - Skill edits that a worker or you propose go in the interview. Apply them only after the user says yes.
+
+### 10. Away mode (the user is not around to answer)
+- **Enter it only on the user's words.** The hook spots "going to sleep", "I'm away / afk / out for N hours", "back
+  in the morning" and prints the command: `guide_title.py away --hours N` or `--until "YYYY-MM-DD HH:MM"`. Run it,
+  and say in one text line until when. `away status` shows it, `away end` ends it early. The state is `away.json`
+  next to the ledger and the ledger's `## AWAY MODE` block, so it survives a handoff. The title shows "💤 until 09:16".
+- **While away:** no `AskUserQuestion`. Each question you would ask is answered with its recommended option:
+  `away decide "<item>" "<option taken>" --reverse "<how>"` writes the row and a Decision "auto: user away"; relay
+  it like any Decision. Wakes keep their normal cadence.
+- **The boundary:** decide only what can be reversed. Hold, with `away hold "<item>" "<why>" "<exact action>"`:
+  merges, prod or staging writes, publishing or sharing to other people, deletes, messages to people, money or
+  business-rule changes that reach real data, and anything only the user can type. Reminders, verdicts and owed
+  questions that come due are held too, not asked. Tell a worker whose question you held that it is held.
+- **Return:** the window ends at its time, on the user's first typed prompt, or with `away end`. Your first status
+  reply leads with **Decided while you were away** (each row with how to reverse it) and **Waiting for you** (each
+  with its exact action), then ONE multi-select question "Tick any to reverse". Ticked: `away reverse <#>…` (a
+  Decision that strikes the auto one), then do the reversal. Settled held rows: `away done <#>…`. Then `away clear`:
+  the block goes, and held rows still open become `waiting ask` rows.
+- **Optional:** `SESSION_GUIDE_AWAY_ASK_MINUTES=M` (off by default) treats an owed question (`waiting ask`) left
+  unanswered for M minutes after it came due as away for that question: decide it inside the boundary with
+  `away decide … --timed-out`, then `unwait` it. Outside a window, `decide` refuses anything else.

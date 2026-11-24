@@ -93,7 +93,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import guide_title as gt  # noqa: E402
 
-__version__ = "0.1.22"
+__version__ = "0.1.24"
 IDLE_HOURS = 12  # an idle item older than this with no question to the user is nagged about
 AUDIT_HOURS = 12  # the full audit (transcripts too) is due this often
 QUICK_MINUTES = 10  # the hook recomputes the quick audit at most this often
@@ -1153,6 +1153,7 @@ def state_file(ledger, found, state=None):
     out += ["", "## Results with no verdict (%d)" % len(results)]
     out += ["- " + cell(gt.describe_result(r, ledger), 200) for r in results[:12]]
     out += gt.stream_lines(ledger)
+    out += gt.away_lines(ledger)
     if found.get("future"):
         out += ["", "## Ledger lines dated after now (%d): run `date` before writing a time" % len(found["future"])]
         out += ["- L%d %s: %s" % (n, written, cell(text, 120)) for n, written, text in found["future"][:10]]

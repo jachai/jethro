@@ -5,6 +5,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.24] - 2026-11-24
+
+### Added
+
+- Away mode: `guide_title.py away --hours N | --until "<time>"`, `away end | status`, `away decide "<item>"
+  "<option>" --reverse "<how>"`, `away hold "<item>" "<why>" "<action>"`, `away reverse <#>…`, `away done <#>…` and
+  `away clear` (`scripts/guide_away.py`). While the user is away the guide asks nothing: it takes the recommended
+  option for reversible choices (a row and a Decision "auto: user away") and holds the rest (merges, prod/staging
+  writes, publishing, deletes, messages to people, money or business rules on real data, what only the user can type).
+  State is `away.json` next to the ledger and a `## AWAY MODE` block in it (two tables), so it survives a handoff.
+- The hook spots "going to sleep", "afk for N hours", "back in the morning" and prints the `away` command for the
+  guide to run; while away its workers line drops the interview and a `session-guide away:` line gives the rules; the
+  window ends at its time or on the user's first typed prompt, and the hook then lists both tables for the return
+  round ("Tick any to reverse"). The guide's title shows "💤 until HH:MM"; `STATE.md` gets an Away mode section.
+- `SESSION_GUIDE_AWAY_ASK_MINUTES` (off by default): an owed question unanswered that long is treated as away.
+- SKILL §10 Away mode, and a first step in §4 The interview.
+
 ## [0.1.23] - 2026-11-23
 
 ### Fixed
