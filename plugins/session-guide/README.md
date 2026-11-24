@@ -146,7 +146,8 @@ The guide keeps one title, so you can always find it in the agents view:
 ```
 
 `release-guide` is the ledger's slug (its folder name), so two guides, say one per machine over Remote Control, read
-apart. managed, watched and active count the ledger's rows at those levels. new is the count of sessions active in the
+apart. managed, watched and active count the ledger's rows at those levels; an ACTIVE row counts only while its
+session still runs. new is the count of sessions active in the
 last 12 h that have no ledger row yet, counted live on every prompt. "15 idle 4d" appears when the audit (below) finds
 decided work with no worker: how many items, and the oldest one's age. At start the
 guide runs
