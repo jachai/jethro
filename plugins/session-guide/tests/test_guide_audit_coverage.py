@@ -249,7 +249,8 @@ class StrikeTest(CoverageCase):
         listed = {r["key"] for r in found["rows"] + found["hidden"]}
         self.assertFalse({ship, "4e5f60"} & listed)
         self.assertTrue({tidy, keep} <= listed)
-        self.assertEqual(self.one(found, "readme")["age"] // DAY, 4)  # the stamp is not the row's date
+        # the stamp is not the row's date; a bare date is noon, so round: before noon the age is 3 d 23 h
+        self.assertEqual(round(self.one(found, "readme")["age"] / DAY), 4)
         self.assertIn("## Last strike sweep", open(ga.state_paths(self.ledger)[1]).read())
         self.assertIn(ship + " DONE", open(ga.state_paths(self.ledger)[1]).read())
 

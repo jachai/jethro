@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(ROOT, "skills", "session-guide", "scripts", "guide_title.py")
@@ -110,6 +111,16 @@ class GuideTitleBase(unittest.TestCase):
             f.write(json.dumps(first) + "\n")
             f.write(json.dumps({"type": "custom-title", "customTitle": title}) + "\n")
         os.utime(path, (time.time() - age, time.time() - age))
+
+    def run_job(self, sid, state="working", alive=True):
+        """A job state for sid and, when alive, a process file naming this very test process as its pid."""
+        os.makedirs(os.path.join(self.cfg, "jobs", sid[:8]), exist_ok=True)
+        with open(os.path.join(self.cfg, "jobs", sid[:8], "state.json"), "w") as f:
+            json.dump({"state": state, "sessionId": sid}, f)
+        if alive:
+            os.makedirs(os.path.join(self.cfg, "sessions"), exist_ok=True)
+            with open(os.path.join(self.cfg, "sessions", sid[:8] + ".json"), "w") as f:
+                json.dump({"sessionId": sid, "pid": os.getpid()}, f)
 
     def keep_open_rows_alive(self):
         """Give LEDGER's MANAGED and WATCHED rows fresh transcripts, since a row with none has to settle."""
@@ -419,7 +430,42 @@ class GuideTitleTest(GuideTitleBase):
         with open(self.ledger, "a") as f:
             f.write("\n## Sessions\n| new one [444444] | ACTIVE | | | | | |\n")
         self.assertEqual(self.extra_context(), "")
+        self.assertIn("0 active · 0 new", self.guide_title())  # it has a row now, but no process runs it
+        self.run_job(new, state="")  # a live process and no job: an interactive session
         self.assertIn("1 active · 0 new", self.guide_title())
+
+    def test_an_unreadable_process_file_is_skipped_wherever_the_scan_meets_it(self):
+        live, dead = "66666600-0000-4000-8000-000000000000", "77777700-0000-4000-8000-000000000000"
+        self.run_job(live, state="")
+        self.run_job(dead, state="")
+        dead_file = os.path.join(self.cfg, "sessions", dead[:8] + ".json")
+        with open(dead_file, "w") as f:
+            json.dump({"sessionId": dead, "pid": 2 ** 22 + 12345}, f)
+        unreadable = os.path.join(self.cfg, "sessions", "unreadable.json")
+        with open(unreadable, "w") as f:
+            json.dump({"sessionId": dead, "pid": os.getpid()}, f)
+        os.chmod(unreadable, 0)
+        live_file = os.path.join(self.cfg, "sessions", live[:8] + ".json")
+        for order in ([unreadable, live_file, dead_file], [dead_file, unreadable, live_file]):
+            with mock.patch.dict(os.environ, CLAUDE_CONFIG_DIR=self.cfg), mock.patch.object(gt.glob, "glob",
+                                                                                         return_value=order):
+                self.assertEqual(gt.live_session_ids(), {live})
+
+    def test_an_active_row_counts_only_while_its_session_runs(self):
+        self.keep_open_rows_alive()
+        self.run_script("mark", self.ledger, "--session", GUIDE)
+        ended, running, held = ("55555%d00-0000-4000-8000-000000000000" % n for n in range(3))
+        rows = "".join("| %s [%s] | ACTIVE | | | | | |\n" % (n, sid[:6]) for n, sid in
+                       (("ended", ended), ("running", running), ("held", held)))
+        with open(self.ledger, "a") as f:
+            f.write("\n## Sessions\n" + rows + "| no id here | ACTIVE | | | | | |\n")
+        for sid in (ended, running, held):
+            self.transcript(sid, age=20 * 3600)  # old enough that the sweep leaves them out of new
+        self.run_job(running, state="blocked")
+        self.run_job(held, state="done")
+        self.run_job(ended, alive=False)
+        # running (a waiting job still runs) and the row with no id; not ended (no process) nor held (its job is done)
+        self.assertIn("2 managed · 1 watched · 2 active · 0 new", self.guide_title())
 
     def test_workers_and_retired_guides_get_no_sweep(self):
         self.transcript("44444444-0000-4000-8000-000000000000", "new one")
@@ -634,16 +680,6 @@ class ThroughputTest(GuideTitleBase):
         r = self.run_script(*args, **env)
         self.assertEqual((r.returncode, r.stderr), (0, ""), r.stdout)
         return r.stdout
-
-    def run_job(self, sid, state="working", alive=True):
-        """A job state for sid and, when alive, a process file naming this very test process as its pid."""
-        os.makedirs(os.path.join(self.cfg, "jobs", sid[:8]), exist_ok=True)
-        with open(os.path.join(self.cfg, "jobs", sid[:8], "state.json"), "w") as f:
-            json.dump({"state": state, "sessionId": sid}, f)
-        if alive:
-            os.makedirs(os.path.join(self.cfg, "sessions"), exist_ok=True)
-            with open(os.path.join(self.cfg, "sessions", sid[:8] + ".json"), "w") as f:
-                json.dump({"sessionId": sid, "pid": os.getpid()}, f)
 
     def hook_text(self, **env):
         out = self.hook(**env).stdout

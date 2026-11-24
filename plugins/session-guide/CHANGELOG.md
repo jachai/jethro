@@ -22,6 +22,14 @@ All notable changes to this project are documented here. The format is based on
 - `SESSION_GUIDE_AWAY_ASK_MINUTES` (off by default): an owed question unanswered that long is treated as away.
 - SKILL §10 Away mode, and a first step in §4 The interview.
 
+### Fixed
+
+- The guide's title counted an ACTIVE row for ever once its session ended (the guide never closes the user's own
+  sessions), so "6 active" stood where one was running. An ACTIVE row now counts only while a live process holds its
+  session and its job, if it has one, is not done.
+- `test_strike_marks_exactly_the_listed_keys` failed every morning: a bare date reads as noon, so before noon a row
+  four days old was 3 d 23 h. It rounds the age now.
+
 ## [0.1.23] - 2026-11-23
 
 ### Fixed

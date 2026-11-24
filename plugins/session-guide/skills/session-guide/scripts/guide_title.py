@@ -52,7 +52,8 @@ is undone on the next turn:
 
     🟥🟥 Sessions Manager · release-guide (2 managed · 1 watched · 3 active · 1 new) 🟥🟥
 
-managed, watched and active count those rows in the ledger's `## Sessions` table; new is the live count of sessions
+managed, watched and active count those rows in the ledger's `## Sessions` table (active only while the session
+runs: a live process, and a job that is not done); new is the live count of sessions
 active in the last 12 hours with no row there (see sweep). To pick your own format, set SESSION_GUIDE_TITLE (for
 hooks: in settings.json "env") with {managed}, {watched}, {active}, {new} and {tracked} (managed + watched)
 placeholders, {idle_note} (" · 15 idle 4d" when the last audit found decided work with no worker, else empty; or
@@ -264,11 +265,13 @@ def counts(ledger, session_id=""):
 
     managed / watched / active count the Sessions table's rows by Level; new is the live count from untracked();
     tracked is managed + watched. A row whose session is closed (marker `done`) doesn't count, and a session named by
-    several rows counts once, at the topmost row's Level. A row with no [id] always counts.
+    several rows counts once, at the topmost row's Level. A row with no [id] always counts. An ACTIVE row counts only
+    while its session runs: a live process holds it and its job, if it has one, is not `done`. The guide never closes
+    an ACTIVE session (it is not the guide's), so one that ended would otherwise count for ever.
     """
     managed = watched = active = 0
     in_sessions, seen = False, False
-    closed, named = closed_ids(), set()
+    closed, named, live = closed_ids(), set(), None
     for line in open(ledger, errors="replace"):
         if line.startswith("## "):
             in_sessions = line.strip() == "## Sessions"
@@ -286,7 +289,10 @@ def counts(ledger, session_id=""):
         level = cells[1].split()[0] if cells[1] else ""
         managed += level == "MANAGED"
         watched += level == "WATCHED"
-        active += level == "ACTIVE"
+        if level == "ACTIVE":
+            live = live_session_ids() if live is None else live
+            sid = next((s for s in live if s.startswith(rid)), None) if rid else None
+            active += not rid or (sid is not None and job_state(sid) != "done")
     if not seen:
         return None
     idle, oldest = idle_counts(ledger)
@@ -2197,19 +2203,29 @@ def close_rows(ledger, session_id):
     return changed
 
 
-def session_alive(session_id):
-    """True when a running Claude process holds this session (~/.claude/sessions/<pid>.json with a live pid)."""
+def live_session_ids():
+    """The session ids a running Claude process holds (~/.claude/sessions/<pid>.json with a live pid)."""
+    found = set()
     for path in glob.glob(os.path.join(config_dir(), "sessions", "*.json")):
         try:
-            info = json.load(open(path))
-            if info.get("sessionId") == session_id:
-                os.kill(int(info["pid"]), 0)
-                return True
-        except PermissionError:
-            return True  # the process exists, it is just not ours
-        except (OSError, ValueError, KeyError, TypeError):
+            with open(path) as f:
+                info = json.load(f)
+            sid, pid = info["sessionId"], int(info["pid"])
+        except (OSError, ValueError, KeyError, TypeError):  # unreadable, half written or not a process file
             continue
-    return False
+        try:
+            os.kill(pid, 0)
+        except PermissionError:
+            pass  # the process exists, it is just not ours
+        except OSError:
+            continue
+        found.add(sid)
+    return found
+
+
+def session_alive(session_id):
+    """True when a running Claude process holds this session."""
+    return session_id in live_session_ids()
 
 
 def retitle_stopped_job(session_id, content=DONE):
