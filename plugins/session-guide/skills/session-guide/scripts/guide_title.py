@@ -367,12 +367,19 @@ def needs_module():
         return None
 
 
-def needs_sentence(ledger, prompt=None, count=False):
-    """The workers line's 'open the interview now' part: overdue needs-input items (counting this turn when `count`)
-    or a typed prompt that asks for the interview; "" on any error (fail open)."""
+def needs_rows(ledger, session_id="", settling=None):
+    """The due Waiting rows the guide would ask about: settle_status's due rows of open sessions and owed questions
+    (`settling` when the caller has it), without the ones a later ledger row already covers (split_due)."""
+    settling = settling or settle_status(ledger, session_id)
+    return split_due(settling["due"], reminder_notes(ledger))[0]
+
+
+def needs_sentence(ledger, rows, prompt=None, count=False):
+    """The workers line's 'open the interview now' part: overdue needs-input items among `rows` (needs_rows; counting
+    this turn when `count`) or a typed prompt that asks for the interview; "" on any error (fail open)."""
     try:
         needs = needs_module()
-        items = needs.tick(ledger) if count else needs.overdue(ledger)
+        items = needs.tick(ledger, rows) if count else needs.overdue(ledger, rows)
         return needs.sentence(items, needs.asked_for(prompt))
     except (Exception, SystemExit):
         return ""
@@ -619,6 +626,14 @@ def describe(session):
         session["title"] or "no title yet", session["id"][:8], session["age"] // 60, note)
 
 
+def env_number(name, default):
+    """A non-negative number from the environment variable `name`, or `default` when it is unset or not a number."""
+    try:
+        return max(0.0, float(os.environ.get(name, default)))
+    except ValueError:
+        return float(default)
+
+
 def new_session_minutes():
     """How long a session with no row waits for the user's word before it takes its default level; 0 = never."""
     try:
@@ -727,8 +742,8 @@ def guide_context(session_id, prompt=None, event="UserPromptSubmit"):
     if reconciled:
         parts.append(reconciled)
     working = working_workers(ledger, session_id)
-    needs = needs_sentence(ledger, prompt, count=event == "UserPromptSubmit") if working and not away_now else ""
-    parts.append(workers_sentence(ledger, working, away_now, needs))
+    parts.append(workers_sentence(ledger, working, away_now))
+    workers_at = len(parts) - 1  # it gains the needs-input part once the audit has settled the due reminders
     streams = streams_context(ledger)  # small local files
     if streams:
         parts.append(streams)
@@ -738,6 +753,9 @@ def guide_context(session_id, prompt=None, event="UserPromptSubmit"):
     audit = in_time(audit_context, ledger, late=late, name="audit")
     found, shut, held = untracked(ledger, session_id), closable(ledger), settle_closed()
     settling = settle_status(ledger, session_id)
+    if working and not away_now:
+        parts[workers_at] = workers_sentence(ledger, working, needs=needs_sentence(
+            ledger, needs_rows(ledger, settling=settling), prompt, count=event == "UserPromptSubmit"))
     if held:
         parts.append("session-guide sweep: %d closed session(s) still have a running process, so their titles stay "
                      "orange until a prompt reaches them. SendMessage each the CLOSE message: %s"
@@ -1920,7 +1938,10 @@ def cmd_working(args):
     working = working_workers(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
     for worker in working:
         print("Working: " + with_icon(ledger, worker["session"]))
-    print(workers_sentence(ledger, working, needs=needs_sentence(ledger) if working else ""))
+    away = bool(away_module() and away_module().away_now(away_module().read(ledger)))
+    needs = needs_sentence(ledger, needs_rows(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))) \
+        if working and not away else ""
+    print(workers_sentence(ledger, working, away, needs))
     return 0
 
 

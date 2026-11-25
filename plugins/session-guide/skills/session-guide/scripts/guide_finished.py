@@ -59,15 +59,8 @@ NEGATED = re.compile(r"\b(?:no|not|nothing|none|never|without|zero|0)\W+(?:\w+\W
 LINK = re.compile(r"https?://[^\s)>\]\"'`]+")
 
 
-def number(name, default):
-    try:
-        return max(0.0, float(os.environ.get(name, default)))
-    except ValueError:
-        return float(default)
-
-
 def finished_hours():
-    return number("SESSION_GUIDE_FINISHED_HOURS", FINISHED_HOURS)
+    return gt.env_number("SESSION_GUIDE_FINISHED_HOURS", FINISHED_HOURS)
 
 
 def reviewed_path(ledger):
@@ -253,7 +246,7 @@ def scan(ledger, me="", hours=None, now=None, record=True):
     out = dict(sessions=[], jobs=[])
     if hours <= 0:
         return out
-    quiet = max(gr.default_grace(), number("SESSION_GUIDE_FINISHED_QUIET_MINUTES", QUIET_MINUTES)) * 60
+    quiet = max(gr.default_grace(), gt.env_number("SESSION_GUIDE_FINISHED_QUIET_MINUTES", QUIET_MINUTES)) * 60
     levels, marks, groups, fine = gt.session_levels(ledger), read_reviewed(ledger), {}, []
     for path in glob.glob(os.path.join(gt.config_dir(), "projects", "*", "*.jsonl")):
         try:

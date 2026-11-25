@@ -15,9 +15,10 @@ Either one makes the hook's workers line say "open the interview now": drain and
 with the items, up to 4 questions a call, rounds until none is left, even though workers are working.
 
 A turn is a UserPromptSubmit that reaches the guide (a typed prompt, a wake, a worker message): each one is a turn on
-which the item was listed and not answered. The counts live in <ledger dir>/needs-input.json, by Waiting row key:
-an item that is answered (`unwait`), put off (`sleep`, so not due) or decided is dropped, and counts from zero if it
-comes due again. Readers fail open: an unreadable file counts as empty. Python 3 stdlib only.
+which the item was listed and not answered. Only the due rows the guide would ask about count: open
+sessions' reminders and owed questions, not the ones a later ledger row already covers. The counts live in
+<ledger dir>/needs-input.json, by Waiting row key with the row's Asked and Remind at: an item that is answered
+(`unwait`), put off (`sleep`, so not due, and a new Remind at) or written again starts from zero. Readers fail open: an unreadable file counts as empty. Python 3 stdlib only.
 """
 import json
 import os
@@ -36,17 +37,10 @@ ASK_ME = re.compile(r"\b(?:interview me|(?:open|start|run|do|begin) (?:the|an|yo
                     r"(?:items?|questions?))|ask me about (?:the )?needs[- ]?input)\b", re.I)
 
 
-def number(name, default):
-    try:
-        return max(0.0, float(os.environ.get(name, default)))
-    except ValueError:
-        return float(default)
-
-
 def limits():
     """(turns, minutes): SESSION_GUIDE_INTERVIEW_TURNS and SESSION_GUIDE_INTERVIEW_MINUTES; 0 turns one off."""
-    return number("SESSION_GUIDE_INTERVIEW_TURNS", INTERVIEW_TURNS), number("SESSION_GUIDE_INTERVIEW_MINUTES",
-                                                                           INTERVIEW_MINUTES)
+    return (gt.env_number("SESSION_GUIDE_INTERVIEW_TURNS", INTERVIEW_TURNS),
+            gt.env_number("SESSION_GUIDE_INTERVIEW_MINUTES", INTERVIEW_MINUTES))
 
 
 def path_of(ledger):
@@ -54,7 +48,7 @@ def path_of(ledger):
 
 
 def read(ledger):
-    """{key: {first, turns}}; {} when the file is missing or isn't one."""
+    """{key: {first, turns, row}}; {} when the file is missing or isn't one."""
     try:
         with open(path_of(ledger), encoding="utf-8") as f:
             found = json.load(f)
@@ -66,9 +60,9 @@ def read(ledger):
             and isinstance(v.get("turns"), int)}
 
 
-def due_items(ledger, now):
-    """{key: what} of the Waiting rows that are due now: the needs-input items the guide lists in its text."""
-    return {key: row["what"] for key, row in gt.waiting_rows(ledger).items() if gt.read_time(row["remind"]) <= now}
+def signature(row):
+    """A row's Asked and Remind at: a snooze (new Remind at) or a row written again (new Asked) starts a new count."""
+    return "%s|%s" % (row.get("asked", ""), row.get("remind", ""))
 
 
 def asked_for(prompt):
@@ -83,35 +77,40 @@ def is_overdue(entry, turns, minutes, now):
     return bool((turns and entry["turns"] >= turns) or (minutes and now - entry["first"] >= minutes * 60))
 
 
-def tick(ledger, now=None):
-    """One guide turn while workers work: count every due item, forget the ones no longer due, and return
-    [(key, what)] of the overdue ones, oldest first. Nothing is written when the rule is off or nothing changes."""
-    now = time.time() if now is None else now
+def late_items(rows, seen, now):
+    """[(key, what)] of the `rows` whose counts in `seen` are overdue, oldest first."""
     turns, minutes = limits()
-    if not turns and not minutes:
+    late = [r for r in rows if r["id"] in seen and seen[r["id"]].get("row") == signature(r)
+            and is_overdue(seen[r["id"]], turns, minutes, now)]
+    return [(r["id"], r["what"]) for r in sorted(late, key=lambda r: seen[r["id"]]["first"])]
+
+
+def tick(ledger, rows, now=None):
+    """One guide turn while workers work. `rows` are the due Waiting rows the guide would ask about
+    (guide_title.needs_rows): count each, forget the rest, and return [(key, what)] of the overdue ones. The file is
+    written only when the rule is on and the counts change."""
+    now = time.time() if now is None else now
+    if not any(limits()):
         return []
-    due = due_items(ledger, now)
     path = path_of(ledger)
-    if not due and not os.path.exists(path):
+    if not rows and not os.path.exists(path):
         return []
     with gs.locked(path):
         old = read(ledger)
-        seen = {key: ({"first": old[key]["first"], "turns": old[key]["turns"] + 1} if key in old
-                      else {"first": int(now), "turns": 0}) for key in due}
-        gs.save(path, json.dumps(seen, indent=1, sort_keys=True) + "\n")
-    late = [key for key in due if is_overdue(seen[key], turns, minutes, now)]
-    return [(key, due[key]) for key in sorted(late, key=lambda k: seen[k]["first"])]
+        seen = {}
+        for r in rows:
+            before = old.get(r["id"])
+            seen[r["id"]] = (dict(before, turns=before["turns"] + 1) if before and before.get("row") == signature(r)
+                             else {"first": int(now), "turns": 0, "row": signature(r)})
+        if seen != old:
+            gs.save(path, json.dumps(seen, indent=1, sort_keys=True) + "\n")
+    return late_items(rows, seen, now)
 
 
-def overdue(ledger, now=None):
-    """[(key, what)] of the overdue items, without counting a turn (`guide_title.py working`)."""
+def overdue(ledger, rows, now=None):
+    """[(key, what)] of the overdue `rows`, without counting a turn (`guide_title.py working`)."""
     now = time.time() if now is None else now
-    turns, minutes = limits()
-    if not turns and not minutes:
-        return []
-    due, seen = due_items(ledger, now), read(ledger)
-    late = [key for key in due if key in seen and is_overdue(seen[key], turns, minutes, now)]
-    return [(key, due[key]) for key in sorted(late, key=lambda k: seen[k]["first"])]
+    return late_items(rows, read(ledger), now) if any(limits()) else []
 
 
 def sentence(items, asked=False):

@@ -22,11 +22,6 @@ class NeedsInputTest(GuideTitleBase):
         self.assertEqual(self.run_script("mark", self.ledger, "--session", GUIDE).returncode, 0)
         self.state = os.path.join(os.path.dirname(self.ledger), "needs-input.json")
 
-    def run_ok(self, *args, **env):
-        r = self.run_script(*args, **env)
-        self.assertEqual((r.returncode, r.stderr), (0, ""), r.stdout)
-        return r.stdout
-
     def turn(self, prompt=None, event="UserPromptSubmit", **env):
         """The workers line the hook gives the guide on one prompt."""
         event_in = {"session_id": GUIDE, "hook_event_name": event}
@@ -90,6 +85,37 @@ class NeedsInputTest(GuideTitleBase):
         self.run_ok("unwait", key)
         self.turn()
         self.assertEqual(self.counts(), {})
+
+    def test_a_snooze_or_a_new_ask_restarts_the_count_with_no_turn_in_between(self):
+        self.run_job(self.BILLING)
+        key = self.owe()
+        for _ in range(3):
+            self.turn()
+        self.run_ok("sleep", key, "1", CLAUDE_CODE_SESSION_ID=GUIDE)
+        with open(self.ledger, encoding="utf-8") as f:  # the hour is over, and no hook saw the snooze
+            lines = f.read().splitlines(True)
+        with open(self.ledger, "w", encoding="utf-8") as f:
+            f.writelines(l.rsplit("|", 2)[0] + "| 2026-01-01 00:00 |\n" if "[%s]" % key in l else l for l in lines)
+        self.assertNotIn(OPEN, self.turn())
+        self.assertEqual(self.counts()[key]["turns"], 0)
+
+    def test_the_working_command_says_nothing_about_an_interview_while_away(self):
+        self.run_job(self.BILLING)
+        self.owe()
+        for _ in range(3):
+            self.turn()
+        self.assertIn(OPEN, self.run_ok("working", self.ledger))
+        self.run_ok("away", "--hours", "2", "--ledger", self.ledger)
+        out = self.run_ok("working", self.ledger)
+        self.assertNotIn(OPEN, out)
+        self.assertIn("The user is away", out)
+
+    def test_a_reminder_of_a_closed_session_does_not_count(self):
+        self.run_job(self.BILLING)
+        self.run_ok("waiting", self.BILLING, "Merge the export PR")
+        self.run_ok("done", self.BILLING)
+        for _ in range(3):
+            self.assertNotIn(OPEN, self.turn())
 
     def test_nothing_counts_when_nobody_works_on_a_session_start_or_while_away(self):
         self.owe()
