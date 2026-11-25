@@ -79,6 +79,11 @@ class GuideTitleBase(unittest.TestCase):
         return subprocess.run([sys.executable, SCRIPT] + list(args), input=stdin, capture_output=True, text=True,
                               env=env)
 
+    def run_ok(self, *args, **env):
+        r = self.run_script(*args, **env)
+        self.assertEqual((r.returncode, r.stderr), (0, ""), r.stdout)
+        return r.stdout
+
     def hook(self, session_id=GUIDE, event="UserPromptSubmit", title=None, **extra_env):
         event_in = {"session_id": session_id, "hook_event_name": event}
         if title is not None:
@@ -675,11 +680,6 @@ class ThroughputTest(GuideTitleBase):
         super().setUp()
         self.keep_open_rows_alive()
         self.assertEqual(self.run_script("mark", self.ledger, "--session", GUIDE).returncode, 0)
-
-    def run_ok(self, *args, **env):
-        r = self.run_script(*args, **env)
-        self.assertEqual((r.returncode, r.stderr), (0, ""), r.stdout)
-        return r.stdout
 
     def hook_text(self, **env):
         out = self.hook(**env).stdout
