@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.27] - 2026-11-25
+
+### Added
+- An animated walkthrough of a day with the guide (invented data) in the READMEs, with three stills;
+  `scripts/dev/story_gif.py` rebuilds them.
+
 ## [0.1.26] - 2026-11-25
 
 ### Changed

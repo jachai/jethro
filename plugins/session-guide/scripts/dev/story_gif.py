@@ -202,7 +202,7 @@ frame("claude agents", "9:02 AM", "claude agents",
                   prompt="/session-guide guide me through bookshop 2.4: search, checkout, the mobile menu, then release notes"))
 
 # 2. The guide names the streams and starts one worker per stream
-frame("guide session", "9:04 AM", guide_title(3, 4),
+frame("guide session", "9:04 AM", guide_title(3, 0),
       "The guide gives each stream an icon and starts one worker per stream",
       chat_view([
           L(("> ", "g"), ("/session-guide guide me through bookshop 2.4: search, checkout, the mobile menu, then release notes", "g")),
@@ -211,7 +211,7 @@ frame("guide session", "9:04 AM", guide_title(3, 4),
           L(("    🔎 search     ", "d"), ("facet filters + typo tolerance            ", "g"), ("new worker: search facets lead", "d")),
           L(("    🛒 checkout   ", "d"), ("totals are 40¢ off when a coupon is used  ", "g"), ("new worker: checkout totals fix", "d")),
           L(("    🎨 design     ", "d"), ("the menu doesn't fit on 375px screens     ", "g"), ("new worker: mobile menu redesign", "d")),
-          L(("    📚 docs       ", "d"), ("release notes                             ", "g"), ("starts when the other three land", "d")),
+          L(("    📚 docs       ", "d"), ("release notes                             ", "g"), ("starts once the first PR is ready", "d")),
           blank(),
           *tool("Bash", 'guide_title.py launch --stream search -- "Add facet filters and typo tolerance…"',
                 "started 7c41e9 · 🟧🟧 (g) 🔎 search facets lead"),
@@ -228,7 +228,7 @@ frame("guide session", "9:04 AM", guide_title(3, 4),
 
 # 3. Workers in `claude agents`
 WORKING_0920 = [
-    agent_row("·", guide_title(3, 4), "Woke at 9:20: 3 workers busy, nothing for you yet", "18m"),
+    agent_row("·", guide_title(3, 0), "Woke at 9:20: 3 workers busy, nothing for you yet", "18m"),
     agent_row("·", "🟧🟧 (g) 🔎 search facets lead", "Price and format facets done; 14 of 22 tests pass", "16m"),
     agent_row("·", "🟧🟧 (g) 🛒 checkout totals fix", "Reproduced the 40¢ gap with a $5 coupon on $50", "16m"),
     agent_row("·", "🟧🟧 (g) 🎨 mobile menu redesign", "Comparing two menu layouts at 375px", "16m"),
@@ -244,7 +244,7 @@ frame("claude-top", "9:41 AM", "claude-top",
                "21% used · 26% time · reset Mon 09:00 (4d23h) · 0.8x on pace", "gr",
                [(("working", "gr", "4 sessions · last active 2s ago"), [
                    top_row("Nov 25 09:41", "2s", "39m", "working", "a0c4f1", "opus 5.5", "high", "41k",
-                           20, guide_title(3, 4), "Woke at 9:40: nothing new", "gr"),
+                           20, guide_title(3, 0), "Woke at 9:40: nothing new", "gr"),
                    top_row("Nov 25 09:41", "4s", "37m", "working", "7c41e9", "opus 5.5", "high", "88k",
                            44, "🟧🟧 (g) 🔎 search facets lead", "Typo tolerance: 19/22", "gr"),
                    top_row("Nov 25 09:40", "31s", "37m", "working", "2b90d3", "sonnet 5.5", "high", "61k",
@@ -263,7 +263,7 @@ WORKING_1005 = [
 frame("claude agents", "10:05 AM", "claude agents",
       "A worker needs a decision: it asks the guide, and the guide asks you",
       agents_view("1 awaiting input · 3 working · 5 completed", [
-          ("Needs input", [agent_row("✻", guide_title(3, 4), "answer: 2 questions (🛒 coupon tax, 🔎 facet counts)",
+          ("Needs input", [agent_row("✻", guide_title(3, 0), "answer: 2 questions (🛒 coupon tax, 🔎 facet counts)",
                                      "1h", mark_cls="a", cls="d", sel=True)]),
           ("Working", WORKING_1005), ("Completed", OLD_DONE[:3])]))
 
@@ -294,12 +294,12 @@ for i, (label, desc) in enumerate(OPT):
     if desc:
         interview.append(L(("      " + desc, "g")))
 interview += [blank(), L((" Enter to select · Tab/Arrow keys to navigate · Esc to cancel", "g"))]
-frame("guide session", "10:06 AM", guide_title(3, 4),
+frame("guide session", "10:06 AM", guide_title(3, 0),
       "The interview: every option, the recommendation first, and what each does",
       chat_view(interview))
 
 # 7. Rulings become decisions and go back to the workers
-frame("guide session", "10:08 AM", guide_title(3, 4),
+frame("guide session", "10:08 AM", guide_title(3, 0),
       "Your answers become ledger decisions, relayed to each worker",
       chat_view([
           L(("⏺ ", "d"), ("User answered: ", "d"), ("🛒 Coupon tax → On $45, after the coupon", "b"), ("  ·  ", "g"),
@@ -321,17 +321,17 @@ frame("guide session", "10:08 AM", guide_title(3, 4),
 # 8. claude-top: a handoff and a finished worker
 frame("claude-top", "11:12 AM", "claude-top",
       "A worker near full context hands off; a successor takes over its stream",
-      top_view("11:12:40", "sessions 11: 4 work · 0 wait · 7 done", "███████──────────── ",
-               "34% used · 27% time · reset Mon 09:00 (4d21h) · 1.3x · → still lasts the week", "y",
+      top_view("11:12:40", "sessions 11: 4 work · 0 wait · 7 done", "█████────────────── ",
+               "28% used · 27% time · reset Mon 09:00 (4d21h) · 1.0x on pace", "gr",
                [(("working", "gr", "4 sessions · last active 1s ago"), [
                    top_row("Nov 25 11:12", "1s", "2h", "working", "a0c4f1", "opus 5.5", "high", "58k",
-                           29, guide_title(3, 4), "Relayed the handoff", "gr"),
+                           29, guide_title(3, 0), "Relayed the handoff", "gr"),
                    top_row("Nov 25 11:12", "3s", "4m", "working", "4f8a21", "opus 5.5", "high", "34k",
                            17, "🟧🟧 (g) 🔎 search facets lead (2)", "Read the handoff; on step 3", "gr"),
                    top_row("Nov 25 11:11", "48s", "2h", "working", "e15a72", "sonnet 5.5", "medium", "97k",
                            48, "🟧🟧 (g) 🎨 mobile menu redesign", "Screenshots for review", "gr"),
                    top_row("Nov 25 11:12", "6s", "9m", "working", "9d3f08", "sonnet 5.5", "medium", "22k",
-                           11, "🟧🟧 (g) 📚 release notes 2.4", "Drafting from merged PRs", "gr"),
+                           11, "🟧🟧 (g) 📚 release notes 2.4", "Drafting from the open PRs", "gr"),
                ]), (("done", "d", "7 sessions · last active 4m ago"), [
                    top_row("Nov 25 11:08", "4m", "2h", "done", "7c41e9", "opus 5.5", "high", "161k",
                            81, "✅ 🔎 search facets lead", "Handed off to (2)", "d"),
@@ -342,10 +342,10 @@ frame("claude-top", "11:12 AM", "claude-top",
 
 # 9. claude agents: what finished
 frame("claude agents", "11:30 AM", "claude agents",
-      "Finished workers turn ✅; the docs stream starts once the others land",
+      "Finished workers turn ✅; the docs stream starts once the first PR is ready",
       agents_view("4 working · 7 completed", [
           ("Working", [
-              agent_row("·", guide_title(3, 4), "Status sent: 1 merge and 1 review for you", "2h"),
+              agent_row("·", guide_title(3, 0), "Status sent: 1 merge and 1 review for you", "2h"),
               agent_row("·", "🟧🟧 (g) 🔎 search facets lead (2)", "Suite green; opening the PR", "22m"),
               agent_row("·", "🟧🟧 (g) 🎨 mobile menu redesign", "Preview up for your review", "2h"),
               agent_row("·", "🟧🟧 (g) 📚 release notes 2.4", "Draft: 3 of 4 sections", "27m"),
@@ -358,7 +358,7 @@ frame("claude agents", "11:30 AM", "claude agents",
           ])]))
 
 # 10. The guide's status: what needs you, what finished
-frame("guide session", "11:31 AM", guide_title(3, 4),
+frame("guide session", "11:31 AM", guide_title(3, 0),
       "One status: what needs you, what finished, where each stream stands",
       chat_view([
           L(("> ", "g"), ("where do we stand?", "g")),
@@ -374,7 +374,7 @@ frame("guide session", "11:31 AM", guide_title(3, 4),
           L(("  - 🔎 search: suite green → next: PR from 'search facets lead (2)' [4f8a21]", "d")),
           L(("  - 🛒 checkout: PR #214 ready → next: your merge", "d")),
           L(("  - 🎨 design: preview up → next: your look, then the PR", "d")),
-          L(("  - 📚 docs: drafting from the merged PRs → next: review after #214 lands", "d")),
+          L(("  - 📚 docs: drafting from the open PRs → next: review after #214 lands", "d")),
           blank(),
           L(("  ", "d"), ("Running on its own", "b")),
           L(("  - 4 workers; next wake 11:41", "d")),
@@ -403,7 +403,6 @@ frame("claude agents", "6:10 PM", "claude agents",
 
 COLORS = {"d": "#e8e6e3", "g": "#999999", "o": "#d77757", "l": "#b1b9f9", "a": "#ffc107", "gr": "#4eba65",
           "y": "#e5c07b", "c": "#56b6c2", "r": "#e06c75", "bl": "#61afef"}
-VIEW_ICON = {"claude agents": "≡", "claude-top": "▤", "guide session": "🟥"}
 
 
 def seg_html(text, classes):
