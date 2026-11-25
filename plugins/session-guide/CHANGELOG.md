@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.26] - 2026-11-25
+
+### Changed
+
+- Needs-input items no longer wait in text for ever while workers run (Decision 1485). A due Waiting row (an owed
+  `waiting ask` question or a reminder) that the hook already listed on 2 earlier guide turns
+  (`SESSION_GUIDE_INTERVIEW_TURNS`) or 15 minutes ago (`SESSION_GUIDE_INTERVIEW_MINUTES`; 0 turns either off) makes
+  the `session-guide workers:` line say OPEN THE INTERVIEW NOW: drain and relay first, then the full interview, up to 4
+  questions a call, rounds until none is left, even though workers are working. A typed "interview me" or "ask me now"
+  opens it at once. New module `scripts/guide_needs.py`; counts in `needs-input.json` next to the ledger. SKILL §4,
+  The interview, rule 1.
+
 ## [0.1.25] - 2026-11-24
 
 ### Fixed

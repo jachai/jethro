@@ -356,6 +356,28 @@ def away_module():
         return None
 
 
+def needs_module():
+    """guide_needs (when needs-input items go into the interview), next to this script; None when it can't be loaded."""
+    try:
+        sys.modules.setdefault("guide_title", sys.modules[__name__])
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import guide_needs
+        return guide_needs
+    except Exception:
+        return None
+
+
+def needs_sentence(ledger, prompt=None, count=False):
+    """The workers line's 'open the interview now' part: overdue needs-input items (counting this turn when `count`)
+    or a typed prompt that asks for the interview; "" on any error (fail open)."""
+    try:
+        needs = needs_module()
+        items = needs.tick(ledger) if count else needs.overdue(ledger)
+        return needs.sentence(items, needs.asked_for(prompt))
+    except (Exception, SystemExit):
+        return ""
+
+
 def away_context(ledger, prompt=None, event="UserPromptSubmit"):
     """(the hook's away line or None, away now); (None, False) on any error."""
     try:
@@ -633,9 +655,9 @@ def working_workers(ledger, session_id=""):
     return found
 
 
-def workers_sentence(ledger, working, away=False):
+def workers_sentence(ledger, working, away=False, needs=""):
     """The hook's line on the workers running now (and the full-interview line when none is). While the user is away
-    there is no interview: the line only names the workers."""
+    there is no interview: the line only names the workers. `needs` (needs_sentence) is added while workers work."""
     if away:
         named = ", ".join(with_icon(ledger, w["session"]) for w in working[:6]) or "none"
         return ("session-guide workers: %d MANAGED worker(s) working right now (%s). The user is away: act on every "
@@ -649,7 +671,8 @@ def workers_sentence(ledger, working, away=False):
             "open. This turn: act on every worker message and relay first; put only a question that a worker or the "
             "user's own next step is blocked on in AskUserQuestion, ONE question in the call; every other question "
             "goes in your text under **Needs you now**, with a last line `needs input: <what>` and a `waiting ask` "
-            "row, and into a dialog once no worker is working." % (len(working), named))
+            "row, and into a dialog once no worker is working, or sooner when this line says to open the interview "
+            "now." % (len(working), named) + needs)
 
 
 def sweep_context(found, minutes):
@@ -704,7 +727,8 @@ def guide_context(session_id, prompt=None, event="UserPromptSubmit"):
     if reconciled:
         parts.append(reconciled)
     working = working_workers(ledger, session_id)
-    parts.append(workers_sentence(ledger, working, away_now))
+    needs = needs_sentence(ledger, prompt, count=event == "UserPromptSubmit") if working and not away_now else ""
+    parts.append(workers_sentence(ledger, working, away_now, needs))
     streams = streams_context(ledger)  # small local files
     if streams:
         parts.append(streams)
@@ -1896,7 +1920,7 @@ def cmd_working(args):
     working = working_workers(ledger, os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
     for worker in working:
         print("Working: " + with_icon(ledger, worker["session"]))
-    print(workers_sentence(ledger, working))
+    print(workers_sentence(ledger, working, needs=needs_sentence(ledger) if working else ""))
     return 0
 
 

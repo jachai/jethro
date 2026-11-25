@@ -239,6 +239,12 @@ guide was busy without one). So:
      now**, each standing alone, and the turn ends with a line `needs input: <what you need>`. Each has a row behind it
      so it survives: `waiting ask "<question>"`, or the Results or Waiting row it already has. An answer the user types
      counts like a dialog answer. Once no worker is working, what is still unanswered goes into the full interview.
+   - **Not for ever in text.** When the workers line says OPEN THE INTERVIEW NOW, open the full interview with the
+     open needs-input items even though workers are working: drain and relay first, blocking ones first, at most 4
+     questions a call, the next round straight away until none is left. The hook says so when a due Waiting row was
+     already listed on 2 earlier turns (`SESSION_GUIDE_INTERVIEW_TURNS`) or 15 minutes ago
+     (`SESSION_GUIDE_INTERVIEW_MINUTES`; 0 turns either off), and when the user types "interview me", "ask me now"
+     or the like. Do it right away too when the user asks for it in other words.
 2. **Each question stands alone,** because the user may see only the dialog or the text line: session title [id6], the
    full link or `!` command, what you checked. Recommended option first. A question about a stream that has an icon
    carries it: the header is the icon and a name of at most 8 characters ("🏠 Billing", 12 at most in all), and the

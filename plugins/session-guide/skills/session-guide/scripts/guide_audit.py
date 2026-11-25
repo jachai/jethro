@@ -93,7 +93,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import guide_title as gt  # noqa: E402
 
-__version__ = "0.1.25"
+__version__ = "0.1.26"
 IDLE_HOURS = 12  # an idle item older than this with no question to the user is nagged about
 AUDIT_HOURS = 12  # the full audit (transcripts too) is due this often
 QUICK_MINUTES = 10  # the hook recomputes the quick audit at most this often

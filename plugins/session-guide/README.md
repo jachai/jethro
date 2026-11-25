@@ -453,6 +453,8 @@ Set them in the `env` block of `settings.json`, so the hooks see them too.
 | `SESSION_GUIDE_GUIDED_PREFIX`, `_WATCHED_PREFIX`, `_ACTIVE_PREFIX`, `_DONE_PREFIX` | `🟧🟧 (g) `, `⬜⬜ `, `🟦🟦 `, `✅ ` | The title prefixes |
 | `SESSION_GUIDE_STREAM_ICONS` | on | `0` turns every stream icon off (titles, hook lines, `STATE.md`); `stream strip --all` takes the ones already shown off |
 | `SESSION_GUIDE_NEW_SESSION_MINUTES` | 15 | A session with no row this long gets its default level (MANAGED if guided, WATCHED if watched, else ACTIVE) with no question; 0 asks as before |
+| `SESSION_GUIDE_INTERVIEW_TURNS` | 2 | While workers work, a due needs-input item already listed on this many earlier guide turns goes into the interview (OPEN THE INTERVIEW NOW); 0 = off |
+| `SESSION_GUIDE_INTERVIEW_MINUTES` | 15 | The same, by minutes since the item was first listed; 0 = off |
 | `SESSION_GUIDE_SLEEP_HOURS` | 2 | The default snooze for `sleep <id>` and `sleep --due` |
 | `SESSION_GUIDE_FINISHED_HOURS` | 24 | How far back the guide looks for sessions that ended with nobody managing them ("Finished on their own"); 0 turns the look off |
 | `SESSION_GUIDE_FINISHED_QUIET_MINUTES` | 15 | An ended session is left alone this long before that look, so a conversation you are in the middle of is not listed |
