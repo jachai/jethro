@@ -99,6 +99,23 @@ class NeedsInputTest(GuideTitleBase):
         self.assertNotIn(OPEN, self.turn())
         self.assertEqual(self.counts()[key]["turns"], 0)
 
+    def test_unwait_and_a_new_action_restart_the_count_with_no_turn_in_between(self):
+        self.run_job(self.BILLING)
+        key = self.owe()
+        for _ in range(3):
+            self.turn()
+        self.run_ok("unwait", key)
+        self.assertNotIn(key, self.counts())  # gone with its row, before any hook
+        self.owe()  # the same question again, in the same minute
+        self.assertNotIn(OPEN, self.turn())
+        self.run_ok("waiting", self.BILLING, "Merge the export PR")
+        for _ in range(3):
+            self.turn()
+        self.run_ok("waiting", self.BILLING, "Run the backfill")  # same row, same times, a new action
+        self.assertEqual(self.counts()["3fa9c1"]["turns"], 2)
+        self.turn()
+        self.assertEqual(self.counts()["3fa9c1"]["turns"], 0)
+
     def test_the_working_command_says_nothing_about_an_interview_while_away(self):
         self.run_job(self.BILLING)
         self.owe()

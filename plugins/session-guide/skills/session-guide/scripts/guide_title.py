@@ -1284,9 +1284,16 @@ def write_row(ledger, section, title, head, key_of, key, row, before="## Open it
 
 
 def write_waiting(ledger, rid, row):
-    """Set session `rid`'s row in the waiting table to `row` (its 4 cells), or remove it when `row` is None."""
-    return write_row(ledger, "## Waiting on", "## Waiting on the user", WAITING_TABLE, lambda cells: row_id(cells[0]),
+    """Set session `rid`'s row in the waiting table to `row` (its 4 cells), or remove it when `row` is None (and its
+    needs-input count with it, so a row written again later counts from zero)."""
+    done = write_row(ledger, "## Waiting on", "## Waiting on the user", WAITING_TABLE, lambda cells: row_id(cells[0]),
                      rid, row)
+    if row is None:
+        try:
+            needs_module().forget(ledger, rid)
+        except Exception:  # a count is never worth an error
+            pass
+    return done
 
 
 def last_write(rid):

@@ -61,8 +61,20 @@ def read(ledger):
 
 
 def signature(row):
-    """A row's Asked and Remind at: a snooze (new Remind at) or a row written again (new Asked) starts a new count."""
-    return "%s|%s" % (row.get("asked", ""), row.get("remind", ""))
+    """A row's action, Asked and Remind at: a snooze (new Remind at), a new action or a row written again (new Asked)
+    starts a new count."""
+    return "%s|%s|%s" % (" ".join(row.get("what", "").split()), row.get("asked", ""), row.get("remind", ""))
+
+
+def forget(ledger, key):
+    """Drop `key`'s count: its Waiting row is gone (`unwait`, a close). Nothing is written when it has none."""
+    path = path_of(ledger)
+    if not os.path.exists(path):
+        return
+    with gs.locked(path):
+        seen = read(ledger)
+        if seen.pop(key, None) is not None:
+            gs.save(path, json.dumps(seen, indent=1, sort_keys=True) + "\n")
 
 
 def asked_for(prompt):
