@@ -66,6 +66,11 @@ and tells you which session needs you and for what. It keeps one pinned title so
 2. 'search reindex worker' [b5c6d7]: one refund rule to decide (below)
 ```
 
+A day with the guide, in `claude agents`, the guide's own chat and [claude-top](https://github.com/jachai/claude-top)
+(invented project and data):
+
+<img src="plugins/session-guide/docs/screenshots/story.gif" width="760" alt="Animated walkthrough: a guide session starts three workers with stream icons, interviews you on a worker's question, relays the decision, hands off a full worker, reports status, and runs in away mode">
+
 More: [plugins/session-guide/README.md](plugins/session-guide/README.md)
 
 ### artifact-explorer

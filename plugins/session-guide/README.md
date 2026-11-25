@@ -12,6 +12,15 @@ wakes itself while CI and deploys run, and tells you exactly which session needs
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757)
 
+<img src="docs/screenshots/story.gif" width="760" alt="Animated walkthrough of a day with the guide: streams, workers, an interview, decisions relayed, a handoff, status and away mode">
+
+What it looks like at three points of that day (invented project and data; `python3 scripts/dev/story_gif.py`
+rebuilds the GIF and these stills):
+
+| A worker's question reaches you through the guide | The interview | claude-top during a handoff |
+|---|---|---|
+| <img src="docs/screenshots/story-needs-input.png" width="300" alt="claude agents with the guide under Needs input"> | <img src="docs/screenshots/story-interview.png" width="300" alt="The guide's interview: a coupon tax question with the recommended option first"> | <img src="docs/screenshots/story-claude-top.png" width="300" alt="claude-top showing a worker handed off to its successor"> |
+
 A typical answer when you ask the guide "what's next?":
 
 ```
